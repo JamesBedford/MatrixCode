@@ -18,6 +18,20 @@ const STORAGE_KEY = "mx-controls";
 const PRESETS: PresetName[] = ["classic", "amber", "blue"];
 const QUALITIES: QualityTier[] = ["low", "med", "high"];
 
+/** Maps each control to its URL query-param name — single source of truth for reading and writing. */
+const URL_PARAMS = {
+  speed: "speed",
+  density: "density",
+  glyphScale: "size",
+  glow: "glow",
+  leadBrightness: "lead",
+  preset: "preset",
+  mirror: "mirror",
+  scanlines: "scanlines",
+  vignette: "vignette",
+  quality: "quality",
+} as const satisfies Record<keyof Controls, string>;
+
 export type ChangedKeys = ReadonlySet<keyof Controls>;
 type Listener = (state: Controls, changed: ChangedKeys) => void;
 
@@ -54,28 +68,41 @@ function parseBool(v: string): boolean | undefined {
 
 function loadUrl(): Partial<Controls> {
   const p = new URLSearchParams(location.search);
-  const raw: Partial<Controls> = {};
-  const num = (k: string): number | undefined => {
-    const v = p.get(k);
-    return v === null ? undefined : Number(v);
-  };
-  if (num("speed") !== undefined) raw.speed = num("speed");
-  if (num("density") !== undefined) raw.density = num("density");
-  if (num("size") !== undefined) raw.glyphScale = num("size");
-  if (num("glow") !== undefined) raw.glow = num("glow");
-  if (num("lead") !== undefined) raw.leadBrightness = num("lead");
-  const preset = p.get("preset");
-  if (preset) raw.preset = preset as PresetName;
-  const quality = p.get("quality");
-  if (quality) raw.quality = quality as QualityTier;
-  for (const key of ["mirror", "scanlines", "vignette"] as const) {
-    const v = p.get(key);
-    if (v !== null) {
+  const raw: Record<string, unknown> = {};
+  for (const key of Object.keys(URL_PARAMS) as (keyof Controls)[]) {
+    const v = p.get(URL_PARAMS[key]);
+    if (v === null) continue;
+    const def = DEFAULT_CONTROLS[key];
+    if (typeof def === "number") {
+      raw[key] = Number(v);
+    } else if (typeof def === "boolean") {
       const b = parseBool(v);
       if (b !== undefined) raw[key] = b;
+    } else {
+      raw[key] = v;
     }
   }
-  return sanitize(raw);
+  return sanitize(raw as Partial<Controls>);
+}
+
+/** Write the current settings into the URL so a reload restores them. Defaults are omitted to keep it tidy. */
+function syncUrl(state: Controls): void {
+  try {
+    const p = new URLSearchParams(location.search);
+    for (const key of Object.keys(URL_PARAMS) as (keyof Controls)[]) {
+      const param = URL_PARAMS[key];
+      const value = state[key];
+      if (value === DEFAULT_CONTROLS[key]) {
+        p.delete(param);
+      } else {
+        p.set(param, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+      }
+    }
+    const query = p.toString();
+    history.replaceState(history.state, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
+  } catch {
+    /* history/URL API unavailable — ignore */
+  }
 }
 
 /** Live tunables store: merges defaults + localStorage + URL, persists, notifies. */
@@ -85,6 +112,7 @@ export class ControlsStore {
 
   constructor() {
     this.state = { ...DEFAULT_CONTROLS, ...loadStored(), ...loadUrl() };
+    syncUrl(this.state);
   }
 
   get(): Controls {
@@ -102,6 +130,7 @@ export class ControlsStore {
     }
     if (changed.size === 0) return;
     this.persist();
+    syncUrl(this.state);
     const snapshot = this.get();
     for (const cb of this.listeners) cb(snapshot, changed);
   }
