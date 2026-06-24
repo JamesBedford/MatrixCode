@@ -1,0 +1,23 @@
+{
+  "name": "matrix-code",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Film-accurate Matrix digital rain — full-viewport WebGL2 effect",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "twgl.js": "^5.5.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^3.2.6"
+  }
+}
