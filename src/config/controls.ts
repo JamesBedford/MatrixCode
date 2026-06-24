@@ -35,13 +35,19 @@ const URL_PARAMS = {
 export type ChangedKeys = ReadonlySet<keyof Controls>;
 type Listener = (state: Controls, changed: ChangedKeys) => void;
 
+// A real number (rejects NaN/Infinity, which a malformed URL param like
+// `?speed=foo` would otherwise smuggle in — clamp() passes NaN straight through).
+function finiteNum(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
 function sanitize(input: Partial<Controls>): Partial<Controls> {
   const out: Partial<Controls> = {};
-  if (typeof input.speed === "number") out.speed = clamp(input.speed, 0.1, 3);
-  if (typeof input.density === "number") out.density = clamp(input.density, 0.1, 2);
-  if (typeof input.glyphScale === "number") out.glyphScale = clamp(input.glyphScale, 0.5, 5);
-  if (typeof input.glow === "number") out.glow = clamp(input.glow, 0, 2.5);
-  if (typeof input.leadBrightness === "number") out.leadBrightness = clamp(input.leadBrightness, 0, 3);
+  if (finiteNum(input.speed)) out.speed = clamp(input.speed, 0.1, 3);
+  if (finiteNum(input.density)) out.density = clamp(input.density, 0.1, 2);
+  if (finiteNum(input.glyphScale)) out.glyphScale = clamp(input.glyphScale, 0.5, 5);
+  if (finiteNum(input.glow)) out.glow = clamp(input.glow, 0, 2.5);
+  if (finiteNum(input.leadBrightness)) out.leadBrightness = clamp(input.leadBrightness, 0, 3);
   if (input.preset && PRESETS.includes(input.preset)) out.preset = input.preset;
   if (typeof input.mirror === "boolean") out.mirror = input.mirror;
   if (typeof input.scanlines === "boolean") out.scanlines = input.scanlines;

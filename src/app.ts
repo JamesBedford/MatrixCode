@@ -272,11 +272,10 @@ export async function mountMatrixRain(
   canvas.addEventListener("webglcontextlost", onLost, false);
   canvas.addEventListener("webglcontextrestored", () => void onRestored(), false);
 
-  // ---------- Rebuild atlas on mirror change ----------
+  // ---------- React to control changes ----------
   const unsubscribe = controls.subscribe((_state, changed) => {
     if (changed.has("glyphScale")) {
       applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
-      if (!running) renderStatic();
     }
     if (changed.has("mirror")) {
       void buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX }).then(
@@ -287,6 +286,9 @@ export async function mountMatrixRain(
         },
       );
     }
+    // While paused (reduced motion / hidden tab) the RAF loop isn't redrawing,
+    // so reflect any control change — color, glow, quality, etc. — in a fresh frame.
+    if (!running) renderStatic();
   });
 
   // ---------- Intro on first visit ----------
