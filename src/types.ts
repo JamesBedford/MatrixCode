@@ -23,6 +23,8 @@ export interface Controls {
   speed: number;
   /** Stream spawn density multiplier. */
   density: number;
+  /** Glyph size multiplier — scales the grid cell size (bigger = larger glyphs, fewer columns). */
+  glyphScale: number;
   /** Bloom strength. */
   glow: number;
   /** Extra HDR push for white-hot leading glyphs (how hard they bloom). */

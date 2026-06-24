@@ -30,9 +30,9 @@ function paramsOf(c: Controls): RenderParams {
   };
 }
 
-function computeDims(cssW: number, cssH: number): { grid: Grid; devW: number; devH: number } {
+function computeDims(cssW: number, cssH: number, glyphScale: number): { grid: Grid; devW: number; devH: number } {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const cell = DEFAULT_SIM_CONFIG.targetCellPx;
+  const cell = DEFAULT_SIM_CONFIG.targetCellPx * glyphScale;
   return {
     grid: { cols: Math.max(8, Math.round(cssW / cell)), rows: Math.max(8, Math.round(cssH / cell)) },
     devW: Math.max(1, Math.round(cssW * dpr)),
@@ -67,7 +67,7 @@ export async function mountMatrixRain(
 
   // ---------- Fallback: no WebGL2 ----------
   if (!gl) {
-    const fb = startCanvas2dRain(canvas, controls.get().preset);
+    const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale);
     const sizeCanvas = (): void => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round((container.clientWidth || window.innerWidth) * dpr);
@@ -106,7 +106,7 @@ export async function mountMatrixRain(
   const applySize = (w: number, h: number): void => {
     cssW = w;
     cssH = h;
-    const d = computeDims(w, h);
+    const d = computeDims(w, h, controls.get().glyphScale);
     grid = d.grid;
     deviceW = d.devW;
     deviceH = d.devH;
@@ -138,7 +138,7 @@ export async function mountMatrixRain(
     const r = container.getBoundingClientRect();
     cssW = r.width || window.innerWidth;
     cssH = r.height || window.innerHeight;
-    const d = computeDims(cssW, cssH);
+    const d = computeDims(cssW, cssH, controls.get().glyphScale);
     grid = d.grid;
     deviceW = d.devW;
     deviceH = d.devH;
@@ -150,7 +150,7 @@ export async function mountMatrixRain(
     await buildGpu();
   } catch (err) {
     console.error("Matrix GPU init failed, using fallback:", err);
-    const fb = startCanvas2dRain(canvas, controls.get().preset);
+    const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale);
     showNotice(container, "Compatibility mode");
     return { controls, destroy: () => fb.stop() };
   }
@@ -274,6 +274,10 @@ export async function mountMatrixRain(
 
   // ---------- Rebuild atlas on mirror change ----------
   const unsubscribe = controls.subscribe((_state, changed) => {
+    if (changed.has("glyphScale")) {
+      applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
+      if (!running) renderStatic();
+    }
     if (changed.has("mirror")) {
       void buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX }).then(
         (a) => {

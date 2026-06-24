@@ -8,6 +8,7 @@ import type { Controls } from "../src/types.ts";
 const CONTROLS: Controls = {
   speed: 1,
   density: 1,
+  glyphScale: 1,
   glow: 1,
   leadBrightness: 1.6,
   preset: "classic",

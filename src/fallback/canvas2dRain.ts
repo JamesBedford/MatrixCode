@@ -14,7 +14,11 @@ function rgb(c: readonly [number, number, number], a = 1): string {
   return `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
 }
 
-export function startCanvas2dRain(canvas: HTMLCanvasElement, preset: PresetName = "classic"): Canvas2dRainHandle {
+export function startCanvas2dRain(
+  canvas: HTMLCanvasElement,
+  preset: PresetName = "classic",
+  glyphScale = 1,
+): Canvas2dRainHandle {
   const ctx0 = canvas.getContext("2d");
   if (!ctx0) return { stop: () => {} };
   const ctx = ctx0; // non-null, captured by the animation closures
@@ -25,7 +29,7 @@ export function startCanvas2dRain(canvas: HTMLCanvasElement, preset: PresetName 
   for (const d of "0123456789") chars.push(d);
 
   const rng = createRng(7);
-  const fontSize = 18;
+  const fontSize = 18 * glyphScale;
   let cols = 0;
   let drops: number[] = [];
   let speeds: number[] = [];

@@ -38,6 +38,7 @@ export class ControlsPanel {
 
     this.range("Speed", c.speed, 0.2, 2.5, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
     this.range("Density", c.density, 0.2, 2, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
+    this.range("Glyph size", c.glyphScale, 0.5, 5, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
     this.range("Glow", c.glow, 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
     this.range("Lead glow", c.leadBrightness, 0, 3, 0.05, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
 

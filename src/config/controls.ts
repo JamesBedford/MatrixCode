@@ -4,6 +4,7 @@ import { clamp } from "../util/math.ts";
 export const DEFAULT_CONTROLS: Controls = {
   speed: 1,
   density: 1,
+  glyphScale: 1,
   glow: 0.9,
   leadBrightness: 1.6,
   preset: "classic",
@@ -24,6 +25,7 @@ function sanitize(input: Partial<Controls>): Partial<Controls> {
   const out: Partial<Controls> = {};
   if (typeof input.speed === "number") out.speed = clamp(input.speed, 0.1, 3);
   if (typeof input.density === "number") out.density = clamp(input.density, 0.1, 2);
+  if (typeof input.glyphScale === "number") out.glyphScale = clamp(input.glyphScale, 0.5, 5);
   if (typeof input.glow === "number") out.glow = clamp(input.glow, 0, 2.5);
   if (typeof input.leadBrightness === "number") out.leadBrightness = clamp(input.leadBrightness, 0, 3);
   if (input.preset && PRESETS.includes(input.preset)) out.preset = input.preset;
@@ -59,6 +61,7 @@ function loadUrl(): Partial<Controls> {
   };
   if (num("speed") !== undefined) raw.speed = num("speed");
   if (num("density") !== undefined) raw.density = num("density");
+  if (num("size") !== undefined) raw.glyphScale = num("size");
   if (num("glow") !== undefined) raw.glow = num("glow");
   if (num("lead") !== undefined) raw.leadBrightness = num("lead");
   const preset = p.get("preset");
