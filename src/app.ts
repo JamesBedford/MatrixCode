@@ -251,6 +251,8 @@ export async function mountMatrixRain(
     if (message.isPlaying()) message.skip();
   };
   window.addEventListener("pointerdown", onPointerDown);
+  const onDblClick = (): void => toggleFullscreen();
+  canvas.addEventListener("dblclick", onDblClick);
 
   // ---------- Context loss / restore ----------
   const onLost = (e: Event): void => {
@@ -317,6 +319,7 @@ export async function mountMatrixRain(
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("dblclick", onDblClick);
       canvas.removeEventListener("webglcontextlost", onLost);
       unsubscribe();
       panel.destroy();
