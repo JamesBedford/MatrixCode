@@ -25,8 +25,17 @@ export interface SuperConfig {
 }
 
 export type SuperSessionResult =
-  | { kind: "super"; selfConfig: SuperConfig; openedWindows: Window[] }
-  | { kind: "fallback" };
+  // Launched: this window's slice + the panel windows opened for the others.
+  | { kind: "super"; selfConfig: SuperConfig; openedWindows: Window[]; expectedPanels: number }
+  // Single monitor / unsupported browser — caller should do ordinary fullscreen.
+  | { kind: "fallback" }
+  // The window-management permission is blocked/denied for this site.
+  | { kind: "denied" }
+  // Permission was just resolved (its prompt consumed this gesture) — the next
+  // triple-click will launch cleanly using the now-cached screen details.
+  | { kind: "needsRetry" }
+  // Pop-ups are blocked, so no panel windows could open.
+  | { kind: "popupsBlocked" };
 
 const CHANNEL_NAME = "mx-superfs";
 const HASH_KEY = "superfs";
@@ -102,8 +111,12 @@ export function parsePanelConfig(): SuperConfig | null {
 /**
  * Controller path: enumerate screens, open one window per other screen (each
  * carrying its slice in the URL hash), fullscreen the current screen, and return
- * this window's own slice config. Returns `fallback` when the multi-monitor path
- * isn't available so the caller can do ordinary fullscreen instead.
+ * this window's own slice config.
+ *
+ * The result is a discriminated union so the caller can give the user feedback
+ * instead of silently half-launching: `fallback` (single monitor / unsupported
+ * → ordinary fullscreen), `denied`, `needsRetry` (permission just resolved — its
+ * prompt spent this gesture), or `popupsBlocked`.
  */
 export async function startSuperSession(
   rootEl: HTMLElement,
@@ -112,12 +125,34 @@ export async function startSuperSession(
 ): Promise<SuperSessionResult> {
   if (!isSupported()) return { kind: "fallback" };
 
+  // Granting the permission shows a prompt that consumes this click's transient
+  // activation, so we can't also open windows + go fullscreen in the same gesture.
+  // Resolve it first (caching the screens) and let the next triple-click launch.
+  if (!cachedDetails) {
+    let state = "granted";
+    try {
+      state = (
+        await navigator.permissions.query({ name: "window-management" } as unknown as PermissionDescriptor)
+      ).state;
+    } catch {
+      /* permissions API/name unsupported — assume it's grantable in-gesture */
+    }
+    if (state !== "granted") {
+      try {
+        cachedDetails = await getScreenDetails();
+      } catch {
+        return { kind: "denied" };
+      }
+      return (cachedDetails.screens?.length ?? 0) > 1 ? { kind: "needsRetry" } : { kind: "fallback" };
+    }
+  }
+
   let details: ScreenDetails;
   try {
     details = cachedDetails ?? (await getScreenDetails());
     cachedDetails = details;
   } catch {
-    return { kind: "fallback" }; // permission denied
+    return { kind: "denied" };
   }
   if (!details.screens || details.screens.length <= 1) return { kind: "fallback" };
 
@@ -148,9 +183,14 @@ export async function startSuperSession(
     if (w) openedWindows.push(w);
   }
 
+  const expectedPanels = details.screens.length - 1;
+  // Nothing opened on a multi-screen setup → pop-ups are blocked. Don't fullscreen
+  // the controller alone (that just looks like an ordinary double-click); report it.
+  if (openedWindows.length === 0) return { kind: "popupsBlocked" };
+
   await requestScreenFullscreen(rootEl, details.currentScreen);
 
-  return { kind: "super", selfConfig: configFor(curIdx), openedWindows };
+  return { kind: "super", selfConfig: configFor(curIdx), openedWindows, expectedPanels };
 }
 
 /** Fullscreen `rootEl` on a specific screen, falling back to the current screen. */

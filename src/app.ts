@@ -13,6 +13,7 @@ import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
 import { stepsToAdvance, extractSlice } from "./super/superGrid.ts";
 import {
   type SuperConfig,
+  type SuperSessionResult,
   startSuperSession,
   parsePanelConfig,
   enterPanelFullscreen,
@@ -358,22 +359,44 @@ export async function mountMatrixRain(
     }
   };
 
+  // A short-lived on-screen message (the show hides the normal overlays, so this
+  // is how the user learns why a launch didn't go as expected).
+  const flashNotice = (text: string, ms = 6000): void => {
+    const n = showNotice(container, text);
+    window.setTimeout(() => n.remove(), ms);
+  };
+
   // Controller path: a triple-click fans the rain out onto every monitor.
   const enterSuper = async (): Promise<void> => {
     if (superState || panelConfig) return;
     const cell = DEFAULT_SIM_CONFIG.targetCellPx * controls.get().glyphScale;
-    let res;
+    let res: SuperSessionResult;
     try {
       res = await startSuperSession(container, cell, WARMUP_SECONDS);
     } catch {
-      res = { kind: "fallback" as const };
+      res = { kind: "fallback" };
     }
-    if (res.kind === "fallback") {
-      toggleFullscreen(); // single monitor / unsupported / denied → ordinary fullscreen
-      return;
+    switch (res.kind) {
+      case "fallback":
+        toggleFullscreen(); // single monitor / unsupported → ordinary fullscreen
+        return;
+      case "denied":
+        flashNotice("Allow “Window management” for this site (address-bar site settings), then triple-click again.");
+        return;
+      case "needsRetry":
+        flashNotice("Multi-monitor ready — triple-click again to launch.");
+        return;
+      case "popupsBlocked":
+        flashNotice("Pop-ups are blocked — allow pop-ups for this site, then triple-click again.");
+        return;
+      case "super":
+        if (res.openedWindows.length < res.expectedPanels) {
+          flashNotice("Some windows were blocked — allow pop-ups for this site to fill every monitor.");
+        }
+        exitChan = openExitChannel(() => exitSuper(false));
+        enterSuperRender(res.selfConfig, true, res.openedWindows);
+        return;
     }
-    exitChan = openExitChannel(() => exitSuper(false));
-    enterSuperRender(res.selfConfig, true, res.openedWindows);
   };
 
   const onKey = (e: KeyboardEvent): void => {
@@ -491,7 +514,13 @@ export async function mountMatrixRain(
     // This window was opened as a panel: render its slice and go fullscreen.
     enterSuperRender(panelConfig, false, []);
     exitChan = openExitChannel(() => exitSuper(false));
-    void enterPanelFullscreen(container);
+    void enterPanelFullscreen(container).then(() => {
+      // Without the AutomaticFullscreen policy a panel can't self-fullscreen; hint
+      // that a click will do it (a click carries the activation requestFullscreen needs).
+      window.setTimeout(() => {
+        if (!document.fullscreenElement) flashNotice("Click anywhere for fullscreen.");
+      }, 600);
+    });
   } else {
     start();
     maybePlayIntro();
