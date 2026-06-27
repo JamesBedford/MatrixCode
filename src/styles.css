@@ -38,6 +38,12 @@ body {
   /* canvas is purely decorative */
 }
 
+/* Super fullscreen (all monitors): an uninterrupted backdrop — no overlays. */
+#app.mx-super .mx-ui,
+#app.mx-super .mx-message {
+  display: none !important;
+}
+
 /* ---------- Controls panel (auto-hide) ---------- */
 .mx-ui {
   position: fixed;

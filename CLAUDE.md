@@ -35,4 +35,6 @@ Data flows in one direction each frame:
 
 **Overlays:** `src/ui/controlsPanel.ts` is the settings UI (toggle with `H`). `src/sim/messageOverlay.ts` plays the intro typewriter message (once per visitor, gated by `localStorage`); `F` toggles fullscreen, `Escape`/click skips the message.
 
+**Super fullscreen (`src/super/`):** triple-clicking the backdrop spans the rain across every monitor — one fullscreen window per display, each rendering a slice of one shared virtual grid so the rain is continuous across the physical arrangement. `superGrid.ts` is the pure, unit-tested geometry (virtual grid + per-screen slices + slice extraction + fixed-timestep stepping); `superFullscreen.ts` orchestrates it via the Chromium Window Management API (`getScreenDetails` / `requestFullscreen({ screen })`), opening per-screen windows that carry their config in the URL hash. Windows stay in lockstep with no per-frame messaging by running the *same* deterministic sim against a shared seed + `Date.now()` epoch; a `BroadcastChannel` only coordinates exit. Chromium-only; degrades to ordinary fullscreen otherwise. See `docs/multimonitor-setup.md`.
+
 Reduced-motion (`prefers-reduced-motion`) and page-visibility are respected — the loop stops and renders a single static frame instead of animating.
