@@ -9,7 +9,7 @@ import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
 import { StateTexture } from "./gl/stateTexture.ts";
 import { Renderer } from "./gl/renderer.ts";
 import { ControlsPanel } from "./ui/controlsPanel.ts";
-import { IntroStore, toTypeConfig, type IntroScript } from "./config/introStore.ts";
+import { IntroStore, sanitizeIntro, toTypeConfig, type IntroScript } from "./config/introStore.ts";
 import { IntroEditor } from "./ui/introEditor.ts";
 import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
 import { stepsToAdvance, extractSlice } from "./super/superGrid.ts";
@@ -220,8 +220,9 @@ export async function mountMatrixRain(
 
   const previewIntro = (draft: IntroScript): void => {
     if (!message) return;
+    const clean = sanitizeIntro(draft);
     introPreviewActive = true;
-    message.setScript(resolveLines(draft.lines, viewerName), toTypeConfig(draft));
+    message.setScript(resolveLines(clean.lines, viewerName), toTypeConfig(clean));
     message.play(performance.now());
   };
 
@@ -252,7 +253,7 @@ export async function mountMatrixRain(
     editor = new IntroEditor(container, introStore, {
       onPreview: previewIntro,
       onSave: saveIntro,
-      onCancel: () => {},
+      onCancel: () => seedOverlay(),
     });
   }
 
