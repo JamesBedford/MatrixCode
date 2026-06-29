@@ -118,6 +118,23 @@ export class IntroEditor {
     timing.appendChild(this.secondsField("Fade out (s)", this.draft.fadeOutMs, (ms) => (this.draft.fadeOutMs = ms)));
     this.dialog.appendChild(timing);
 
+    this.dialog.appendChild(this.heading("h3", "Rain"));
+    const rain = document.createElement("div");
+    rain.className = "mx-line-timings";
+    const delay = this.secondsField("Delay after intro (s)", this.draft.postIntroDelayMs, (ms) => (this.draft.postIntroDelayMs = ms));
+    const delayInput = delay.querySelector("input");
+    const applyDelayEnabled = (): void => {
+      if (delayInput) delayInput.disabled = this.draft.rainDuringIntro; // delay only applies in after-mode
+    };
+    rain.appendChild(this.toggleField("Rain during intro", this.draft.rainDuringIntro, (v) => {
+      this.draft.rainDuringIntro = v;
+      applyDelayEnabled();
+    }));
+    rain.appendChild(delay);
+    rain.appendChild(this.secondsField("Ramp-up (s)", this.draft.rampUpMs, (ms) => (this.draft.rampUpMs = ms)));
+    applyDelayEnabled();
+    this.dialog.appendChild(rain);
+
     const footer = document.createElement("div");
     footer.className = "mx-modal-footer";
     footer.appendChild(this.textButton("Reset to default", "mx-btn mx-reset", () => {
@@ -216,6 +233,28 @@ export class IntroEditor {
 
   private secondsField(label: string, valueMs: number, onChangeMs: (ms: number) => void): HTMLElement {
     return this.numberField(label, valueMs / 1000, 0, 60, 0.1, (s) => onChangeMs(Math.round(s * 1000)));
+  }
+
+  private toggleField(label: string, value: boolean, onChange: (v: boolean) => void): HTMLElement {
+    const field = document.createElement("label");
+    field.className = "mx-field";
+    const span = document.createElement("span");
+    span.textContent = label;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mx-toggle";
+    const render = (v: boolean): void => {
+      btn.setAttribute("aria-pressed", String(v));
+      btn.textContent = v ? "On" : "Off";
+    };
+    render(value);
+    btn.addEventListener("click", () => {
+      const v = btn.getAttribute("aria-pressed") !== "true";
+      render(v);
+      onChange(v);
+    });
+    field.append(span, btn);
+    return field;
   }
 
   private iconButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
