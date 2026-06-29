@@ -79,7 +79,11 @@ Adds a method that returns the sim to its empty initial condition without reallo
 
 ## `app.ts` wiring
 
-A single `startIntroSequence(script: IntroScript)` is the entry point for first-visit autoplay, **Replay intro**, and **Preview** (replacing the current direct `message.play(...)` calls for those paths). It:
+A single `startIntroSequence(script: IntroScript)` is the entry point for first-visit autoplay, **Replay intro**, and **Preview** (replacing the current direct `message.play(...)` calls for those paths).
+
+**Reduced-motion guard:** if `reduceMq.matches`, `startIntroSequence` skips the choreography entirely — no `sim.reset()`, no black phase, `rainStartAtMs` stays the past sentinel — and just calls `message.play(...)` (a visual no-op today, since the loop isn't running). This prevents an after-mode trigger from leaving a static black frame that never recovers.
+
+Otherwise it:
 
 1. Sets the overlay script: `message.setScript(resolveLines(script.lines, viewerName), toTypeConfig(script))` (Preview/Save already sanitize the draft, unchanged).
 2. Decides the rain start:
