@@ -68,7 +68,10 @@ export class ControlsPanel {
     this.toggle("Scanlines", c.scanlines, (v) => controls.set({ scanlines: v }));
     this.toggle("Vignette", c.vignette, (v) => controls.set({ vignette: v }));
 
-    const replay = this.button("▷ Replay intro", () => this.cb.onReplayIntro());
+    const replay = this.button("▷ Replay intro", () => {
+      this.cb.onReplayIntro();
+      this.forceHide(); // dismiss the panel so the replayed intro plays unobstructed
+    });
     replay.style.marginTop = "6px";
     this.panel.appendChild(replay);
 
