@@ -126,6 +126,17 @@ export class RainSim {
     for (let i = 0; i < steps; i++) this.update(step, controls);
   }
 
+  /** Return the sim to its empty initial state (as just after construction, before any update). */
+  reset(): void {
+    this.bright.fill(0);
+    this.glyphNew.fill(0);
+    this.glyphOld.fill(0);
+    this.phase.fill(0);
+    this.state.fill(0);
+    this.time = 0;
+    this.seedColumns(0, this.cols); // deactivate every column + restagger respawn timers
+  }
+
   /** Advance the simulation by `dt` seconds and pack the result into `state`. */
   update(dt: number, controls: Controls): void {
     dt = clamp(dt, 0, 1 / 15);

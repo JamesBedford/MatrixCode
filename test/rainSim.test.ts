@@ -109,3 +109,34 @@ describe("RainSim", () => {
     sim.update(1 / 60, CONTROLS); // must not throw with new dimensions
   });
 });
+
+describe("RainSim.reset", () => {
+  it("empties the grid (every state byte 0)", () => {
+    const sim = makeSim(20, 30);
+    sim.warmUp(CONTROLS, 2);
+    let litBefore = 0;
+    for (let i = 0; i < sim.cols * sim.rows; i++) if (sim.state[i * 4 + 1]! > 0) litBefore++;
+    expect(litBefore).toBeGreaterThan(0); // precondition: rain is present
+
+    sim.reset();
+    expect(Array.from(sim.state).every((b) => b === 0)).toBe(true);
+  });
+
+  it("matches a freshly constructed sim's empty state", () => {
+    const a = makeSim(16, 24, 999);
+    a.warmUp(CONTROLS, 1);
+    a.reset();
+    const fresh = makeSim(16, 24, 999);
+    expect(Array.from(a.state)).toEqual(Array.from(fresh.state));
+  });
+
+  it("resumes producing rain after reset", () => {
+    const sim = makeSim(20, 30);
+    sim.warmUp(CONTROLS, 2);
+    sim.reset();
+    sim.warmUp(CONTROLS, 2);
+    let lit = 0;
+    for (let i = 0; i < sim.cols * sim.rows; i++) if (sim.state[i * 4 + 1]! > 0) lit++;
+    expect(lit).toBeGreaterThan(0);
+  });
+});
