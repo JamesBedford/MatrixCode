@@ -398,6 +398,14 @@ export async function mountMatrixRain(
   // ---------- Reduced motion ----------
   const onReduceChange = (): void => {
     if (reduceMq.matches) {
+      // Reduced motion always shows warmed, full-density rain — abandon any in-progress
+      // intro choreography (after-mode black phase or density ramp) so it isn't left frozen.
+      if (rainStartAtMs !== Number.NEGATIVE_INFINITY) {
+        rainPendingAfterIntro = false;
+        rainStartAtMs = Number.NEGATIVE_INFINITY;
+        rampUpMs = 0;
+        sim.warmUp(controls.get(), WARMUP_SECONDS);
+      }
       stop();
       renderStatic();
     } else {
@@ -572,6 +580,9 @@ export async function mountMatrixRain(
   const onRestored = async (): Promise<void> => {
     try {
       await buildGpu();
+      // If context loss happened before the choreographed rain start, the fresh sim is
+      // warmed-up; empty it again so the black-then-build effect is preserved.
+      if (performance.now() < rainStartAtMs) sim.reset();
       applySize(cssW, cssH);
       if (reduceMq.matches) renderStatic();
       else start();
