@@ -19,11 +19,14 @@ uniform vec3 uBright;
 uniform vec3 uHead;
 uniform float uLeadBrightness; // extra HDR for white-hot heads
 
-float sampleGlyph(float gi, vec2 cellUv) {
+// Gradients of the atlas UV taken from the *continuous* cell coordinate, so the
+// fract() seam between cells doesn't blow up the implicit LOD (which would force
+// the coarsest mip and draw a bright box outline around bloomed heads).
+float sampleGlyph(float gi, vec2 cellUv, vec2 duvdx, vec2 duvdy) {
   float ax = mod(gi, uAtlasGrid.x);
   float ay = floor(gi / uAtlasGrid.x);
   vec2 uv = (vec2(ax, ay) + cellUv) / uAtlasGrid;
-  return texture(uAtlas, uv).a;
+  return textureGrad(uAtlas, uv, duvdx, duvdy).a;
 }
 
 void main() {
@@ -43,7 +46,10 @@ void main() {
   float phase = float(b & 63) / 63.0;
   float giOld = floor(st.a * 255.0 + 0.5);
 
-  float ink = mix(sampleGlyph(giOld, cellUv), sampleGlyph(giNew, cellUv), phase);
+  // Continuous (non-fract) atlas-UV gradients shared by both glyph samples.
+  vec2 duvdx = vec2(dFdx(colF), dFdx(rowF)) / uAtlasGrid;
+  vec2 duvdy = vec2(dFdy(colF), dFdy(rowF)) / uAtlasGrid;
+  float ink = mix(sampleGlyph(giOld, cellUv, duvdx, duvdy), sampleGlyph(giNew, cellUv, duvdx, duvdy), phase);
 
   // Head/body/tail color ramp (exponential brightness already baked in the sim).
   vec3 col = mix(uTail, uBody, smoothstep(0.0, 0.5, bright));
