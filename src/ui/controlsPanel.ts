@@ -37,6 +37,10 @@ export class ControlsPanel {
     this.panel.appendChild(title);
 
     this.range("Speed", c.speed, 0.2, 2.5, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
+    // Slider is inverted: right = longer trail. Map slider [0.01,0.5] → stored decay [0.5,0.01].
+    this.range("Trail length", 0.51 - c.trailLength, 0.01, 0.5, 0.01,
+      (v) => controls.set({ trailLength: 0.51 - v }),
+      (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`);
     this.range("Density", c.density, 0.2, 2, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
     this.range("Glyph size", c.glyphScale, 0.5, 5, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
     this.range("Glow", c.glow, 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));

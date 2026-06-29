@@ -132,7 +132,7 @@ export class RainSim {
     this.time += dt;
     const { cols, rows, cfg } = this;
 
-    const decayMul = Math.pow(cfg.decayPerSecond, dt);
+    const decayMul = Math.pow(controls.trailLength, dt);
     const crossfadeStep = dt / cfg.crossfadeDuration;
     // Global mutation-sync: swaps cluster loosely in time (a film tell).
     const sync = Math.max(0, 1 + cfg.globalSyncAmount * Math.sin(this.time * cfg.globalSyncHz * TWO_PI));

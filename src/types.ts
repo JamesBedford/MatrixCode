@@ -21,6 +21,8 @@ export type QualityTier = "low" | "med" | "high";
 export interface Controls {
   /** Global fall-speed multiplier. */
   speed: number;
+  /** Brightness decay per second — lower = longer trail (0.01 long … 0.5 short). */
+  trailLength: number;
   /** Stream spawn density multiplier. */
   density: number;
   /** Glyph size multiplier — scales the grid cell size (bigger = larger glyphs, fewer columns). */
