@@ -1,5 +1,6 @@
-import type { Controls, PresetName, QualityTier } from "../types.ts";
+import type { Controls, QualityTier } from "../types.ts";
 import { clamp } from "../util/math.ts";
+import { PRESET_NAMES } from "./colorPresets.ts";
 
 export const DEFAULT_CONTROLS: Controls = {
   speed: 1,
@@ -16,7 +17,6 @@ export const DEFAULT_CONTROLS: Controls = {
 };
 
 const STORAGE_KEY = "mx-controls";
-const PRESETS: PresetName[] = ["classic", "amber", "blue"];
 const QUALITIES: QualityTier[] = ["low", "med", "high"];
 
 /** Maps each control to its URL query-param name — single source of truth for reading and writing. */
@@ -51,7 +51,7 @@ function sanitize(input: Partial<Controls>): Partial<Controls> {
   if (finiteNum(input.glyphScale)) out.glyphScale = clamp(input.glyphScale, 0.5, 5);
   if (finiteNum(input.glow)) out.glow = clamp(input.glow, 0, 2.5);
   if (finiteNum(input.leadBrightness)) out.leadBrightness = clamp(input.leadBrightness, 0, 3);
-  if (input.preset && PRESETS.includes(input.preset)) out.preset = input.preset;
+  if (input.preset && PRESET_NAMES.includes(input.preset)) out.preset = input.preset;
   if (typeof input.mirror === "boolean") out.mirror = input.mirror;
   if (typeof input.scanlines === "boolean") out.scanlines = input.scanlines;
   if (typeof input.vignette === "boolean") out.vignette = input.vignette;

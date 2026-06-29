@@ -49,7 +49,12 @@ export class ControlsPanel {
     this.select<PresetName>("Color", c.preset, [
       ["classic", "Classic green"],
       ["amber", "Amber"],
+      ["gold", "Gold"],
+      ["red", "Red"],
+      ["pink", "Pink"],
+      ["purple", "Purple"],
       ["blue", "Blue"],
+      ["white", "White"],
     ], (v) => controls.set({ preset: v }));
 
     this.select<QualityTier>("Quality", c.quality, [

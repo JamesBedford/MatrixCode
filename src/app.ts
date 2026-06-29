@@ -1,4 +1,4 @@
-import type { Controls, Grid, RenderParams } from "./types.ts";
+import type { ColorPreset, Controls, Grid, RenderParams } from "./types.ts";
 import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
 import { MessageOverlay, buildScript, resolveUserName } from "./sim/messageOverlay.ts";
@@ -47,6 +47,15 @@ interface SuperState {
   simClock: number;
 }
 
+/** Recolor the UI chrome (controls panel, intro text, notices) to match the active preset. */
+function applyChromeAccent(preset: ColorPreset): void {
+  const channels = (c: readonly [number, number, number]): string =>
+    `${Math.round(c[0] * 255)} ${Math.round(c[1] * 255)} ${Math.round(c[2] * 255)}`;
+  const root = document.documentElement.style;
+  root.setProperty("--mx-accent-rgb", channels(preset.bright));
+  root.setProperty("--mx-dim-rgb", channels(preset.body));
+}
+
 function paramsOf(c: Controls): RenderParams {
   return {
     glow: c.glow,
@@ -82,6 +91,7 @@ export async function mountMatrixRain(
 ): Promise<MatrixRainHandle> {
   const controls = new ControlsStore();
   if (options) controls.set(options);
+  applyChromeAccent(getPreset(controls.get().preset));
 
   const canvas = document.createElement("canvas");
   container.appendChild(canvas);
@@ -473,6 +483,9 @@ export async function mountMatrixRain(
 
   // ---------- React to control changes ----------
   const unsubscribe = controls.subscribe((_state, changed) => {
+    if (changed.has("preset")) {
+      applyChromeAccent(getPreset(controls.get().preset));
+    }
     if (changed.has("glyphScale") && !superState) {
       applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
     }

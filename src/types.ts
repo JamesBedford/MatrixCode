@@ -14,7 +14,15 @@ export const FLAG_IS_HEAD = 0x80; // bit 7
 export const FLAG_WHITE_HEAD = 0x40; // bit 6
 export const PHASE_MASK = 0x3f; // bits 0..5 (0..63)
 
-export type PresetName = "classic" | "amber" | "blue";
+export type PresetName =
+  | "classic"
+  | "amber"
+  | "gold"
+  | "red"
+  | "pink"
+  | "purple"
+  | "blue"
+  | "white";
 export type QualityTier = "low" | "med" | "high";
 
 /** Live, user-facing tunables bound to the controls panel + localStorage. */

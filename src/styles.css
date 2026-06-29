@@ -1,9 +1,14 @@
 :root {
-  --mx-green: #00ff41;
-  --mx-dim: #008f11;
+  /* Accent channels (space-separated so they compose with rgb(... / alpha)).
+     app.ts overwrites these on <html> to match the active color preset. */
+  --mx-accent-rgb: 0 255 65; /* preset "bright" */
+  --mx-dim-rgb: 0 143 17; /* preset "body" */
+  --mx-green: rgb(var(--mx-accent-rgb));
+  --mx-dim: rgb(var(--mx-dim-rgb));
+  --mx-border: rgb(var(--mx-accent-rgb) / 0.35);
+  --mx-label: color-mix(in srgb, var(--mx-green), white 35%);
   --mx-bg: #0d0208;
   --mx-panel: rgba(4, 10, 6, 0.82);
-  --mx-border: rgba(0, 255, 65, 0.35);
   --mx-font: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
 }
 
@@ -87,7 +92,7 @@ body {
 }
 .mx-btn:hover {
   border-color: var(--mx-green);
-  box-shadow: 0 0 12px rgba(0, 255, 65, 0.4);
+  box-shadow: 0 0 12px rgb(var(--mx-accent-rgb) / 0.4);
 }
 .mx-btn:active {
   transform: translateY(1px);
@@ -105,7 +110,7 @@ body {
   border: 1px solid var(--mx-border);
   border-radius: 10px;
   backdrop-filter: blur(8px);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), inset 0 0 24px rgba(0, 255, 65, 0.04);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), inset 0 0 24px rgb(var(--mx-accent-rgb) / 0.04);
 }
 
 .mx-panel h1 {
@@ -115,7 +120,7 @@ body {
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--mx-green);
-  text-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
+  text-shadow: 0 0 8px rgb(var(--mx-accent-rgb) / 0.5);
 }
 
 .mx-row {
@@ -128,7 +133,7 @@ body {
 .mx-row > label {
   font-size: 11px;
   letter-spacing: 0.06em;
-  color: #6bdd86;
+  color: var(--mx-label);
   text-transform: uppercase;
 }
 .mx-row .mx-val {
@@ -153,14 +158,14 @@ body {
   font-family: var(--mx-font);
   font-size: 11px;
   color: var(--mx-green);
-  background: rgba(0, 255, 65, 0.06);
+  background: rgb(var(--mx-accent-rgb) / 0.06);
   border: 1px solid var(--mx-border);
   border-radius: 5px;
   padding: 5px 8px;
   cursor: pointer;
 }
 .mx-row .mx-toggle[aria-pressed="true"] {
-  background: rgba(0, 255, 65, 0.22);
+  background: rgb(var(--mx-accent-rgb) / 0.22);
   border-color: var(--mx-green);
 }
 
@@ -169,7 +174,7 @@ body {
   font-size: 10px;
   line-height: 1.5;
   letter-spacing: 0.04em;
-  color: rgba(0, 255, 65, 0.45);
+  color: rgb(var(--mx-accent-rgb) / 0.45);
 }
 .mx-hint kbd {
   font-family: var(--mx-font);
@@ -196,7 +201,7 @@ body {
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--mx-green);
-  text-shadow: 0 0 12px rgba(0, 255, 65, 0.65), 0 0 28px rgba(0, 255, 65, 0.35);
+  text-shadow: 0 0 12px rgb(var(--mx-accent-rgb) / 0.65), 0 0 28px rgb(var(--mx-accent-rgb) / 0.35);
   white-space: pre-wrap;
   text-align: left;
 }
