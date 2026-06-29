@@ -7,6 +7,13 @@ import { clamp } from "../util/math.ts";
 const TWO_PI = Math.PI * 2;
 const MIN_BRIGHT = 0.004; // below this a cell is considered dark
 
+/** One falling head within a column: its row position, fall speed, and white-lead flag. */
+interface Stream {
+  y: number;
+  speed: number;
+  white: 0 | 1;
+}
+
 export interface RainSimOptions {
   cols: number;
   rows: number;
@@ -34,11 +41,9 @@ export class RainSim {
   private rng: Rng;
   private time = 0;
 
-  // Per-column state.
-  private headY!: Float32Array;
-  private speed!: Float32Array;
-  private active!: Uint8Array;
-  private whiteStream!: Uint8Array;
+  // Per-column state. A column holds zero or more concurrently-falling streams
+  // (heads); the count it sustains scales with the density control.
+  private streams!: Stream[][];
   private respawnTimer!: Float32Array;
 
   // Per-cell state.
@@ -46,6 +51,9 @@ export class RainSim {
   private glyphNew!: Uint8Array;
   private glyphOld!: Uint8Array;
   private phase!: Float32Array;
+
+  // Scratch: per-row head markers, reused each column during the cell pass.
+  private headMark!: Uint8Array;
 
   constructor(opts: RainSimOptions) {
     this.cols = opts.cols;
@@ -59,11 +67,9 @@ export class RainSim {
   }
 
   private allocate(cols: number, rows: number): void {
-    this.headY = new Float32Array(cols);
-    this.speed = new Float32Array(cols);
-    this.active = new Uint8Array(cols);
-    this.whiteStream = new Uint8Array(cols);
+    this.streams = Array.from({ length: cols }, () => []);
     this.respawnTimer = new Float32Array(cols);
+    this.headMark = new Uint8Array(rows);
     this.bright = new Float32Array(cols * rows);
     this.glyphNew = new Uint8Array(cols * rows);
     this.glyphOld = new Uint8Array(cols * rows);
@@ -73,17 +79,19 @@ export class RainSim {
   /** Initialize columns [from, to) as idle with staggered respawn timers. */
   private seedColumns(from: number, to: number): void {
     for (let c = from; c < to; c++) {
-      this.active[c] = 0;
+      this.streams[c]!.length = 0;
       this.respawnTimer[c] = this.rng() * this.cfg.respawnDelayJitter;
     }
   }
 
-  private activate(col: number): void {
+  /** Launch a new falling stream at the top of `col`. */
+  private spawnStream(col: number): void {
     // The global speed control is applied live during advance, not stored here.
-    this.active[col] = 1;
-    this.headY[col] = -this.rng() * this.cfg.startRowsAbove;
-    this.speed[col] = this.cfg.minSpeed + this.rng() * this.cfg.speedRange;
-    this.whiteStream[col] = this.rng() < this.cfg.whiteHeadFraction ? 1 : 0;
+    this.streams[col]!.push({
+      y: -this.rng() * this.cfg.startRowsAbove,
+      speed: this.cfg.minSpeed + this.rng() * this.cfg.speedRange,
+      white: this.rng() < this.cfg.whiteHeadFraction ? 1 : 0,
+    });
   }
 
   /** Illuminate a cell as the head arrives: full brightness, fresh glyph, no crossfade. */
@@ -98,10 +106,7 @@ export class RainSim {
   /** Resize the grid, preserving per-column head state where columns still exist. */
   resize(cols: number, rows: number): void {
     if (cols === this.cols && rows === this.rows) return;
-    const oldHeadY = this.headY;
-    const oldSpeed = this.speed;
-    const oldActive = this.active;
-    const oldWhite = this.whiteStream;
+    const oldStreams = this.streams;
     const oldTimer = this.respawnTimer;
     const oldCols = this.cols;
 
@@ -110,10 +115,7 @@ export class RainSim {
 
     const keep = Math.min(oldCols, cols);
     for (let c = 0; c < keep; c++) {
-      this.headY[c] = oldHeadY[c]!;
-      this.speed[c] = oldSpeed[c]!;
-      this.active[c] = oldActive[c]!;
-      this.whiteStream[c] = oldWhite[c]!;
+      this.streams[c] = oldStreams[c]!;
       this.respawnTimer[c] = oldTimer[c]!;
     }
     if (cols > oldCols) this.seedColumns(oldCols, cols);
@@ -152,37 +154,50 @@ export class RainSim {
     const mutChance = 1 - Math.exp(-cfg.mutationRate * sync * dt);
     const respawnProb = 1 - Math.exp(-cfg.respawnChance * controls.density * dt);
     const speedMul = controls.speed;
+    // Density controls how many streams a column sustains at once, and how
+    // quickly it refills toward that count (the inter-stream gap shrinks).
+    const maxStreams = Math.max(1, Math.round(controls.density));
+    const gapScale = 1 / controls.density;
 
-    // Cap concurrent active columns when a limit is set (ramping). Recounted each frame so
-    // the uncapped path (limit = Infinity) is byte-identical to before — no rng-order change.
+    // Cap concurrent active columns when a limit is set (ramping). `activeNow` counts
+    // columns that currently have at least one stream, recounted each frame.
     const limited = Number.isFinite(this.activeColumnLimit);
     let activeNow = 0;
-    if (limited) for (let c = 0; c < cols; c++) activeNow += this.active[c]!;
+    if (limited) for (let c = 0; c < cols; c++) if (this.streams[c]!.length > 0) activeNow++;
 
     for (let col = 0; col < cols; col++) {
-      // --- head advance / respawn ---
-      if (this.active[col] === 0) {
-        this.respawnTimer[col] = this.respawnTimer[col]! - dt;
-        if (this.respawnTimer[col]! <= 0 && (!limited || activeNow < this.activeColumnLimit) && this.rng() < respawnProb) {
-          this.activate(col);
-          if (limited) activeNow++;
-        }
-      } else {
-        const prevRow = Math.floor(this.headY[col]!);
-        this.headY[col]! += this.speed[col]! * speedMul * dt;
-        const newRow = Math.floor(this.headY[col]!);
-        for (let r = Math.max(prevRow + 1, 0); r <= newRow; r++) {
-          if (r < rows) this.lightHeadCell(col, r);
-        }
-        if (this.headY[col]! - cfg.tailMargin > rows) {
-          this.active[col] = 0;
-          if (limited) activeNow--;
-          this.respawnTimer[col] = cfg.respawnDelayMin + this.rng() * cfg.respawnDelayJitter;
+      const streams = this.streams[col]!;
+
+      // --- spawn a new stream when the gap timer elapses ---
+      this.respawnTimer[col] = this.respawnTimer[col]! - dt;
+      if (this.respawnTimer[col]! <= 0 && streams.length < maxStreams) {
+        const opensColumn = streams.length === 0;
+        if ((!limited || !opensColumn || activeNow < this.activeColumnLimit) && this.rng() < respawnProb) {
+          this.spawnStream(col);
+          if (limited && opensColumn) activeNow++;
+          this.respawnTimer[col] = (cfg.respawnDelayMin + this.rng() * cfg.respawnDelayJitter) * gapScale;
         }
       }
 
-      const headRow = this.active[col] === 1 ? Math.floor(this.headY[col]!) : -1;
-      const white = this.whiteStream[col] === 1;
+      // --- advance every stream, dropping those past the bottom ---
+      const hadStreams = streams.length > 0;
+      for (let s = streams.length - 1; s >= 0; s--) {
+        const stream = streams[s]!;
+        const prevRow = Math.floor(stream.y);
+        stream.y += stream.speed * speedMul * dt;
+        const newRow = Math.floor(stream.y);
+        for (let r = Math.max(prevRow + 1, 0); r <= newRow; r++) {
+          if (r < rows) this.lightHeadCell(col, r);
+        }
+        if (stream.y - cfg.tailMargin > rows) streams.splice(s, 1);
+      }
+      if (limited && hadStreams && streams.length === 0) activeNow--;
+
+      // --- mark this column's head rows for the cell pass ---
+      for (const stream of streams) {
+        const headRow = Math.floor(stream.y);
+        if (headRow >= 0 && headRow < rows) this.headMark[headRow]! |= stream.white ? 0b11 : 0b01;
+      }
 
       // --- decay, mutate, (pin), pack each cell ---
       for (let r = 0; r < rows; r++) {
@@ -201,7 +216,10 @@ export class RainSim {
           this.phase[idx] = Math.min(1, this.phase[idx]! + crossfadeStep);
         }
 
-        const isHead = r === headRow;
+        const mark = this.headMark[r]!;
+        this.headMark[r] = 0; // clear scratch for the next column
+        const isHead = (mark & 0b01) !== 0;
+        const white = (mark & 0b10) !== 0;
         if (!isHead && b > 0.05 && this.rng() < mutChance) {
           this.glyphOld[idx] = this.glyphNew[idx]!;
           this.glyphNew[idx] = this.glyph.randomGlyphIndex(this.rng);
@@ -213,7 +231,7 @@ export class RainSim {
         this.state[o + 1] = Math.round(clamp(b, 0, 1) * 255);
         this.state[o + 2] =
           (isHead ? FLAG_IS_HEAD : 0) |
-          (isHead && white ? FLAG_WHITE_HEAD : 0) |
+          (white ? FLAG_WHITE_HEAD : 0) |
           (Math.round(this.phase[idx]! * PHASE_MASK) & PHASE_MASK);
         this.state[o + 3] = this.glyphOld[idx]!;
       }

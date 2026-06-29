@@ -200,3 +200,51 @@ describe("RainSim.activeColumnLimit", () => {
     expect(at[8]!).toBeGreaterThan(at[5]!);
   });
 });
+
+describe("density drives concurrent streams per column", () => {
+  const headsPerColumn = (s: RainSim): number[] => {
+    const counts = new Array<number>(s.cols).fill(0);
+    for (let r = 0; r < s.rows; r++) {
+      for (let c = 0; c < s.cols; c++) {
+        if (s.state[(r * s.cols + c) * 4 + 2]! & FLAG_IS_HEAD) counts[c]!++;
+      }
+    }
+    return counts;
+  };
+
+  const litFrac = (s: RainSim): number => {
+    let n = 0;
+    for (let i = 0; i < s.cols * s.rows; i++) if (s.state[i * 4 + 1]! > 0) n++;
+    return n / (s.cols * s.rows);
+  };
+
+  it("keeps at most one head per column at density 1", () => {
+    const sim = makeSim(30, 50);
+    let maxPerCol = 0;
+    for (let i = 0; i < 2000; i++) {
+      sim.update(1 / 60, { ...CONTROLS, density: 1 });
+      maxPerCol = Math.max(maxPerCol, ...headsPerColumn(sim));
+    }
+    expect(maxPerCol).toBe(1);
+  });
+
+  it("allows multiple simultaneous heads in a single column at high density", () => {
+    const sim = makeSim(30, 50);
+    let maxPerCol = 0;
+    for (let i = 0; i < 3000; i++) {
+      sim.update(1 / 60, { ...CONTROLS, density: 20 });
+      maxPerCol = Math.max(maxPerCol, ...headsPerColumn(sim));
+    }
+    expect(maxPerCol).toBeGreaterThan(1);
+  });
+
+  it("produces visibly denser rain as density rises", () => {
+    const sparse = makeSim(40, 60);
+    const dense = makeSim(40, 60);
+    for (let i = 0; i < 1800; i++) {
+      sparse.update(1 / 60, { ...CONTROLS, density: 1 });
+      dense.update(1 / 60, { ...CONTROLS, density: 30 });
+    }
+    expect(litFrac(dense)).toBeGreaterThan(litFrac(sparse) * 1.5);
+  });
+});
