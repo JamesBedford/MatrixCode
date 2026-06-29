@@ -332,9 +332,11 @@ export async function mountMatrixRain(
     const dt = Math.min((now - last) / 1000, 1 / 15);
     last = now;
     if (now >= rainStartAtMs) {
+      // Ramp toward full by linearly raising the cap on concurrently-raining columns, so the
+      // rain fades in gradually. (Scaling density instead leaves it ~empty then bursts at the end.)
       const f = densityRampFactor(now, rainStartAtMs, rampUpMs);
-      const c = controls.get();
-      sim.update(dt, f >= 1 ? c : { ...c, density: c.density * f });
+      sim.activeColumnLimit = f >= 1 ? Number.POSITIVE_INFINITY : Math.ceil(f * grid.cols);
+      sim.update(dt, controls.get());
     }
     // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
     stateTex.upload(sim.state);
@@ -404,6 +406,7 @@ export async function mountMatrixRain(
         rainPendingAfterIntro = false;
         rainStartAtMs = Number.NEGATIVE_INFINITY;
         rampUpMs = 0;
+        sim.activeColumnLimit = Number.POSITIVE_INFINITY;
         sim.warmUp(controls.get(), WARMUP_SECONDS);
       }
       stop();

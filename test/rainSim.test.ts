@@ -140,3 +140,63 @@ describe("RainSim.reset", () => {
     expect(lit).toBeGreaterThan(0);
   });
 });
+
+describe("RainSim.activeColumnLimit", () => {
+  const litFrac = (s: RainSim): number => {
+    let n = 0;
+    for (let i = 0; i < s.cols * s.rows; i++) if (s.state[i * 4 + 1]! > 0) n++;
+    return n / (s.cols * s.rows);
+  };
+
+  it("defaults to no cap", () => {
+    expect(makeSim().activeColumnLimit).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("never lets more columns rain than the limit", () => {
+    const sim = makeSim(60, 50);
+    sim.activeColumnLimit = 5;
+    let maxHeads = 0;
+    for (let i = 0; i < 1500; i++) {
+      sim.update(1 / 60, CONTROLS);
+      let heads = 0;
+      for (let j = 0; j < sim.cols * sim.rows; j++) if (sim.state[j * 4 + 2]! & FLAG_IS_HEAD) heads++;
+      if (heads > maxHeads) maxHeads = heads;
+    }
+    // A head only appears for an active column whose head is on-screen, so heads <= active <= limit.
+    expect(maxHeads).toBeGreaterThan(0);
+    expect(maxHeads).toBeLessThanOrEqual(5);
+  });
+
+  it("makes rain sparser with a low limit, but still present", () => {
+    const capped = makeSim(60, 50);
+    capped.activeColumnLimit = 6;
+    const full = makeSim(60, 50);
+    for (let i = 0; i < 600; i++) {
+      capped.update(1 / 60, CONTROLS);
+      full.update(1 / 60, CONTROLS);
+    }
+    expect(litFrac(capped)).toBeGreaterThan(0);
+    expect(litFrac(capped)).toBeLessThan(litFrac(full));
+  });
+
+  it("fills in roughly monotonically as the limit ramps up (no late burst)", () => {
+    // Reproduces the user-facing intent: ramping the column limit 0→full over 10s should
+    // produce a gradual build, unlike scaling spawn probability (which stayed ~empty then surged).
+    const sim = makeSim(60, 50);
+    const dt = 1 / 60;
+    const rampS = 10;
+    const at: Record<number, number> = {};
+    for (let i = 0; i <= Math.round(rampS / dt); i++) {
+      const t = i * dt;
+      const f = Math.min(t / rampS, 1);
+      sim.activeColumnLimit = f >= 1 ? Number.POSITIVE_INFINITY : Math.ceil(f * sim.cols);
+      sim.update(dt, CONTROLS);
+      const sec = Math.round(t);
+      if (Math.abs(t - sec) < dt / 2) at[sec] = litFrac(sim);
+    }
+    // Visible rain well before the end of the ramp (the old density-scaling bug showed ~0% here).
+    expect(at[3]!).toBeGreaterThan(0.03);
+    expect(at[5]!).toBeGreaterThan(at[3]!);
+    expect(at[8]!).toBeGreaterThan(at[5]!);
+  });
+});

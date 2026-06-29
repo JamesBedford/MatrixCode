@@ -26,6 +26,8 @@ export class RainSim {
   rows: number;
   /** cols*rows*4 packed bytes — see types.ts for the channel layout. */
   state: Uint8Array;
+  /** Max columns allowed to rain at once (Infinity = no cap). Ramped to fade rain in gradually. */
+  activeColumnLimit = Number.POSITIVE_INFINITY;
 
   private cfg: SimConfig;
   private glyph: GlyphSet;
@@ -151,12 +153,19 @@ export class RainSim {
     const respawnProb = 1 - Math.exp(-cfg.respawnChance * controls.density * dt);
     const speedMul = controls.speed;
 
+    // Cap concurrent active columns when a limit is set (ramping). Recounted each frame so
+    // the uncapped path (limit = Infinity) is byte-identical to before — no rng-order change.
+    const limited = Number.isFinite(this.activeColumnLimit);
+    let activeNow = 0;
+    if (limited) for (let c = 0; c < cols; c++) activeNow += this.active[c]!;
+
     for (let col = 0; col < cols; col++) {
       // --- head advance / respawn ---
       if (this.active[col] === 0) {
         this.respawnTimer[col] = this.respawnTimer[col]! - dt;
-        if (this.respawnTimer[col]! <= 0 && this.rng() < respawnProb) {
+        if (this.respawnTimer[col]! <= 0 && (!limited || activeNow < this.activeColumnLimit) && this.rng() < respawnProb) {
           this.activate(col);
+          if (limited) activeNow++;
         }
       } else {
         const prevRow = Math.floor(this.headY[col]!);
@@ -167,6 +176,7 @@ export class RainSim {
         }
         if (this.headY[col]! - cfg.tailMargin > rows) {
           this.active[col] = 0;
+          if (limited) activeNow--;
           this.respawnTimer[col] = cfg.respawnDelayMin + this.rng() * cfg.respawnDelayJitter;
         }
       }
