@@ -323,7 +323,7 @@ body {
   width: 100%;
 }
 .mx-modal input[type="number"] {
-  width: 6ch;
+  width: 4.75rem;
   text-align: right;
 }
 .mx-modal input:focus {
