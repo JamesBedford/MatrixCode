@@ -47,8 +47,8 @@ function sanitize(input: Partial<Controls>): Partial<Controls> {
   const out: Partial<Controls> = {};
   if (finiteNum(input.speed)) out.speed = clamp(input.speed, 0.1, 3);
   if (finiteNum(input.trailLength)) out.trailLength = clamp(input.trailLength, 0.01, 0.5);
-  if (finiteNum(input.density)) out.density = clamp(input.density, 0.1, 2);
-  if (finiteNum(input.glyphScale)) out.glyphScale = clamp(input.glyphScale, 0.5, 5);
+  if (finiteNum(input.density)) out.density = clamp(input.density, 0.1, 10);
+  if (finiteNum(input.glyphScale)) out.glyphScale = clamp(input.glyphScale, 0.5, 10);
   if (finiteNum(input.glow)) out.glow = clamp(input.glow, 0, 2.5);
   if (finiteNum(input.leadBrightness)) out.leadBrightness = clamp(input.leadBrightness, 0, 3);
   if (input.preset && PRESET_NAMES.includes(input.preset)) out.preset = input.preset;

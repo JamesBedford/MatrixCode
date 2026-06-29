@@ -1,5 +1,5 @@
 import type { PresetName, QualityTier } from "../types.ts";
-import type { ControlsStore } from "../config/controls.ts";
+import { DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
 
 export interface PanelCallbacks {
   onToggleFullscreen: () => void;
@@ -37,13 +37,13 @@ export class ControlsPanel {
     title.textContent = "Matrix";
     this.panel.appendChild(title);
 
-    this.range("Speed", c.speed, 0.2, 2.5, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
+    this.range("Speed", c.speed, 0.2, 3, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
     // Slider is inverted: right = longer trail. Map slider [0.01,0.5] → stored decay [0.5,0.01].
     this.range("Trail length", 0.51 - c.trailLength, 0.01, 0.5, 0.01,
       (v) => controls.set({ trailLength: 0.51 - v }),
       (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`);
-    this.range("Density", c.density, 0.2, 2, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
-    this.range("Glyph size", c.glyphScale, 0.5, 5, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
+    this.range("Density", c.density, 0.2, 10, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
+    this.range("Glyph size", c.glyphScale, 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
     this.range("Glow", c.glow, 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
     this.range("Lead glow", c.leadBrightness, 0, 3, 0.05, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
 
@@ -79,9 +79,16 @@ export class ControlsPanel {
     edit.style.marginTop = "6px";
     this.panel.appendChild(edit);
 
+    const reset = this.button("↺ Reset to defaults", () => {
+      controls.set(DEFAULT_CONTROLS);
+      location.reload();
+    });
+    reset.style.marginTop = "6px";
+    this.panel.appendChild(reset);
+
     const hint = document.createElement("p");
     hint.className = "mx-hint";
-    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>Esc</kbd> skip intro";
+    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel";
     this.panel.appendChild(hint);
 
     this.el.appendChild(this.panel);
