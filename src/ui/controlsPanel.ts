@@ -4,6 +4,7 @@ import type { ControlsStore } from "../config/controls.ts";
 export interface PanelCallbacks {
   onToggleFullscreen: () => void;
   onReplayIntro: () => void;
+  onEditIntro: () => void;
 }
 
 const HIDE_DELAY_MS = 2800;
@@ -70,6 +71,10 @@ export class ControlsPanel {
     const replay = this.button("▷ Replay intro", () => this.cb.onReplayIntro());
     replay.style.marginTop = "6px";
     this.panel.appendChild(replay);
+
+    const edit = this.button("✎ Edit intro", () => this.cb.onEditIntro());
+    edit.style.marginTop = "6px";
+    this.panel.appendChild(edit);
 
     const hint = document.createElement("p");
     hint.className = "mx-hint";

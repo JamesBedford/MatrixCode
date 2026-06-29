@@ -1,7 +1,7 @@
 import type { ColorPreset, Controls, Grid, RenderParams } from "./types.ts";
 import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
-import { MessageOverlay, buildScript, resolveUserName } from "./sim/messageOverlay.ts";
+import { MessageOverlay, resolveLines, resolveUserName } from "./sim/messageOverlay.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
@@ -9,6 +9,8 @@ import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
 import { StateTexture } from "./gl/stateTexture.ts";
 import { Renderer } from "./gl/renderer.ts";
 import { ControlsPanel } from "./ui/controlsPanel.ts";
+import { IntroStore, toTypeConfig, type IntroScript } from "./config/introStore.ts";
+import { IntroEditor } from "./ui/introEditor.ts";
 import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
 import { stepsToAdvance, extractSlice } from "./super/superGrid.ts";
 import {
@@ -200,12 +202,66 @@ export async function mountMatrixRain(
 
   // ---------- Overlays ----------
   // Panels are a pure backdrop — no intro, no controls UI.
-  const message = panelConfig ? null : new MessageOverlay(container, { lines: buildScript(resolveUserName()) });
+  const introStore = panelConfig ? null : new IntroStore();
+  const viewerName = resolveUserName();
+  const message = panelConfig ? null : new MessageOverlay(container);
+
+  // Reflect the stored script onto the live overlay (resolving {name}).
+  const seedOverlay = (): void => {
+    if (!message || !introStore) return;
+    const s = introStore.get();
+    message.setScript(resolveLines(s.lines, viewerName), toTypeConfig(s));
+  };
+  seedOverlay();
+
+  // Preview/save run through the overlay; markSeenPending gates the first-visit flag.
+  let introPreviewActive = false;
+  let markSeenPending = false;
+
+  const previewIntro = (draft: IntroScript): void => {
+    if (!message) return;
+    introPreviewActive = true;
+    message.setScript(resolveLines(draft.lines, viewerName), toTypeConfig(draft));
+    message.play(performance.now());
+  };
+
+  const saveIntro = (draft: IntroScript): void => {
+    if (!introStore) return;
+    introStore.set(draft);
+    seedOverlay();
+  };
+
+  // A single onDone handler serves both the first-visit flag and preview restore.
+  message?.onDone(() => {
+    if (introPreviewActive) {
+      introPreviewActive = false;
+      editor?.endPreview();
+    }
+    if (markSeenPending) {
+      markSeenPending = false;
+      try {
+        localStorage.setItem(INTRO_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  let editor: IntroEditor | null = null;
+  if (!panelConfig && introStore && message) {
+    editor = new IntroEditor(container, introStore, {
+      onPreview: previewIntro,
+      onSave: saveIntro,
+      onCancel: () => {},
+    });
+  }
+
   const panel = panelConfig
     ? null
     : new ControlsPanel(container, controls, {
         onToggleFullscreen: () => toggleFullscreen(),
         onReplayIntro: () => message?.play(performance.now()),
+        onEditIntro: () => editor?.open(),
       });
 
   const reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -513,13 +569,7 @@ export async function mountMatrixRain(
       /* ignore */
     }
     if (seen) return;
-    message.onDone(() => {
-      try {
-        localStorage.setItem(INTRO_KEY, "1");
-      } catch {
-        /* ignore */
-      }
-    });
+    markSeenPending = true;
     message.play(performance.now());
   };
 
@@ -557,6 +607,7 @@ export async function mountMatrixRain(
       window.removeEventListener("beforeunload", onBeforeUnload);
       canvas.removeEventListener("webglcontextlost", onLost);
       unsubscribe();
+      editor?.destroy();
       panel?.destroy();
       message?.destroy();
       renderer.dispose();
