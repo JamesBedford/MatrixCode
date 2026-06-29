@@ -42,7 +42,7 @@ export class ControlsPanel {
     this.range("Trail length", 0.51 - c.trailLength, 0.01, 0.5, 0.01,
       (v) => controls.set({ trailLength: 0.51 - v }),
       (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`);
-    this.range("Density", c.density, 0.2, 10, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
+    this.range("Density", c.density, 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
     this.range("Glyph size", c.glyphScale, 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
     this.range("Glow", c.glow, 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
     this.range("Lead glow", c.leadBrightness, 0, 3, 0.05, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
