@@ -7,12 +7,15 @@ import {
 } from "../sim/messageOverlay.ts";
 import { clamp } from "../util/math.ts";
 
-/** User-editable intro: the lines plus the global timing settings (blink stays default). */
+/** User-editable intro: the lines, the global timing settings, and the rain-start choreography. */
 export interface IntroScript {
   lines: MessageLine[];
   charMs: number;
   startDelayMs: number;
   fadeOutMs: number;
+  rainDuringIntro: boolean; // true = rain falls during the intro; false = waits until after
+  postIntroDelayMs: number; // after-mode only: gap between intro end and rain start
+  rampUpMs: number;         // linear density ramp 0→full once the rain starts (0 = instant)
 }
 
 const STORAGE_KEY = "mx-intro";
@@ -24,6 +27,9 @@ export const DEFAULT_INTRO: IntroScript = {
   charMs: DEFAULT_TYPE_CONFIG.charMs,
   startDelayMs: DEFAULT_TYPE_CONFIG.startDelayMs,
   fadeOutMs: DEFAULT_TYPE_CONFIG.fadeOutMs,
+  rainDuringIntro: true,
+  postIntroDelayMs: 0,
+  rampUpMs: 0,
 };
 
 /** Deep copy so callers can mutate a working draft without touching shared state. */
@@ -59,6 +65,9 @@ export function sanitizeIntro(raw: unknown): IntroScript {
     charMs: num(r.charMs, 10, 500, DEFAULT_INTRO.charMs),
     startDelayMs: num(r.startDelayMs, 0, 10000, DEFAULT_INTRO.startDelayMs),
     fadeOutMs: num(r.fadeOutMs, 0, 10000, DEFAULT_INTRO.fadeOutMs),
+    rainDuringIntro: typeof r.rainDuringIntro === "boolean" ? r.rainDuringIntro : DEFAULT_INTRO.rainDuringIntro,
+    postIntroDelayMs: num(r.postIntroDelayMs, 0, 10000, DEFAULT_INTRO.postIntroDelayMs),
+    rampUpMs: num(r.rampUpMs, 0, 60000, DEFAULT_INTRO.rampUpMs),
   };
 }
 
