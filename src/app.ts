@@ -142,6 +142,7 @@ export async function mountMatrixRain(
   let running = false;
   let raf = 0;
   let last = 0;
+  let userPaused = false;
 
   // Super-fullscreen: this window is a panel iff the URL carries a slice config.
   const panelConfig = parsePanelConfig();
@@ -305,7 +306,7 @@ export async function mountMatrixRain(
 
   const start = (): void => {
     if (running) return;
-    if (reduceMq.matches) {
+    if (reduceMq.matches || userPaused) {
       renderStatic();
       return;
     }
@@ -473,6 +474,11 @@ export async function mountMatrixRain(
     }
     if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "h" || e.key === "H") panel?.toggleVisible();
+    else if (e.key === "p" || e.key === "P") {
+      userPaused = !userPaused;
+      if (userPaused) stop();
+      else start();
+    }
     else if (e.key === "Escape") message?.skip();
   };
   window.addEventListener("keydown", onKey);
