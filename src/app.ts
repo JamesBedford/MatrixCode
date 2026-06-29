@@ -2,6 +2,7 @@ import type { ColorPreset, Controls, Grid, RenderParams } from "./types.ts";
 import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
 import { MessageOverlay, resolveLines, resolveUserName } from "./sim/messageOverlay.ts";
+import { densityRampFactor } from "./sim/introRain.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
@@ -143,6 +144,11 @@ export async function mountMatrixRain(
   let raf = 0;
   let last = 0;
   let userPaused = false;
+  // Intro rain choreography. Default sentinel: rain already running at full (no intro / repeat visit).
+  let rainStartAtMs = Number.NEGATIVE_INFINITY;
+  let rampUpMs = 0;
+  let rainPendingAfterIntro = false;
+  let pendingPostIntroDelayMs = 0;
 
   // Super-fullscreen: this window is a panel iff the URL carries a slice config.
   const panelConfig = parsePanelConfig();
@@ -215,16 +221,39 @@ export async function mountMatrixRain(
   };
   seedOverlay();
 
+  // Play the intro and choreograph the rain (during/after + post-intro delay + density ramp).
+  // Used by first-visit autoplay, Replay, and Preview.
+  const startIntroSequence = (script: IntroScript): void => {
+    if (!message) return;
+    message.setScript(resolveLines(script.lines, viewerName), toTypeConfig(script));
+    // Under reduced motion the loop isn't running; skip choreography so an after-mode
+    // trigger can't leave a stuck black frame. Behaves like today (a visual no-op).
+    if (!reduceMq.matches) {
+      rampUpMs = script.rampUpMs;
+      rainPendingAfterIntro = false;
+      if (!script.rainDuringIntro) {
+        sim.reset(); // black until the intro ends
+        rainStartAtMs = Number.POSITIVE_INFINITY;
+        rainPendingAfterIntro = true;
+        pendingPostIntroDelayMs = script.postIntroDelayMs;
+      } else if (script.rampUpMs > 0) {
+        sim.reset(); // build from empty starting now
+        rainStartAtMs = performance.now();
+      } else {
+        rainStartAtMs = Number.NEGATIVE_INFINITY; // during + no ramp = today's behaviour
+        rampUpMs = 0;
+      }
+    }
+    message.play(performance.now());
+  };
+
   // Preview/save run through the overlay; markSeenPending gates the first-visit flag.
   let introPreviewActive = false;
   let markSeenPending = false;
 
   const previewIntro = (draft: IntroScript): void => {
-    if (!message) return;
-    const clean = sanitizeIntro(draft);
     introPreviewActive = true;
-    message.setScript(resolveLines(clean.lines, viewerName), toTypeConfig(clean));
-    message.play(performance.now());
+    startIntroSequence(sanitizeIntro(draft));
   };
 
   const saveIntro = (draft: IntroScript): void => {
@@ -233,8 +262,12 @@ export async function mountMatrixRain(
     seedOverlay();
   };
 
-  // A single onDone handler serves both the first-visit flag and preview restore.
+  // A single onDone handler serves the after-mode rain start, preview restore, and first-visit flag.
   message?.onDone(() => {
+    if (rainPendingAfterIntro) {
+      rainPendingAfterIntro = false;
+      rainStartAtMs = performance.now() + pendingPostIntroDelayMs;
+    }
     if (introPreviewActive) {
       introPreviewActive = false;
       editor?.endPreview();
@@ -262,7 +295,7 @@ export async function mountMatrixRain(
     ? null
     : new ControlsPanel(container, controls, {
         onToggleFullscreen: () => toggleFullscreen(),
-        onReplayIntro: () => message?.play(performance.now()),
+        onReplayIntro: () => { if (introStore) startIntroSequence(introStore.get()); },
         onEditIntro: () => editor?.open(),
       });
 
@@ -298,7 +331,12 @@ export async function mountMatrixRain(
     flushResize();
     const dt = Math.min((now - last) / 1000, 1 / 15);
     last = now;
-    sim.update(dt, controls.get());
+    if (now >= rainStartAtMs) {
+      const f = densityRampFactor(now, rainStartAtMs, rampUpMs);
+      const c = controls.get();
+      sim.update(dt, f >= 1 ? c : { ...c, density: c.density * f });
+    }
+    // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
     stateTex.upload(sim.state);
     renderer.renderFrame(paramsOf(controls.get()), grid);
     message?.update(now);
@@ -568,7 +606,7 @@ export async function mountMatrixRain(
 
   // ---------- Intro on first visit ----------
   const maybePlayIntro = (): void => {
-    if (!message || reduceMq.matches) return;
+    if (!message || !introStore || reduceMq.matches) return;
     let seen = false;
     try {
       seen = localStorage.getItem(INTRO_KEY) === "1";
@@ -577,7 +615,7 @@ export async function mountMatrixRain(
     }
     if (seen) return;
     markSeenPending = true;
-    message.play(performance.now());
+    startIntroSequence(introStore.get());
   };
 
   if (panelConfig) {
