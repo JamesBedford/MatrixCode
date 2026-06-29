@@ -4,13 +4,15 @@
 
 export interface MessageLine {
   text: string;
+  /** Milliseconds to hold the fully-typed line before clearing. */
+  holdMs: number;
+  /** Blank gap (cursor only) before the next line types; ignored on the last line. */
+  pauseMs: number;
 }
 
 export interface TypeConfig {
   /** Milliseconds per typed character. */
   charMs: number;
-  /** Milliseconds to hold a fully-typed line before clearing. */
-  holdMs: number;
   /** Blank lead-in before the first line. */
   startDelayMs: number;
   /** Fade-out duration after the final line's hold. */
@@ -33,15 +35,30 @@ export interface TimelineState {
 /** Name used when the user's own name can't be determined. */
 export const DEFAULT_USER_NAME = "Neo";
 
-/** Build the typed intro script, addressing the viewer by name. */
-export function buildScript(name: string = DEFAULT_USER_NAME): MessageLine[] {
+/** Token in line text that is replaced with the resolved viewer name at play time. */
+export const NAME_TOKEN = "{name}";
+
+/** Default per-line timings. pauseMs is 0 so the default intro's lines run back-to-back. */
+export const DEFAULT_HOLD_MS = 2800;
+export const DEFAULT_PAUSE_MS = 0;
+
+/** Default intro lines, carrying {name} tokens for runtime substitution. */
+export const DEFAULT_LINES: MessageLine[] = [
+  { text: `Wake up, ${NAME_TOKEN}...`, holdMs: DEFAULT_HOLD_MS, pauseMs: DEFAULT_PAUSE_MS },
+  { text: "The Matrix has you...", holdMs: DEFAULT_HOLD_MS, pauseMs: DEFAULT_PAUSE_MS },
+  { text: "Follow the white rabbit.", holdMs: DEFAULT_HOLD_MS, pauseMs: DEFAULT_PAUSE_MS },
+  { text: `Knock, knock, ${NAME_TOKEN}.`, holdMs: DEFAULT_HOLD_MS, pauseMs: DEFAULT_PAUSE_MS },
+];
+
+/** Substitute the {name} token in every line with the given name (blank → default). */
+export function resolveLines(lines: MessageLine[], name: string = DEFAULT_USER_NAME): MessageLine[] {
   const who = name.trim() || DEFAULT_USER_NAME;
-  return [
-    { text: `Wake up, ${who}...` },
-    { text: "The Matrix has you..." },
-    { text: "Follow the white rabbit." },
-    { text: `Knock, knock, ${who}.` },
-  ];
+  return lines.map((l) => ({ ...l, text: l.text.split(NAME_TOKEN).join(who) }));
+}
+
+/** Build the default typed intro script, addressing the viewer by name. */
+export function buildScript(name: string = DEFAULT_USER_NAME): MessageLine[] {
+  return resolveLines(DEFAULT_LINES, name);
 }
 
 /**
@@ -67,7 +84,6 @@ export const DEFAULT_SCRIPT: MessageLine[] = buildScript();
 
 export const DEFAULT_TYPE_CONFIG: TypeConfig = {
   charMs: 95,
-  holdMs: 2800,
   startDelayMs: 600,
   fadeOutMs: 900,
   blinkMs: 450,
@@ -80,21 +96,28 @@ export function computeTimeline(lines: MessageLine[], cfg: TypeConfig, elapsedMs
   let t = elapsedMs - cfg.startDelayMs;
   if (t < 0) return { lineIndex: 0, visibleText: "", opacity: 1, done: false };
 
+  const lastIdx = lines.length - 1;
   for (let i = 0; i < lines.length; i++) {
-    const text = lines[i]!.text;
-    const typeDur = text.length * cfg.charMs;
+    const line = lines[i]!;
+    const typeDur = line.text.length * cfg.charMs;
     if (t < typeDur) {
       const chars = Math.floor(t / cfg.charMs);
-      return { lineIndex: i, visibleText: text.slice(0, chars), opacity: 1, done: false };
+      return { lineIndex: i, visibleText: line.text.slice(0, chars), opacity: 1, done: false };
     }
     t -= typeDur;
-    if (t < cfg.holdMs) {
-      return { lineIndex: i, visibleText: text, opacity: 1, done: false };
+    if (t < line.holdMs) {
+      return { lineIndex: i, visibleText: line.text, opacity: 1, done: false };
     }
-    t -= cfg.holdMs;
+    t -= line.holdMs;
+    // Blank pause before the next line (none after the last line).
+    if (i < lastIdx) {
+      if (t < line.pauseMs) {
+        return { lineIndex: i, visibleText: "", opacity: 1, done: false };
+      }
+      t -= line.pauseMs;
+    }
   }
 
-  const lastIdx = lines.length - 1;
   const lastText = lines[lastIdx]!.text;
   if (t < cfg.fadeOutMs) {
     return { lineIndex: lastIdx, visibleText: lastText, opacity: 1 - t / cfg.fadeOutMs, done: false };
@@ -110,7 +133,11 @@ export function cursorVisible(cfg: TypeConfig, elapsedMs: number): boolean {
 /** Total runtime of the sequence in ms (useful for tests / scheduling). */
 export function totalDuration(lines: MessageLine[], cfg: TypeConfig): number {
   let total = cfg.startDelayMs + cfg.fadeOutMs;
-  for (const l of lines) total += l.text.length * cfg.charMs + cfg.holdMs;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    total += line.text.length * cfg.charMs + line.holdMs;
+    if (i < lines.length - 1) total += line.pauseMs;
+  }
   return total;
 }
 
@@ -156,6 +183,12 @@ export class MessageOverlay {
 
   onDone(cb: () => void): void {
     this.onDoneCb = cb;
+  }
+
+  /** Replace the script and timing config (used by the live intro editor). */
+  setScript(lines: MessageLine[], cfg: TypeConfig): void {
+    this.lines = lines;
+    this.cfg = cfg;
   }
 
   play(nowMs: number): void {
