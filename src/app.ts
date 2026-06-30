@@ -4,7 +4,7 @@ import { RainSim } from "./sim/rainSim.ts";
 import { MessageScheduler } from "./sim/messageScheduler.ts";
 import { createRng } from "./util/rng.ts";
 import { MessageOverlay, resolveLines, resolveUserName } from "./sim/messageOverlay.ts";
-import { densityRampFactor } from "./sim/introRain.ts";
+import { densityRampFactor, loadRampMs } from "./sim/introRain.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
@@ -261,6 +261,16 @@ export async function mountMatrixRain(
   };
   seedOverlay();
 
+  // Start the rain from an empty grid and linearly ramp it to the configured density over `ms`,
+  // via the loop's densityRampFactor → activeColumnLimit. Shared by the intro's during-mode ramp
+  // and the repeat-visit (no-intro) load ramp.
+  const beginRampFromEmpty = (ms: number): void => {
+    rampUpMs = ms;
+    rainPendingAfterIntro = false;
+    sim.reset();
+    rainStartAtMs = performance.now();
+  };
+
   // Play the intro and choreograph the rain (during/after + post-intro delay + density ramp).
   // Used by first-visit autoplay, Replay, and Preview.
   const startIntroSequence = (script: IntroScript): void => {
@@ -269,19 +279,19 @@ export async function mountMatrixRain(
     // Under reduced motion the loop isn't running; skip choreography so an after-mode
     // trigger can't leave a stuck black frame. Behaves like today (a visual no-op).
     if (!reduceMq.matches) {
-      rampUpMs = script.rampUpMs;
-      rainPendingAfterIntro = false;
       if (!script.rainDuringIntro) {
+        rampUpMs = script.rampUpMs;
+        rainPendingAfterIntro = false;
         sim.reset(); // black until the intro ends
         rainStartAtMs = Number.POSITIVE_INFINITY;
         rainPendingAfterIntro = true;
         pendingPostIntroDelayMs = script.postIntroDelayMs;
       } else if (script.rampUpMs > 0) {
-        sim.reset(); // build from empty starting now
-        rainStartAtMs = performance.now();
+        beginRampFromEmpty(script.rampUpMs); // build from empty starting now
       } else {
         rainStartAtMs = Number.NEGATIVE_INFINITY; // during + no ramp = today's behaviour
         rampUpMs = 0;
+        rainPendingAfterIntro = false;
       }
     }
     message.play(performance.now());
@@ -731,7 +741,13 @@ export async function mountMatrixRain(
     } catch {
       /* ignore */
     }
-    if (seen) return;
+    if (seen) {
+      // Repeat visit (no intro): start the rain from empty and ramp to density, reusing the
+      // intro's rampUpMs. loadRampMs returns 0 (keep the warmed full start) unless a ramp is set.
+      const ms = loadRampMs(true, introStore.get().rampUpMs, reduceMq.matches);
+      if (ms > 0) beginRampFromEmpty(ms);
+      return;
+    }
     markSeenPending = true;
     startIntroSequence(introStore.get());
   };

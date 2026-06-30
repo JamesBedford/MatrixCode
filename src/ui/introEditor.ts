@@ -98,6 +98,11 @@ export class IntroEditor extends ModalEditor {
     applyDelayEnabled();
     this.dialog.appendChild(rain);
 
+    const rampHint = document.createElement("p");
+    rampHint.className = "mx-modal-hint";
+    rampHint.textContent = "Ramp-up applies whenever the rain starts — during the intro and on every page reload.";
+    this.dialog.appendChild(rampHint);
+
     this.dialog.appendChild(this.footer([
       { label: "Reset to default", className: "mx-btn mx-reset", onClick: () => { this.draft = cloneIntro(DEFAULT_INTRO); this.build(); } },
       { label: "Cancel", onClick: () => this.cancel() },
