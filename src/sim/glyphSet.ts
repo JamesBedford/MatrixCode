@@ -22,12 +22,17 @@ const DIGITS = "0123456789".split(""); // 10
 const LATIN = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""); // 26
 const SYMBOLS = "=+-*<>:".split(""); // 7
 
-// Message-only glyphs: lowercase Latin + common punctuation. Appended after the authentic
-// set so messages can render exactly as typed, but deliberately EXCLUDED from
-// randomGlyphIndex (not in `groups`) so the ambient rain never shows them — keeping the
-// falling code movie-authentic. ('-' already lives in SYMBOLS, so it is not repeated here.)
-const LOWER = "abcdefghijklmnopqrstuvwxyz".split(""); // 26
-const PUNCT = [".", ",", "!", "?", "'"]; // 5
+// The dedicated message charset: every character a written message may use, rasterized as its OWN
+// glyph and rendered ALWAYS UNMIRRORED (see the atlas builder) so messages stay readable even when
+// the rain is mirrored. Appended after the rain glyphs and EXCLUDED from randomGlyphIndex, so the
+// ambient rain never shows them — keeping the falling code movie-authentic.
+const MESSAGE_CHARS = [
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), // 26
+  ..."abcdefghijklmnopqrstuvwxyz".split(""), // 26
+  ..."0123456789".split(""), // 10
+  ...SYMBOLS, // 7
+  ".", ",", "!", "?", "'", // 5
+]; // 74 total
 
 interface GroupRange {
   start: number;
@@ -43,10 +48,10 @@ export interface GlyphSet {
     digits: GroupRange;
     latin: GroupRange;
     symbols: GroupRange;
-    lower: GroupRange;
-    punct: GroupRange;
+    /** The dedicated, always-unmirrored message glyphs (excluded from randomGlyphIndex). */
+    message: GroupRange;
   };
-  /** Pick a glyph index, weighted so katakana dominate (message-only glyphs excluded). */
+  /** Pick a glyph index, weighted so katakana dominate (message glyphs excluded). */
   randomGlyphIndex(rng: Rng): number;
   /** Glyph index for a message character, or null if it has no glyph (space/unsupported). */
   charToGlyphIndex(ch: string): number | null;
@@ -56,32 +61,30 @@ export interface GlyphSet {
 const GROUP_WEIGHTS = [0.8, 0.11, 0.05, 0.04] as const;
 
 export function createGlyphSet(): GlyphSet {
-  const chars = [...KATAKANA, ...DIGITS, ...LATIN, ...SYMBOLS, ...LOWER, ...PUNCT];
+  const chars = [...KATAKANA, ...DIGITS, ...LATIN, ...SYMBOLS, ...MESSAGE_CHARS];
   if (chars.length > MAX_GLYPHS) {
     chars.length = MAX_GLYPHS; // hard cap so an index fits in one byte
   }
   const digitsStart = KATAKANA.length;
   const latinStart = digitsStart + DIGITS.length;
   const symbolsStart = latinStart + LATIN.length;
-  const lowerStart = symbolsStart + SYMBOLS.length;
-  const punctStart = lowerStart + LOWER.length;
+  const messageStart = symbolsStart + SYMBOLS.length;
   const ranges = {
     katakana: { start: 0, count: KATAKANA.length },
     digits: { start: digitsStart, count: DIGITS.length },
     latin: { start: latinStart, count: LATIN.length },
     symbols: { start: symbolsStart, count: SYMBOLS.length },
-    lower: { start: lowerStart, count: LOWER.length },
-    punct: { start: punctStart, count: PUNCT.length },
+    message: { start: messageStart, count: MESSAGE_CHARS.length },
   };
-  // Random rain draws only from the authentic groups — message-only glyphs are excluded.
+  // Random rain draws only from the authentic groups — the message charset is excluded.
   const groups = [ranges.katakana, ranges.digits, ranges.latin, ranges.symbols];
 
-  // Reverse lookup (char -> glyph index), built from the final `chars` so it can never
-  // return an out-of-range index. First occurrence wins (only '-' could repeat).
+  // Reverse lookup (char -> glyph index) built from the MESSAGE charset only, so message
+  // characters resolve to their dedicated unmirrored glyphs (not the mirrored rain copies).
   const charIndex = new Map<string, number>();
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i]!;
-    if (!charIndex.has(ch)) charIndex.set(ch, i);
+  for (let i = 0; i < MESSAGE_CHARS.length; i++) {
+    const ch = MESSAGE_CHARS[i]!;
+    if (!charIndex.has(ch)) charIndex.set(ch, messageStart + i);
   }
 
   return {

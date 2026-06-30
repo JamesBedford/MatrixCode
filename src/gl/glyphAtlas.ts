@@ -20,6 +20,8 @@ export interface AtlasOptions {
   cellPx?: number;
   /** Bake a horizontal mirror into every glyph (the authentic look). */
   mirror: boolean;
+  /** When mirroring, glyphs at this index and beyond are left UNMIRRORED (the readable message charset). */
+  mirrorExcludeFrom?: number;
   /** Font weight. */
   weight?: number;
 }
@@ -71,11 +73,12 @@ export async function buildGlyphAtlas(gl: WebGL2RenderingContext, opts: AtlasOpt
     return [cx, cy];
   };
 
+  const mirrorExcludeFrom = opts.mirrorExcludeFrom ?? n; // by default nothing is excluded
   const drawGlyph = (ch: string, i: number): void => {
     const [cx, cy] = cellCenter(i);
     ctx.save();
     ctx.translate(cx, cy);
-    if (opts.mirror) ctx.scale(-1, 1);
+    if (opts.mirror && i < mirrorExcludeFrom) ctx.scale(-1, 1); // message glyphs (>= cutoff) stay readable
     ctx.fillText(ch, 0, 0);
     ctx.restore();
   };

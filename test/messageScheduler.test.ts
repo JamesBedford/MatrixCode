@@ -43,10 +43,10 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     s.previewOne(0, sim, doc({ messages: ["AB"] }));
     expect(sim.last).not.toBeNull();
     const row = rowOf(sim.last!, 20);
-    // width 2 → startCol = floor((20-2)/2) = 9; A=66, B=67
+    // width 2 → startCol = floor((20-2)/2) = 9
     expect(sim.last!.size).toBe(2);
-    expect(sim.last!.get(row * 20 + 9)).toBe(66);
-    expect(sim.last!.get(row * 20 + 10)).toBe(67);
+    expect(sim.last!.get(row * 20 + 9)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(row * 20 + 10)).toBe(glyphSet.charToGlyphIndex("B"));
   });
 
   it("places the row within the middle vertical band", () => {
@@ -66,9 +66,9 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     s.previewOne(0, sim, doc({ messages: ["A B"] })); // width 3 → startCol 8
     const row = rowOf(sim.last!, 20);
     expect(sim.last!.size).toBe(2);
-    expect(sim.last!.get(row * 20 + 8)).toBe(66); // A
+    expect(sim.last!.get(row * 20 + 8)).toBe(glyphSet.charToGlyphIndex("A"));
     expect(sim.last!.get(row * 20 + 9)).toBeUndefined(); // space → no target
-    expect(sim.last!.get(row * 20 + 10)).toBe(67); // B
+    expect(sim.last!.get(row * 20 + 10)).toBe(glyphSet.charToGlyphIndex("B"));
   });
 
   it("renders lowercase and punctuation (message-only glyphs)", () => {

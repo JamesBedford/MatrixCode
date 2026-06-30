@@ -252,7 +252,7 @@ describe("density drives concurrent streams per column", () => {
 describe("RainSim — message injection", () => {
   const DENSE: Controls = { ...CONTROLS, density: 6 };
   const FLOOR255 = Math.round(DEFAULT_SIM_CONFIG.messageBrightFloor * 255);
-  // Message-only glyph indices (lowercase a.., 99+) are never produced by the random rain,
+  // Dedicated message-charset glyph indices (99+) are never produced by the random rain,
   // so seeing one in a cell unambiguously proves the message pinned it.
   const MSG_GLYPHS = [99, 100, 101, 102, 103];
 

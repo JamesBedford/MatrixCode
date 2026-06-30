@@ -50,33 +50,33 @@ describe("glyphSet", () => {
 });
 
 describe("glyphSet — message glyphs", () => {
-  it("appends lowercase and punctuation after the original set, keeping indices stable", () => {
+  it("appends a dedicated message charset after the rain glyphs", () => {
     const gs = createGlyphSet();
     expect(gs.ranges.katakana.start).toBe(0);
     expect(gs.ranges.digits.start).toBe(56);
     expect(gs.ranges.latin.start).toBe(66);
     expect(gs.ranges.symbols.start).toBe(92);
-    expect(gs.ranges.lower.start).toBe(99);
-    expect(gs.ranges.lower.count).toBe(26);
-    expect(gs.ranges.punct.start).toBe(125);
-    expect(gs.ranges.punct.count).toBe(5);
-    expect(gs.count).toBe(130);
+    expect(gs.ranges.message.start).toBe(99);
+    expect(gs.ranges.message.count).toBe(74); // A-Z + a-z + 0-9 + =+-*<>: + .,!?'
+    expect(gs.count).toBe(173);
     expect(gs.count).toBeLessThanOrEqual(MAX_GLYPHS);
     expect(gs.chars.length).toBe(gs.count);
   });
 
-  it("maps characters to glyph indices without case folding", () => {
+  it("maps characters to dedicated message glyphs, distinct from the rain glyphs", () => {
     const gs = createGlyphSet();
-    expect(gs.charToGlyphIndex("A")).toBe(66);
-    expect(gs.charToGlyphIndex("Z")).toBe(91);
-    expect(gs.charToGlyphIndex("a")).toBe(99);
-    expect(gs.charToGlyphIndex("z")).toBe(124);
-    expect(gs.charToGlyphIndex("a")).not.toBe(gs.charToGlyphIndex("A"));
-    expect(gs.charToGlyphIndex("0")).toBe(56);
-    expect(gs.charToGlyphIndex("9")).toBe(65);
-    expect(gs.charToGlyphIndex("-")).toBe(94); // existing symbol, not duplicated into punct
-    expect(gs.charToGlyphIndex(".")).toBe(125);
-    expect(gs.charToGlyphIndex("'")).toBe(129);
+    const m = gs.ranges.message.start;
+    expect(gs.charToGlyphIndex("A")).toBe(m); // not the rain's latin 'A' at 66
+    expect(gs.charToGlyphIndex("Z")).toBe(m + 25);
+    expect(gs.charToGlyphIndex("a")).toBe(m + 26);
+    expect(gs.charToGlyphIndex("z")).toBe(m + 51);
+    expect(gs.charToGlyphIndex("a")).not.toBe(gs.charToGlyphIndex("A")); // no case folding
+    expect(gs.charToGlyphIndex("0")).toBe(m + 52);
+    expect(gs.charToGlyphIndex("9")).toBe(m + 61);
+    expect(gs.charToGlyphIndex("-")).toBe(m + 64);
+    expect(gs.charToGlyphIndex(".")).toBe(m + 69);
+    expect(gs.charToGlyphIndex("'")).toBe(m + 73);
+    expect(gs.charToGlyphIndex("A")).toBeGreaterThanOrEqual(gs.ranges.message.start);
   });
 
   it("returns null for spaces and unsupported characters", () => {
@@ -95,11 +95,11 @@ describe("glyphSet — message glyphs", () => {
     }
   });
 
-  it("never picks message-only glyphs (lowercase/punct) for the random rain", () => {
+  it("never picks message glyphs for the random rain", () => {
     const gs = createGlyphSet();
     const rng = createRng(12345);
     for (let i = 0; i < 50000; i++) {
-      expect(gs.randomGlyphIndex(rng)).toBeLessThan(gs.ranges.lower.start);
+      expect(gs.randomGlyphIndex(rng)).toBeLessThan(gs.ranges.message.start);
     }
   });
 });

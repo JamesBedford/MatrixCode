@@ -183,7 +183,7 @@ export async function mountMatrixRain(
   };
 
   const buildGpu = async (): Promise<void> => {
-    atlas = await buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX });
+    atlas = await buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX, mirrorExcludeFrom: glyphSet.ranges.message.start });
     sim = new RainSim({ cols: grid.cols, rows: grid.rows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: 0x1a2b3c });
     stateTex = new StateTexture(gl, grid.cols, grid.rows);
     renderer = new Renderer(gl, atlas, stateTex);
@@ -636,7 +636,7 @@ export async function mountMatrixRain(
       applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
     }
     if (changed.has("mirror")) {
-      void buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX }).then(
+      void buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX, mirrorExcludeFrom: glyphSet.ranges.message.start }).then(
         (a) => {
           atlas = a;
           renderer.setAtlas(a);
