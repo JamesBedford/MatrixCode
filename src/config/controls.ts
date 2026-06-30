@@ -4,7 +4,7 @@ import { PRESET_NAMES } from "./colorPresets.ts";
 
 export const DEFAULT_CONTROLS: Controls = {
   speed: 1,
-  trailLength: 0.08,
+  trailLength: 0.255,
   density: 1,
   glyphScale: 1,
   glow: 0.9,

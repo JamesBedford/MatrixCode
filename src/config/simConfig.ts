@@ -9,6 +9,7 @@ export const DEFAULT_SIM_CONFIG: SimConfig = {
   speedRange: 8,
   // Per-second brightness multiplier. Lower = shorter, snappier trails.
   decayPerSecond: 0.08,
+  trailLengthScale: 1.2,
   // Per-second chance a lit (non-head) cell swaps glyph.
   mutationRate: 1.6,
   crossfadeDuration: 0.09,

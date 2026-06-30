@@ -61,6 +61,8 @@ export interface SimConfig {
   speedRange: number;
   /** Brightness multiplier applied per second (exponential trail decay). */
   decayPerSecond: number;
+  /** Multiplier on trail length at any given trail-length control setting (>1 = longer trails). */
+  trailLengthScale: number;
   /** Per-second probability that a lit trail cell mutates its glyph. */
   mutationRate: number;
   /** Seconds for an old->new glyph crossfade. */
