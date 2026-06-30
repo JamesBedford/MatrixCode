@@ -12,8 +12,8 @@ export const DEFAULT_MESSAGES: MessagesDoc = {
   enabled: true,
   frequencyMs: 8000,
   persistenceMs: 4000,
-  appearMs: 600,
-  disappearMs: 1200,
+  appearMs: 4000,
+  disappearMs: 4000,
 };
 
 /** Deep copy so callers can mutate a working draft without touching shared state. */
