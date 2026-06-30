@@ -248,3 +248,114 @@ describe("density drives concurrent streams per column", () => {
     expect(litFrac(dense)).toBeGreaterThan(litFrac(sparse) * 1.5);
   });
 });
+
+describe("RainSim — message injection", () => {
+  const DENSE: Controls = { ...CONTROLS, density: 6 };
+  const FLOOR255 = Math.round(DEFAULT_SIM_CONFIG.messageBrightFloor * 255);
+  // Message-only glyph indices (lowercase a.., 99+) are never produced by the random rain,
+  // so seeing one in a cell unambiguously proves the message pinned it.
+  const MSG_GLYPHS = [99, 100, 101, 102, 103];
+
+  const rowTargets = (sim: RainSim, row: number, startCol: number, glyphs: number[]): Map<number, number> => {
+    const t = new Map<number, number>();
+    glyphs.forEach((g, i) => t.set(row * sim.cols + (startCol + i), g));
+    return t;
+  };
+  const glyphAt = (s: RainSim, col: number, row: number): number => s.state[(row * s.cols + col) * 4]!;
+  const brightAt = (s: RainSim, col: number, row: number): number => s.state[(row * s.cols + col) * 4 + 1]!;
+
+  it("reveals message glyphs where rain falls and holds them at the brightness floor", () => {
+    const sim = makeSim(16, 40);
+    const row = 20, start = 2;
+    sim.setMessageTargets(rowTargets(sim, row, start, MSG_GLYPHS));
+    for (let i = 0; i < 2500; i++) sim.update(1 / 60, DENSE);
+    let held = 0;
+    MSG_GLYPHS.forEach((g, i) => {
+      if (glyphAt(sim, start + i, row) === g && brightAt(sim, start + i, row) >= FLOOR255 - 1) held++;
+    });
+    expect(held).toBe(MSG_GLYPHS.length);
+  });
+
+  it("never reveals a letter in a column with no rain (no fabrication)", () => {
+    const sim = makeSim(16, 40);
+    sim.activeColumnLimit = 0; // no column ever opens → no rain at all
+    const row = 20, start = 2;
+    sim.setMessageTargets(rowTargets(sim, row, start, MSG_GLYPHS));
+    for (let i = 0; i < 1000; i++) sim.update(1 / 60, DENSE);
+    MSG_GLYPHS.forEach((_g, i) => {
+      expect(brightAt(sim, start + i, row)).toBe(0);
+      expect(glyphAt(sim, start + i, row)).toBe(0);
+    });
+  });
+
+  it("pins a revealed letter steadily, then releases it to mutate after clear", () => {
+    const sim = makeSim(16, 40);
+    const row = 20, start = 2;
+    sim.setMessageTargets(rowTargets(sim, row, start, MSG_GLYPHS));
+    for (let i = 0; i < 1500; i++) sim.update(1 / 60, DENSE);
+    MSG_GLYPHS.forEach((g, i) => expect(glyphAt(sim, start + i, row)).toBe(g));
+
+    // While active, the letters stay pinned for many frames.
+    let pinnedAlways = true;
+    for (let i = 0; i < 300; i++) {
+      sim.update(1 / 60, DENSE);
+      MSG_GLYPHS.forEach((g, j) => { if (glyphAt(sim, start + j, row) !== g) pinnedAlways = false; });
+    }
+    expect(pinnedAlways).toBe(true);
+
+    // After clearing, the cells are freed and the rain mutates them away from the letter.
+    sim.clearMessageTargets();
+    let sawNonLetter = false;
+    for (let i = 0; i < 600; i++) {
+      sim.update(1 / 60, DENSE);
+      MSG_GLYPHS.forEach((g, j) => { if (glyphAt(sim, start + j, row) !== g) sawNonLetter = true; });
+    }
+    expect(sawNonLetter).toBe(true);
+  });
+
+  it("leaves every non-target cell byte-identical to a no-message sim (rng-preserving)", () => {
+    const plain = makeSim(20, 40, 4242);
+    const withMsg = makeSim(20, 40, 4242);
+    const targets = rowTargets(withMsg, 10, 5, MSG_GLYPHS);
+    withMsg.setMessageTargets(targets);
+    for (let i = 0; i < 300; i++) {
+      plain.update(1 / 60, DENSE);
+      withMsg.update(1 / 60, DENSE);
+    }
+    for (let idx = 0; idx < withMsg.cols * withMsg.rows; idx++) {
+      if (targets.has(idx)) continue;
+      for (let k = 0; k < 4; k++) {
+        expect(withMsg.state[idx * 4 + k]).toBe(plain.state[idx * 4 + k]);
+      }
+    }
+  });
+
+  it("is deterministic for a given seed and target set", () => {
+    const a = makeSim(20, 40, 77);
+    const b = makeSim(20, 40, 77);
+    a.setMessageTargets(rowTargets(a, 10, 4, MSG_GLYPHS));
+    b.setMessageTargets(rowTargets(b, 10, 4, MSG_GLYPHS));
+    for (let i = 0; i < 400; i++) { a.update(1 / 60, DENSE); b.update(1 / 60, DENSE); }
+    expect(Array.from(a.state)).toEqual(Array.from(b.state));
+  });
+
+  it("clears targets on reset and resize", () => {
+    const sim = makeSim(16, 40);
+    sim.setMessageTargets(rowTargets(sim, 20, 2, MSG_GLYPHS));
+    expect(sim.hasMessageTargets()).toBe(true);
+    sim.reset();
+    expect(sim.hasMessageTargets()).toBe(false);
+
+    const sim2 = makeSim(16, 40);
+    sim2.setMessageTargets(rowTargets(sim2, 20, 2, MSG_GLYPHS));
+    sim2.resize(30, 50);
+    expect(sim2.hasMessageTargets()).toBe(false);
+  });
+
+  it("ignores out-of-range target indices without throwing", () => {
+    const sim = makeSim(8, 8);
+    sim.setMessageTargets(new Map<number, number>([[5, 99], [99999, 100], [-3, 101]]));
+    for (let i = 0; i < 200; i++) sim.update(1 / 60, DENSE);
+    expect(sim.hasMessageTargets()).toBe(true);
+  });
+});

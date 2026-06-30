@@ -21,4 +21,6 @@ export const DEFAULT_SIM_CONFIG: SimConfig = {
   tailMargin: 36,
   globalSyncAmount: 0.35,
   globalSyncHz: 1.7,
+  // Brightness floor a revealed message cell holds while its message is active (legible green).
+  messageBrightFloor: 0.45,
 };

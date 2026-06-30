@@ -83,6 +83,8 @@ export interface SimConfig {
   globalSyncAmount: number;
   /** Frequency (Hz) of the global mutation-sync oscillator. */
   globalSyncHz: number;
+  /** 0..1 minimum display brightness a revealed in-rain message cell holds while its message is active. */
+  messageBrightFloor: number;
 }
 
 /** A color theme: RGB triplets in 0..1 (sRGB-ish, tone-mapped at composite). */
