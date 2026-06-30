@@ -91,14 +91,14 @@ describe("MessagesStore", () => {
 
   it("persists across instances (round-trip)", () => {
     const a = new MessagesStore();
-    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false });
+    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, verticalPosition: 0.2, verticalJitter: 0.4 });
     const b = new MessagesStore();
-    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false });
+    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, verticalPosition: 0.2, verticalJitter: 0.4 });
   });
 
   it("reset clears storage and returns defaults", () => {
     const s = new MessagesStore();
-    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true, brightnessFade: false });
+    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true, brightnessFade: false, verticalPosition: 0.5, verticalJitter: 0 });
     const after = s.reset();
     expect(after.messages).toEqual(DEFAULT_MESSAGES.messages);
     expect(new MessagesStore().get().messages).toEqual(DEFAULT_MESSAGES.messages);

@@ -99,7 +99,9 @@ export class MessagesEditor extends ModalEditor {
     this.dialog.appendChild(this.heading("h3", "Behaviour"));
     const behaviour = document.createElement("div");
     behaviour.className = "mx-line-timings";
-    behaviour.appendChild(this.toggleField("Show messages", this.draft.enabled, (v) => (this.draft.enabled = v)));
+    const showMessages = this.toggleField("Show messages", this.draft.enabled, (v) => (this.draft.enabled = v));
+    showMessages.title = "Show messages (N)";
+    behaviour.appendChild(showMessages);
     behaviour.appendChild(this.secondsField("Show one every (s)", this.draft.frequencyMs, (ms) => (this.draft.frequencyMs = ms)));
     behaviour.appendChild(this.secondsField("Each stays for (s)", this.draft.persistenceMs, (ms) => (this.draft.persistenceMs = ms)));
     behaviour.appendChild(this.secondsField("Appear over (s)", this.draft.appearMs, (ms) => (this.draft.appearMs = ms)));

@@ -31,6 +31,7 @@ export class ControlsPanel {
     const fab = document.createElement("div");
     fab.className = "mx-fab";
     const fsBtn = this.button("⛶ Fullscreen", () => this.cb.onToggleFullscreen());
+    fsBtn.title = "Fullscreen (F)";
     fab.appendChild(fsBtn);
     this.el.appendChild(fab);
 
@@ -41,7 +42,7 @@ export class ControlsPanel {
     title.textContent = "Matrix";
     this.panel.appendChild(title);
 
-    this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
+    this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =");
     // Slider is inverted: right = longer trail. Map slider [0.01,0.5] → stored decay [0.5,0.01].
     this.range("Trail length", "trailLength", 0.01, 0.5, 0.01,
       (v) => controls.set({ trailLength: 0.51 - v }),
@@ -82,10 +83,12 @@ export class ControlsPanel {
     this.panel.appendChild(replay);
 
     const edit = this.button("✎ Edit intro", () => this.cb.onEditIntro());
+    edit.title = "Edit intro (I)";
     edit.style.marginTop = "6px";
     this.panel.appendChild(edit);
 
     const editMsgs = this.button("✎ Edit messages", () => this.cb.onEditMessages());
+    editMsgs.title = "Edit messages (M)";
     editMsgs.style.marginTop = "6px";
     this.panel.appendChild(editMsgs);
 
@@ -150,8 +153,10 @@ export class ControlsPanel {
     onInput: (v: number) => void,
     fmt: (v: number) => string,
     read: (c: Controls) => number = (c) => c[key] as number,
+    tooltip?: string,
   ): void {
     const row = this.row(label);
+    if (tooltip) row.title = tooltip;
     const val = document.createElement("span");
     val.className = "mx-val";
     row.appendChild(val);
