@@ -200,13 +200,19 @@ export class MessageScheduler {
     return 1; // hold
   }
 
-  /** The flicker-dissolve scramble probability at `nowMs`: 0 until the fade-out, then ramps 0→1 across it. */
+  /**
+   * The flicker scramble probability at `nowMs`: ramps 1→0 across the fade-in (the message resolves
+   * out of random glyphs), 0 during the hold, then 0→1 across the fade-out (it dissolves back to random).
+   */
   private scramble(nowMs: number): number {
+    const appear = Math.max(0, this.cfg!.appearMs);
     const disappear = Math.max(0, this.cfg!.disappearMs);
-    if (disappear <= 0) return 0;
-    const fadeOutStart = this.activeUntil! - this.activeStart! - disappear;
     const t = nowMs - this.activeStart!;
-    if (t <= fadeOutStart) return 0;
-    return Math.min(1, (t - fadeOutStart) / disappear);
+    if (appear > 0 && t < appear) return 1 - t / appear; // flicker in
+    if (disappear > 0) {
+      const fadeOutStart = this.activeUntil! - this.activeStart! - disappear;
+      if (t > fadeOutStart) return Math.min(1, (t - fadeOutStart) / disappear); // flicker out
+    }
+    return 0; // hold
   }
 }

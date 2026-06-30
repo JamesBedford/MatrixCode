@@ -253,6 +253,20 @@ describe("MessageScheduler fade envelope", () => {
     expect(sim.last).toBeNull();
   });
 
+  it("flickers the message in too — scramble ramps 1→0 over the fade-in", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 40);
+    // appear 2000 + hold 1000 + disappear 2000; fade-in 0..2000
+    s.previewOne(0, sim, doc({ messages: ["NEO"], persistenceMs: 1000, appearMs: 2000, disappearMs: 2000, flickerOut: true }));
+    expect(sim.scramble).toBeCloseTo(1, 5); // starts fully random
+    s.update(1000, sim);
+    expect(sim.scramble).toBeCloseTo(0.5, 2); // mid fade-in
+    s.update(2000, sim);
+    expect(sim.scramble).toBeCloseTo(0, 5); // resolved to the letter
+    s.update(2500, sim);
+    expect(sim.scramble).toBe(0); // hold, no scramble
+  });
+
   it("ramps the scramble 0→1 over the fade-out when flickerOut is enabled", () => {
     const s = sched();
     const sim = new FakeSim(40, 40);
