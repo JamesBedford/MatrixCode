@@ -185,9 +185,13 @@ export class RainSim {
 
   /** Remove the active message so its revealed cells dissolve back into random rain. */
   clearMessageTargets(): void {
-    // The fade-out has dimmed each revealed cell toward 0; zero it so the pin releasing can't flash
-    // a cell that a head happened to re-light on the final frame.
-    if (this.messageTargets !== null) for (const idx of this.claimed) this.bright[idx] = 0;
+    // Hand each revealed cell off at exactly the brightness it was last displayed at
+    // (max(b,floor) scaled by the fade), so the pin releasing is seamless — no flash up from a
+    // faded-out message, and no flash down when the brightness fade is disabled (intensity 1).
+    if (this.messageTargets !== null) {
+      const floor = this.cfg.messageBrightFloor;
+      for (const idx of this.claimed) this.bright[idx] = Math.max(this.bright[idx]!, floor) * this.messageIntensity;
+    }
     this.messageTargets = null;
     this.claimed.clear();
     this.messageIntensity = 1;

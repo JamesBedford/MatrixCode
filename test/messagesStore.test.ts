@@ -60,6 +60,7 @@ describe("sanitizeMessages", () => {
     expect(s.appearMs).toBe(DEFAULT_MESSAGES.appearMs);
     expect(s.disappearMs).toBe(DEFAULT_MESSAGES.disappearMs);
     expect(s.flickerOut).toBe(DEFAULT_MESSAGES.flickerOut);
+    expect(s.brightnessFade).toBe(DEFAULT_MESSAGES.brightnessFade);
   });
 
   it("coerces flickerOut to a boolean", () => {
@@ -90,14 +91,14 @@ describe("MessagesStore", () => {
 
   it("persists across instances (round-trip)", () => {
     const a = new MessagesStore();
-    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true });
+    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false });
     const b = new MessagesStore();
-    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true });
+    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false });
   });
 
   it("reset clears storage and returns defaults", () => {
     const s = new MessagesStore();
-    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true });
+    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true, brightnessFade: false });
     const after = s.reset();
     expect(after.messages).toEqual(DEFAULT_MESSAGES.messages);
     expect(new MessagesStore().get().messages).toEqual(DEFAULT_MESSAGES.messages);

@@ -97,8 +97,8 @@ export class MessageScheduler {
         this.activeUntil = null;
         this.nextFireAt = nowMs + this.gap();
       } else {
-        sim.setMessageIntensity(this.envelope(nowMs)); // fade in/out across the active window
-        sim.setMessageScramble(this.cfg!.flickerOut ? this.scramble(nowMs) : 0);
+        sim.setMessageIntensity(this.cfg!.brightnessFade ? this.envelope(nowMs) : 1); // transparency fade in/out
+        sim.setMessageScramble(this.cfg!.flickerOut ? this.scramble(nowMs) : 0); // flicker dissolve in/out
       }
       return; // one message at a time
     }
@@ -182,7 +182,7 @@ export class MessageScheduler {
     const appear = Math.max(0, cfg.appearMs);
     const disappear = Math.max(0, cfg.disappearMs);
     this.activeUntil = nowMs + appear + cfg.persistenceMs + disappear;
-    sim.setMessageIntensity(this.envelope(nowMs));
+    sim.setMessageIntensity(cfg.brightnessFade ? this.envelope(nowMs) : 1);
     sim.setMessageScramble(cfg.flickerOut ? this.scramble(nowMs) : 0);
   }
 

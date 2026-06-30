@@ -98,6 +98,7 @@ export class MessagesEditor extends ModalEditor {
     behaviour.appendChild(this.secondsField("Appear over (s)", this.draft.appearMs, (ms) => (this.draft.appearMs = ms)));
     behaviour.appendChild(this.secondsField("Disappear over (s)", this.draft.disappearMs, (ms) => (this.draft.disappearMs = ms)));
     behaviour.appendChild(this.toggleField("Flicker dissolve", this.draft.flickerOut, (v) => (this.draft.flickerOut = v)));
+    behaviour.appendChild(this.toggleField("Brightness fade", this.draft.brightnessFade, (v) => (this.draft.brightnessFade = v)));
     this.dialog.appendChild(behaviour);
 
     this.dialog.appendChild(this.footer([

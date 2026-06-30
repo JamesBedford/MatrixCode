@@ -44,6 +44,7 @@ const doc = (over: Partial<MessagesDoc> = {}): MessagesDoc => ({
   appearMs: 0,
   disappearMs: 0,
   flickerOut: false,
+  brightnessFade: true,
   ...over,
 });
 const sched = (seed = 1): MessageScheduler => new MessageScheduler({ glyphSet, rng: createRng(seed) });
@@ -288,5 +289,17 @@ describe("MessageScheduler fade envelope", () => {
     s.previewOne(0, sim, doc({ messages: ["NEO"], persistenceMs: 1000, appearMs: 0, disappearMs: 2000, flickerOut: false }));
     s.update(2000, sim);
     expect(sim.scramble).toBe(0);
+  });
+
+  it("holds intensity at 1 when brightnessFade is disabled (no transparency fade)", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 40);
+    // Long fades, but brightnessFade off → no dimming at any point.
+    s.previewOne(0, sim, doc({ messages: ["NEO"], persistenceMs: 1000, appearMs: 2000, disappearMs: 2000, brightnessFade: false }));
+    expect(sim.intensity).toBe(1);
+    s.update(1000, sim);
+    expect(sim.intensity).toBe(1); // would be mid fade-in if enabled
+    s.update(4000, sim);
+    expect(sim.intensity).toBe(1); // would be mid fade-out if enabled
   });
 });

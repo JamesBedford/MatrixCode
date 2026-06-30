@@ -15,6 +15,7 @@ export const DEFAULT_MESSAGES: MessagesDoc = {
   appearMs: 4000,
   disappearMs: 4000,
   flickerOut: true,
+  brightnessFade: true,
 };
 
 /** Deep copy so callers can mutate a working draft without touching shared state. */
@@ -36,6 +37,7 @@ export function sanitizeMessages(raw: unknown): MessagesDoc {
     appearMs: num(r.appearMs, 0, MAX_MS, DEFAULT_MESSAGES.appearMs),
     disappearMs: num(r.disappearMs, 0, MAX_MS, DEFAULT_MESSAGES.disappearMs),
     flickerOut: bool(r.flickerOut, DEFAULT_MESSAGES.flickerOut),
+    brightnessFade: bool(r.brightnessFade, DEFAULT_MESSAGES.brightnessFade),
   };
 }
 
