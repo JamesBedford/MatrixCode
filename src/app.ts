@@ -177,6 +177,8 @@ export async function mountMatrixRain(
   let rampUpMs = 0;
   let rainPendingAfterIntro = false;
   let pendingPostIntroDelayMs = 0;
+  // Debounce so the live Ramp-up slider replays the build-up once the drag settles, not every step.
+  let rampPreviewTimer = 0;
 
   // Super-fullscreen: this window is a panel iff the URL carries a slice config.
   const panelConfig = parsePanelConfig();
@@ -728,6 +730,14 @@ export async function mountMatrixRain(
         },
       );
     }
+    // Adjusting Ramp-up replays the build-up from an empty grid so the slider gives immediate
+    // feedback instead of only applying on the next load. Debounced so a drag settles first, and
+    // only while the loop is animating in normal (non-super) mode.
+    if (changed.has("rampUpMs") && !superState) {
+      window.clearTimeout(rampPreviewTimer);
+      const ms = controls.get().rampUpMs;
+      if (ms > 0) rampPreviewTimer = window.setTimeout(() => { if (running && !superState) beginRampFromEmpty(ms); }, 200);
+    }
     // While paused (reduced motion / hidden tab) the RAF loop isn't redrawing,
     // so reflect any control change — color, glow, quality, etc. — in a fresh frame.
     if (!running) renderStatic();
@@ -776,6 +786,7 @@ export async function mountMatrixRain(
     destroy: () => {
       if (superState) exitSuper(false);
       stop();
+      window.clearTimeout(rampPreviewTimer);
       ro.disconnect();
       window.removeEventListener("resize", onWindowResize);
       reduceMq.removeEventListener("change", onReduceChange);
