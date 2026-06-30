@@ -609,7 +609,6 @@ export async function mountMatrixRain(
     messagesStore.set(doc);
     messageScheduler.configure(messagesStore.get());
     messagesEditor?.syncEnabled(doc.enabled);
-    flashNotice(doc.enabled ? "Messages on." : "Messages off.");
   };
 
   const onKey = (e: KeyboardEvent): void => {
