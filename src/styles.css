@@ -165,6 +165,10 @@ body {
   padding: 5px 8px;
   cursor: pointer;
 }
+.mx-row .mx-toggle {
+  min-width: 3.2em;
+  text-align: center;
+}
 .mx-row .mx-toggle[aria-pressed="true"] {
   background: rgb(var(--mx-accent-rgb) / 0.22);
   border-color: var(--mx-green);
@@ -376,6 +380,10 @@ body {
   border-radius: 5px;
   padding: 5px 10px;
   cursor: pointer;
+}
+.mx-modal .mx-toggle {
+  min-width: 3.4em;
+  text-align: center;
 }
 .mx-modal .mx-toggle[aria-pressed="true"] {
   background: rgb(var(--mx-accent-rgb) / 0.22);
