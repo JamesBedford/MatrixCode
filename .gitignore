@@ -11,3 +11,4 @@ perf/*.html
 perf/shots/
 perf/results.json
 perf/REPORT.md
+perf/dpr_curve.json
