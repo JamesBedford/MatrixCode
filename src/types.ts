@@ -51,6 +51,18 @@ export interface Controls {
   quality: QualityTier;
 }
 
+/** User-editable in-rain messages and their scheduling, persisted to localStorage. */
+export interface MessagesDoc {
+  /** Pool of short messages; one is shown at a time, chosen at random. */
+  messages: string[];
+  /** Master on/off for in-rain messages. */
+  enabled: boolean;
+  /** Average gap between messages in ms (jittered ±25%). */
+  frequencyMs: number;
+  /** How long each message stays before dissolving back into rain, in ms. */
+  persistenceMs: number;
+}
+
 /** Empirical tuning constants for the rain simulation (not user-facing). */
 export interface SimConfig {
   /** Desired glyph cell size in CSS px — drives grid resolution. */
