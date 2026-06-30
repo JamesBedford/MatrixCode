@@ -150,6 +150,13 @@ export async function mountMatrixRain(
   let raf = 0;
   let last = 0;
   let userPaused = false;
+  // Stamp the wall-clock time the first frame reached the screen, once, for the time-to-first-frame metric.
+  let firstFramePainted = false;
+  const noteFirstFrame = (): void => {
+    if (firstFramePainted) return;
+    firstFramePainted = true;
+    (window as Window & { __mxFirstFrame?: number }).__mxFirstFrame = performance.now();
+  };
   // Intro rain choreography. Default sentinel: rain already running at full (no intro / repeat visit).
   let rainStartAtMs = Number.NEGATIVE_INFINITY;
   let rampUpMs = 0;
@@ -342,6 +349,7 @@ export async function mountMatrixRain(
       stateTex.upload(sim.state);
     }
     renderer.renderFrame(paramsOf(controls.get()), grid);
+    noteFirstFrame();
   };
   const renderStatic = paint;
 
@@ -372,6 +380,7 @@ export async function mountMatrixRain(
     // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
     stateTex.upload(sim.state);
     renderer.renderFrame(paramsOf(controls.get()), grid);
+    noteFirstFrame();
     message?.update(now);
   };
 
