@@ -45,6 +45,8 @@ const doc = (over: Partial<MessagesDoc> = {}): MessagesDoc => ({
   disappearMs: 0,
   flickerOut: false,
   brightnessFade: true,
+  verticalPosition: 0.475,
+  verticalJitter: 0.25,
   ...over,
 });
 const sched = (seed = 1): MessageScheduler => new MessageScheduler({ glyphSet, rng: createRng(seed) });
@@ -71,6 +73,29 @@ describe("MessageScheduler.fire (via previewOne)", () => {
       const row = rowOf(sim.last!, 20);
       expect(row).toBeGreaterThanOrEqual(Math.floor(40 * 0.35));
       expect(row).toBeLessThanOrEqual(Math.floor(40 * 0.6));
+    }
+  });
+
+  it("honours the vertical position anchor (0 = top, 1 = bottom) with no jitter", () => {
+    const top = sched(); const simTop = new FakeSim(20, 40);
+    top.previewOne(0, simTop, doc({ messages: ["AB"], verticalPosition: 0, verticalJitter: 0 }));
+    expect(rowOf(simTop.last!, 20)).toBe(0);
+
+    const bottom = sched(); const simBottom = new FakeSim(20, 40);
+    bottom.previewOne(0, simBottom, doc({ messages: ["AB"], verticalPosition: 1, verticalJitter: 0 }));
+    expect(rowOf(simBottom.last!, 20)).toBe(39);
+  });
+
+  it("keeps the message on screen even at the extremes with full jitter", () => {
+    for (const verticalPosition of [0, 0.5, 1]) {
+      for (let seed = 1; seed <= 12; seed++) {
+        const s = sched(seed);
+        const sim = new FakeSim(20, 40);
+        s.previewOne(0, sim, doc({ messages: ["AB"], verticalPosition, verticalJitter: 1 }));
+        const row = rowOf(sim.last!, 20);
+        expect(row).toBeGreaterThanOrEqual(0);
+        expect(row).toBeLessThanOrEqual(39);
+      }
     }
   });
 

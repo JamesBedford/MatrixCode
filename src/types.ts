@@ -71,6 +71,10 @@ export interface MessagesDoc {
   flickerOut: boolean;
   /** Fade the message in/out via brightness (transparency) over the appear/disappear times. */
   brightnessFade: boolean;
+  /** Vertical anchor for messages: 0 = top of the screen, 1 = bottom, 0.5 = centre. */
+  verticalPosition: number;
+  /** How much the vertical position varies randomly, as a fraction of screen height (0 = fixed). */
+  verticalJitter: number;
 }
 
 /** Empirical tuning constants for the rain simulation (not user-facing). */

@@ -2,9 +2,6 @@ import type { MessagesDoc } from "../types.ts";
 import type { GlyphSet } from "./glyphSet.ts";
 import type { Rng } from "../util/rng.ts";
 
-// Where a message is laid out: rows 35%–60% down the screen, so trails have room above the letters.
-const BAND_TOP = 0.35;
-const BAND_BOTTOM = 0.6;
 // Jitter applied to the configured frequency: a gap is frequencyMs * (0.75 .. 1.25).
 const JITTER_MIN = 0.75;
 const JITTER_SPAN = 0.5;
@@ -134,6 +131,21 @@ export class MessageScheduler {
     return this.cfg!.frequencyMs * (JITTER_MIN + JITTER_SPAN * this.rng());
   }
 
+  /**
+   * Pick the message's row from the configured vertical anchor plus random jitter. The jitter band is
+   * clamped to the grid so the (single-row) message always lands on screen, whatever the anchor/jitter.
+   */
+  private pickRow(rows: number): number {
+    const maxRow = rows - 1;
+    if (maxRow <= 0) return 0;
+    const cfg = this.cfg!;
+    const anchor = Math.round(cfg.verticalPosition * maxRow);
+    const halfSpan = Math.round((cfg.verticalJitter * maxRow) / 2);
+    const lo = Math.max(0, anchor - halfSpan);
+    const hi = Math.min(maxRow, anchor + halfSpan);
+    return lo + Math.floor(this.rng() * (hi - lo + 1));
+  }
+
   private computeHasRenderable(cfg: MessagesDoc): boolean {
     return cfg.messages.some((m) => this.layout(m).glyphs.length > 0);
   }
@@ -166,9 +178,7 @@ export class MessageScheduler {
     }
 
     const startCol = Math.max(0, Math.floor((sim.cols - width) / 2));
-    const bandTop = Math.floor(sim.rows * BAND_TOP);
-    const bandBottom = Math.floor(sim.rows * BAND_BOTTOM);
-    const row = bandTop + Math.floor(this.rng() * (bandBottom - bandTop + 1));
+    const row = this.pickRow(sim.rows);
 
     const targets = new Map<number, number>();
     for (const { offset, glyph } of glyphs) {

@@ -113,6 +113,11 @@ export abstract class ModalEditor {
     return this.numberField(label, valueMs / 1000, 0, 60, 0.1, (s) => onChangeMs(Math.round(s * 1000)));
   }
 
+  /** A 0–100% number field backed by a 0–1 fraction. */
+  protected percentField(label: string, value: number, onChange: (fraction: number) => void): HTMLElement {
+    return this.numberField(label, Math.round(value * 100), 0, 100, 1, (p) => onChange(p / 100));
+  }
+
   protected toggleField(label: string, value: boolean, onChange: (v: boolean) => void): HTMLElement {
     const field = document.createElement("label");
     field.className = "mx-field";
