@@ -59,7 +59,7 @@ describe("sanitizeIntro", () => {
 
 describe("toTypeConfig", () => {
   it("builds a TypeConfig including the default blink period", () => {
-    const cfg = toTypeConfig({ lines: [], charMs: 80, startDelayMs: 100, fadeOutMs: 200, rainDuringIntro: true, postIntroDelayMs: 0, rampUpMs: 0 });
+    const cfg = toTypeConfig({ lines: [], charMs: 80, startDelayMs: 100, fadeOutMs: 200, rainDuringIntro: true, postIntroDelayMs: 0 });
     expect(cfg.charMs).toBe(80);
     expect(cfg.startDelayMs).toBe(100);
     expect(cfg.fadeOutMs).toBe(200);
@@ -72,16 +72,13 @@ describe("sanitizeIntro — rain fields", () => {
     const s = sanitizeIntro({});
     expect(s.rainDuringIntro).toBe(true);
     expect(s.postIntroDelayMs).toBe(0);
-    expect(s.rampUpMs).toBe(0);
   });
 
-  it("clamps post-intro delay (0–10000) and ramp-up (0–60000)", () => {
-    const hi = sanitizeIntro({ postIntroDelayMs: 99999, rampUpMs: 999999 });
+  it("clamps post-intro delay (0–10000)", () => {
+    const hi = sanitizeIntro({ postIntroDelayMs: 99999 });
     expect(hi.postIntroDelayMs).toBe(10000);
-    expect(hi.rampUpMs).toBe(60000);
-    const lo = sanitizeIntro({ postIntroDelayMs: -50, rampUpMs: -1 });
+    const lo = sanitizeIntro({ postIntroDelayMs: -50 });
     expect(lo.postIntroDelayMs).toBe(0);
-    expect(lo.rampUpMs).toBe(0);
   });
 
   it("coerces rainDuringIntro to a boolean, defaulting non-booleans to true", () => {
@@ -105,18 +102,17 @@ describe("IntroStore", () => {
 
   it("persists across instances (round-trip)", () => {
     const a = new IntroStore();
-    a.set({ lines: [{ text: "hi {name}", holdMs: 1000, pauseMs: 500 }], charMs: 50, startDelayMs: 0, fadeOutMs: 0, rainDuringIntro: false, postIntroDelayMs: 1500, rampUpMs: 8000 });
+    a.set({ lines: [{ text: "hi {name}", holdMs: 1000, pauseMs: 500 }], charMs: 50, startDelayMs: 0, fadeOutMs: 0, rainDuringIntro: false, postIntroDelayMs: 1500 });
     const b = new IntroStore();
     expect(b.get().lines).toEqual([{ text: "hi {name}", holdMs: 1000, pauseMs: 500 }]);
     expect(b.get().charMs).toBe(50);
     expect(b.get().rainDuringIntro).toBe(false);
     expect(b.get().postIntroDelayMs).toBe(1500);
-    expect(b.get().rampUpMs).toBe(8000);
   });
 
   it("reset clears storage and returns defaults", () => {
     const s = new IntroStore();
-    s.set({ lines: [{ text: "x", holdMs: 1, pauseMs: 1 }], charMs: 50, startDelayMs: 1, fadeOutMs: 1, rainDuringIntro: false, postIntroDelayMs: 1, rampUpMs: 1 });
+    s.set({ lines: [{ text: "x", holdMs: 1, pauseMs: 1 }], charMs: 50, startDelayMs: 1, fadeOutMs: 1, rainDuringIntro: false, postIntroDelayMs: 1 });
     const after = s.reset();
     expect(after.lines.length).toBe(DEFAULT_INTRO.lines.length);
     expect(new IntroStore().get().lines.length).toBe(DEFAULT_INTRO.lines.length);

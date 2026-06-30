@@ -15,7 +15,6 @@ export interface IntroScript {
   fadeOutMs: number;
   rainDuringIntro: boolean; // true = rain falls during the intro; false = waits until after
   postIntroDelayMs: number; // after-mode only: gap between intro end and rain start
-  rampUpMs: number;         // linear density ramp 0→full once the rain starts (0 = instant)
 }
 
 const STORAGE_KEY = "mx-intro";
@@ -29,7 +28,6 @@ export const DEFAULT_INTRO: IntroScript = {
   fadeOutMs: DEFAULT_TYPE_CONFIG.fadeOutMs,
   rainDuringIntro: true,
   postIntroDelayMs: 0,
-  rampUpMs: 0,
 };
 
 /** Deep copy so callers can mutate a working draft without touching shared state. */
@@ -63,7 +61,6 @@ export function sanitizeIntro(raw: unknown): IntroScript {
     fadeOutMs: num(r.fadeOutMs, 0, 10000, DEFAULT_INTRO.fadeOutMs),
     rainDuringIntro: typeof r.rainDuringIntro === "boolean" ? r.rainDuringIntro : DEFAULT_INTRO.rainDuringIntro,
     postIntroDelayMs: num(r.postIntroDelayMs, 0, 10000, DEFAULT_INTRO.postIntroDelayMs),
-    rampUpMs: num(r.rampUpMs, 0, 60000, DEFAULT_INTRO.rampUpMs),
   };
 }
 

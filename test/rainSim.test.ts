@@ -9,6 +9,7 @@ const CONTROLS: Controls = {
   speed: 1,
   trailLength: 0.08,
   density: 1,
+  rampUpMs: 0,
   glyphRate: 1,
   glyphScale: 1,
   glow: 1,

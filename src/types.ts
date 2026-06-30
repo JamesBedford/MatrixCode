@@ -33,6 +33,8 @@ export interface Controls {
   trailLength: number;
   /** Stream spawn density multiplier. */
   density: number;
+  /** How long (ms) the rain takes to build up to the configured density when it first starts, on load (0 = instant). */
+  rampUpMs: number;
   /** How often lit trail glyphs mutate, as a multiplier on the base mutation rate (independent of fall speed). */
   glyphRate: number;
   /** Glyph size multiplier — scales the grid cell size (bigger = larger glyphs, fewer columns). */

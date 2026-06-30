@@ -43,6 +43,7 @@ export class ControlsPanel {
     this.panel.appendChild(title);
 
     this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =");
+    this.range("Ramp-up", "rampUpMs", 0, 30000, 500, (v) => controls.set({ rampUpMs: v }), (v) => (v === 0 ? "off" : `${(v / 1000).toFixed(1)}s`), undefined, "How long the rain builds up to full density when it first starts, on load (0 = instant)");
     // Slider is inverted: right = longer trail. Map slider [0.01,0.5] → stored decay [0.5,0.01].
     this.range("Trail length", "trailLength", 0.01, 0.5, 0.01,
       (v) => controls.set({ trailLength: 0.51 - v }),

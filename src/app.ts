@@ -279,15 +279,16 @@ export async function mountMatrixRain(
     // Under reduced motion the loop isn't running; skip choreography so an after-mode
     // trigger can't leave a stuck black frame. Behaves like today (a visual no-op).
     if (!reduceMq.matches) {
+      const ramp = controls.get().rampUpMs; // ramp duration lives in the main controls, not the intro
       if (!script.rainDuringIntro) {
-        rampUpMs = script.rampUpMs;
+        rampUpMs = ramp;
         rainPendingAfterIntro = false;
         sim.reset(); // black until the intro ends
         rainStartAtMs = Number.POSITIVE_INFINITY;
         rainPendingAfterIntro = true;
         pendingPostIntroDelayMs = script.postIntroDelayMs;
-      } else if (script.rampUpMs > 0) {
-        beginRampFromEmpty(script.rampUpMs); // build from empty starting now
+      } else if (ramp > 0) {
+        beginRampFromEmpty(ramp); // build from empty starting now
       } else {
         rainStartAtMs = Number.NEGATIVE_INFINITY; // during + no ramp = today's behaviour
         rampUpMs = 0;
@@ -742,9 +743,9 @@ export async function mountMatrixRain(
       /* ignore */
     }
     if (seen) {
-      // Repeat visit (no intro): start the rain from empty and ramp to density, reusing the
-      // intro's rampUpMs. loadRampMs returns 0 (keep the warmed full start) unless a ramp is set.
-      const ms = loadRampMs(true, introStore.get().rampUpMs, reduceMq.matches);
+      // Repeat visit (no intro): start the rain from empty and ramp to density using the main
+      // controls' Ramp-up. loadRampMs returns 0 (keep the warmed full start) unless a ramp is set.
+      const ms = loadRampMs(true, controls.get().rampUpMs, reduceMq.matches);
       if (ms > 0) beginRampFromEmpty(ms);
       return;
     }
