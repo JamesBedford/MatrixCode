@@ -15,7 +15,7 @@ export const DEFAULT_MESSAGES: MessagesDoc = {
   appearMs: 4000,
   disappearMs: 4000,
   flickerOut: true,
-  brightnessFade: true,
+  brightnessFade: false,
 };
 
 /** Deep copy so callers can mutate a working draft without touching shared state. */
