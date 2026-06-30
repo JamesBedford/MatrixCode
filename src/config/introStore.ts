@@ -5,7 +5,7 @@ import {
   DEFAULT_HOLD_MS,
   DEFAULT_PAUSE_MS,
 } from "../sim/messageOverlay.ts";
-import { clamp } from "../util/math.ts";
+import { num } from "./sanitize.ts";
 
 /** User-editable intro: the lines, the global timing settings, and the rain-start choreography. */
 export interface IntroScript {
@@ -35,10 +35,6 @@ export const DEFAULT_INTRO: IntroScript = {
 /** Deep copy so callers can mutate a working draft without touching shared state. */
 export function cloneIntro(s: IntroScript): IntroScript {
   return { ...s, lines: s.lines.map((l) => ({ ...l })) };
-}
-
-function num(v: unknown, min: number, max: number, fallback: number): number {
-  return typeof v === "number" && Number.isFinite(v) ? clamp(v, min, max) : fallback;
 }
 
 function sanitizeLine(raw: unknown): MessageLine | null {

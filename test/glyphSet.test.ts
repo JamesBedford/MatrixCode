@@ -48,3 +48,58 @@ describe("glyphSet", () => {
     }
   });
 });
+
+describe("glyphSet — message glyphs", () => {
+  it("appends lowercase and punctuation after the original set, keeping indices stable", () => {
+    const gs = createGlyphSet();
+    expect(gs.ranges.katakana.start).toBe(0);
+    expect(gs.ranges.digits.start).toBe(56);
+    expect(gs.ranges.latin.start).toBe(66);
+    expect(gs.ranges.symbols.start).toBe(92);
+    expect(gs.ranges.lower.start).toBe(99);
+    expect(gs.ranges.lower.count).toBe(26);
+    expect(gs.ranges.punct.start).toBe(125);
+    expect(gs.ranges.punct.count).toBe(5);
+    expect(gs.count).toBe(130);
+    expect(gs.count).toBeLessThanOrEqual(MAX_GLYPHS);
+    expect(gs.chars.length).toBe(gs.count);
+  });
+
+  it("maps characters to glyph indices without case folding", () => {
+    const gs = createGlyphSet();
+    expect(gs.charToGlyphIndex("A")).toBe(66);
+    expect(gs.charToGlyphIndex("Z")).toBe(91);
+    expect(gs.charToGlyphIndex("a")).toBe(99);
+    expect(gs.charToGlyphIndex("z")).toBe(124);
+    expect(gs.charToGlyphIndex("a")).not.toBe(gs.charToGlyphIndex("A"));
+    expect(gs.charToGlyphIndex("0")).toBe(56);
+    expect(gs.charToGlyphIndex("9")).toBe(65);
+    expect(gs.charToGlyphIndex("-")).toBe(94); // existing symbol, not duplicated into punct
+    expect(gs.charToGlyphIndex(".")).toBe(125);
+    expect(gs.charToGlyphIndex("'")).toBe(129);
+  });
+
+  it("returns null for spaces and unsupported characters", () => {
+    const gs = createGlyphSet();
+    expect(gs.charToGlyphIndex(" ")).toBeNull();
+    expect(gs.charToGlyphIndex("#")).toBeNull();
+    expect(gs.charToGlyphIndex("€")).toBeNull();
+  });
+
+  it("round-trips every supported character to the glyph at its index", () => {
+    const gs = createGlyphSet();
+    for (const ch of "ABZaz09-.!?',") {
+      const idx = gs.charToGlyphIndex(ch);
+      expect(idx).not.toBeNull();
+      expect(gs.chars[idx!]).toBe(ch);
+    }
+  });
+
+  it("never picks message-only glyphs (lowercase/punct) for the random rain", () => {
+    const gs = createGlyphSet();
+    const rng = createRng(12345);
+    for (let i = 0; i < 50000; i++) {
+      expect(gs.randomGlyphIndex(rng)).toBeLessThan(gs.ranges.lower.start);
+    }
+  });
+});
