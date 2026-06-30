@@ -33,8 +33,9 @@ export class RainSim {
   rows: number;
   /** cols*rows*4 packed bytes — see types.ts for the channel layout. */
   state: Uint8Array;
-  /** Max columns allowed to rain at once (Infinity = no cap). Ramped to fade rain in gradually. */
-  activeColumnLimit = Number.POSITIVE_INFINITY;
+  /** Global spawn-rate multiplier (0..1) scaling the per-frame stream-spawn probability uniformly
+   * across all columns — ramped to fade the rain in evenly (0 = no new streams, 1 = full density). */
+  spawnRateScale = 1;
 
   private cfg: SimConfig;
   private glyph: GlyphSet;
@@ -238,7 +239,9 @@ export class RainSim {
     // how often trail glyphs change, independent of fall speed (glyphRate 0 = trail cells never mutate).
     const sync = Math.max(0, 1 + cfg.globalSyncAmount * Math.sin(this.time * cfg.globalSyncHz * TWO_PI));
     const mutChance = 1 - Math.exp(-cfg.mutationRate * controls.glyphRate * sync * dt);
-    const respawnProb = 1 - Math.exp(-cfg.respawnChance * controls.density * dt);
+    // spawnRateScale (0..1) scales the spawn probability uniformly across every column, so density
+    // ramps in evenly everywhere rather than capping which columns may rain (that swept left-to-right).
+    const respawnProb = (1 - Math.exp(-cfg.respawnChance * controls.density * dt)) * this.spawnRateScale;
     const speedMul = controls.speed;
     // Density controls how many streams a column sustains at once, and how
     // quickly it refills toward that count (the inter-stream gap shrinks).
@@ -247,28 +250,19 @@ export class RainSim {
     const floor = cfg.messageBrightFloor;
     const targets = this.messageTargets; // null when no message is active (zero-overhead fast path)
 
-    // Cap concurrent active columns when a limit is set (ramping). `activeNow` counts
-    // columns that currently have at least one stream, recounted each frame.
-    const limited = Number.isFinite(this.activeColumnLimit);
-    let activeNow = 0;
-    if (limited) for (let c = 0; c < cols; c++) if (this.streams[c]!.length > 0) activeNow++;
-
     for (let col = 0; col < cols; col++) {
       const streams = this.streams[col]!;
 
       // --- spawn a new stream when the gap timer elapses ---
       this.respawnTimer[col] = this.respawnTimer[col]! - dt;
       if (this.respawnTimer[col]! <= 0 && streams.length < maxStreams) {
-        const opensColumn = streams.length === 0;
-        if ((!limited || !opensColumn || activeNow < this.activeColumnLimit) && this.rng() < respawnProb) {
+        if (this.rng() < respawnProb) {
           this.spawnStream(col);
-          if (limited && opensColumn) activeNow++;
           this.respawnTimer[col] = (cfg.respawnDelayMin + this.rng() * cfg.respawnDelayJitter) * gapScale;
         }
       }
 
       // --- advance every stream, dropping those past the bottom ---
-      const hadStreams = streams.length > 0;
       for (let s = streams.length - 1; s >= 0; s--) {
         const stream = streams[s]!;
         const prevRow = Math.floor(stream.y);
@@ -279,7 +273,6 @@ export class RainSim {
         }
         if (stream.y - cfg.tailMargin > rows) streams.splice(s, 1);
       }
-      if (limited && hadStreams && streams.length === 0) activeNow--;
 
       // --- mark this column's head rows for the cell pass ---
       for (let s = 0; s < streams.length; s++) {

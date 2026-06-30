@@ -264,7 +264,7 @@ export async function mountMatrixRain(
   seedOverlay();
 
   // Start the rain from an empty grid and linearly ramp it to the configured density over `ms`,
-  // via the loop's densityRampFactor → activeColumnLimit. Shared by the intro's during-mode ramp
+  // via the loop's densityRampFactor → spawnRateScale. Shared by the intro's during-mode ramp
   // and the repeat-visit (no-intro) load ramp.
   const beginRampFromEmpty = (ms: number): void => {
     rampUpMs = ms;
@@ -421,10 +421,9 @@ export async function mountMatrixRain(
       hud.textContent = `${fps.toFixed(0)} fps · ${Math.round(renderScale * 100)}% res · ${canvas.width}×${canvas.height}`;
     }
     if (now >= rainStartAtMs) {
-      // Ramp toward full by linearly raising the cap on concurrently-raining columns, so the
-      // rain fades in gradually. (Scaling density instead leaves it ~empty then bursts at the end.)
-      const f = densityRampFactor(now, rainStartAtMs, rampUpMs);
-      sim.activeColumnLimit = f >= 1 ? Number.POSITIVE_INFINITY : Math.ceil(f * grid.cols);
+      // Ramp the rain in by scaling the spawn rate uniformly across every column (0 = empty, 1 = full),
+      // so density builds up evenly everywhere rather than sweeping across the screen left-to-right.
+      sim.spawnRateScale = densityRampFactor(now, rainStartAtMs, rampUpMs);
       // Set/clear in-rain message targets before stepping so they take effect this frame.
       messageScheduler?.update(now, sim);
       sim.update(dt, c);
@@ -497,7 +496,7 @@ export async function mountMatrixRain(
         rainPendingAfterIntro = false;
         rainStartAtMs = Number.NEGATIVE_INFINITY;
         rampUpMs = 0;
-        sim.activeColumnLimit = Number.POSITIVE_INFINITY;
+        sim.spawnRateScale = 1;
         sim.warmUp(controls.get(), WARMUP_SECONDS);
       }
       stop();

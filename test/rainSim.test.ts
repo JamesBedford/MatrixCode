@@ -143,61 +143,74 @@ describe("RainSim.reset", () => {
   });
 });
 
-describe("RainSim.activeColumnLimit", () => {
+describe("RainSim.spawnRateScale", () => {
   const litFrac = (s: RainSim): number => {
     let n = 0;
     for (let i = 0; i < s.cols * s.rows; i++) if (s.state[i * 4 + 1]! > 0) n++;
     return n / (s.cols * s.rows);
   };
 
-  it("defaults to no cap", () => {
-    expect(makeSim().activeColumnLimit).toBe(Number.POSITIVE_INFINITY);
+  it("defaults to full spawn rate", () => {
+    expect(makeSim().spawnRateScale).toBe(1);
   });
 
-  it("never lets more columns rain than the limit", () => {
+  it("produces no rain at all when zero", () => {
     const sim = makeSim(60, 50);
-    sim.activeColumnLimit = 5;
-    let maxHeads = 0;
-    for (let i = 0; i < 1500; i++) {
+    sim.spawnRateScale = 0;
+    for (let i = 0; i < 1500; i++) sim.update(1 / 60, CONTROLS);
+    expect(litFrac(sim)).toBe(0);
+  });
+
+  it("makes rain sparser at a low spawn rate, but still present", () => {
+    // Time-average the coverage over a long window: an empty start makes the first cohort of streams
+    // fall and clear in lockstep, so a single-frame snapshot is noisy — the average is representative.
+    const meanLit = (scale: number): number => {
+      const s = makeSim(60, 50);
+      s.spawnRateScale = scale;
+      let sum = 0, n = 0;
+      for (let i = 0; i < 1800; i++) {
+        s.update(1 / 60, CONTROLS);
+        if (i >= 900) { sum += litFrac(s); n++; }
+      }
+      return sum / n;
+    };
+    const slow = meanLit(0.25);
+    expect(slow).toBeGreaterThan(0);
+    expect(slow).toBeLessThan(meanLit(1));
+  });
+
+  it("builds up uniformly across the screen — no left-to-right sweep", () => {
+    // The defining property of the spawn-rate ramp: at a partial scale the rain is spread evenly,
+    // unlike the old column cap which opened columns in index order (left edge filled first).
+    const sim = makeSim(80, 50);
+    const half = sim.cols >> 1;
+    for (let i = 0; i < 1200; i++) {
+      sim.spawnRateScale = 0.4;
       sim.update(1 / 60, CONTROLS);
-      let heads = 0;
-      for (let j = 0; j < sim.cols * sim.rows; j++) if (sim.state[j * 4 + 2]! & FLAG_IS_HEAD) heads++;
-      if (heads > maxHeads) maxHeads = heads;
     }
-    // A head only appears for an active column whose head is on-screen, so heads <= active <= limit.
-    expect(maxHeads).toBeGreaterThan(0);
-    expect(maxHeads).toBeLessThanOrEqual(5);
+    let left = 0, right = 0;
+    for (let r = 0; r < sim.rows; r++) {
+      for (let c = 0; c < sim.cols; c++) {
+        if (sim.state[(r * sim.cols + c) * 4 + 1]! > 0) c < half ? left++ : right++;
+      }
+    }
+    expect(left).toBeGreaterThan(0);
+    expect(right).toBeGreaterThan(0);
+    expect(Math.min(left, right) / Math.max(left, right)).toBeGreaterThan(0.65); // halves lit comparably
   });
 
-  it("makes rain sparser with a low limit, but still present", () => {
-    const capped = makeSim(60, 50);
-    capped.activeColumnLimit = 6;
-    const full = makeSim(60, 50);
-    for (let i = 0; i < 600; i++) {
-      capped.update(1 / 60, CONTROLS);
-      full.update(1 / 60, CONTROLS);
-    }
-    expect(litFrac(capped)).toBeGreaterThan(0);
-    expect(litFrac(capped)).toBeLessThan(litFrac(full));
-  });
-
-  it("fills in roughly monotonically as the limit ramps up (no late burst)", () => {
-    // Reproduces the user-facing intent: ramping the column limit 0→full over 10s should
-    // produce a gradual build, unlike scaling spawn probability (which stayed ~empty then surged).
+  it("fills in monotonically as the spawn rate ramps 0→1", () => {
     const sim = makeSim(60, 50);
-    const dt = 1 / 60;
-    const rampS = 10;
+    const dt = 1 / 60, rampS = 10;
     const at: Record<number, number> = {};
     for (let i = 0; i <= Math.round(rampS / dt); i++) {
       const t = i * dt;
-      const f = Math.min(t / rampS, 1);
-      sim.activeColumnLimit = f >= 1 ? Number.POSITIVE_INFINITY : Math.ceil(f * sim.cols);
+      sim.spawnRateScale = Math.min(t / rampS, 1);
       sim.update(dt, CONTROLS);
       const sec = Math.round(t);
       if (Math.abs(t - sec) < dt / 2) at[sec] = litFrac(sim);
     }
-    // Visible rain well before the end of the ramp (the old density-scaling bug showed ~0% here).
-    expect(at[3]!).toBeGreaterThan(0.015);
+    expect(at[3]!).toBeGreaterThan(0);
     expect(at[5]!).toBeGreaterThan(at[3]!);
     expect(at[8]!).toBeGreaterThan(at[5]!);
   });
@@ -309,7 +322,7 @@ describe("RainSim — message injection", () => {
 
   it("never reveals a letter in a column with no rain (no fabrication)", () => {
     const sim = makeSim(16, 40);
-    sim.activeColumnLimit = 0; // no column ever opens → no rain at all
+    sim.spawnRateScale = 0; // spawn rate zero → no rain at all
     const row = 20, start = 2;
     sim.setMessageTargets(rowTargets(sim, row, start, MSG_GLYPHS));
     for (let i = 0; i < 1000; i++) sim.update(1 / 60, DENSE);
