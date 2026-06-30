@@ -1,6 +1,8 @@
-import type { ColorPreset, Controls, Grid, RenderParams } from "./types.ts";
+import type { ColorPreset, Controls, Grid, RenderParams, MessagesDoc } from "./types.ts";
 import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
+import { MessageScheduler } from "./sim/messageScheduler.ts";
+import { createRng } from "./util/rng.ts";
 import { MessageOverlay, resolveLines, resolveUserName } from "./sim/messageOverlay.ts";
 import { densityRampFactor } from "./sim/introRain.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
@@ -12,6 +14,8 @@ import { Renderer } from "./gl/renderer.ts";
 import { ControlsPanel } from "./ui/controlsPanel.ts";
 import { IntroStore, sanitizeIntro, toTypeConfig, type IntroScript } from "./config/introStore.ts";
 import { IntroEditor } from "./ui/introEditor.ts";
+import { MessagesStore } from "./config/messagesStore.ts";
+import { MessagesEditor } from "./ui/messagesEditor.ts";
 import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
 import { stepsToAdvance, extractSlice } from "./super/superGrid.ts";
 import {
@@ -32,6 +36,8 @@ export interface MatrixRainHandle {
 const ATLAS_CELL_PX = 64;
 const INTRO_KEY = "mx-intro-seen";
 const WARMUP_SECONDS = 2.5;
+// The message scheduler's own PRNG seed, kept separate from the sim's so scheduling never perturbs the rain.
+const MSG_SEED = 0x5eed1e;
 // Super-fullscreen lockstep: advance the shared sim in fixed steps toward the
 // shared wall-clock, capping per-frame catch-up so a stalled window recovers
 // gradually instead of freezing.
@@ -210,6 +216,9 @@ export async function mountMatrixRain(
   // ---------- Overlays ----------
   // Panels are a pure backdrop — no intro, no controls UI.
   const introStore = panelConfig ? null : new IntroStore();
+  const messagesStore = panelConfig ? null : new MessagesStore();
+  const messageScheduler = panelConfig ? null : new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED) });
+  if (messageScheduler && messagesStore) messageScheduler.configure(messagesStore.get());
   const viewerName = resolveUserName();
   const message = panelConfig ? null : new MessageOverlay(container);
 
@@ -262,6 +271,16 @@ export async function mountMatrixRain(
     seedOverlay();
   };
 
+  const saveMessages = (draft: MessagesDoc): void => {
+    if (!messagesStore) return;
+    messagesStore.set(draft);
+    messageScheduler?.configure(messagesStore.get());
+  };
+
+  const previewMessages = (draft: MessagesDoc): void => {
+    messageScheduler?.previewOne(performance.now(), sim, draft);
+  };
+
   // A single onDone handler serves the after-mode rain start, preview restore, and first-visit flag.
   message?.onDone(() => {
     if (rainPendingAfterIntro) {
@@ -291,12 +310,22 @@ export async function mountMatrixRain(
     });
   }
 
+  let messagesEditor: MessagesEditor | null = null;
+  if (!panelConfig && messagesStore) {
+    messagesEditor = new MessagesEditor(container, messagesStore, {
+      onPreview: previewMessages,
+      onSave: saveMessages,
+      onCancel: () => {},
+    });
+  }
+
   const panel = panelConfig
     ? null
     : new ControlsPanel(container, controls, {
         onToggleFullscreen: () => toggleFullscreen(),
         onReplayIntro: () => { if (introStore) startIntroSequence(introStore.get()); },
         onEditIntro: () => editor?.open(),
+        onEditMessages: () => messagesEditor?.open(),
       });
 
   const reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -336,6 +365,8 @@ export async function mountMatrixRain(
       // rain fades in gradually. (Scaling density instead leaves it ~empty then bursts at the end.)
       const f = densityRampFactor(now, rainStartAtMs, rampUpMs);
       sim.activeColumnLimit = f >= 1 ? Number.POSITIVE_INFINITY : Math.ceil(f * grid.cols);
+      // Set/clear in-rain message targets before stepping so they take effect this frame.
+      messageScheduler?.update(now, sim);
       sim.update(dt, controls.get());
     }
     // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
@@ -667,6 +698,7 @@ export async function mountMatrixRain(
       canvas.removeEventListener("webglcontextlost", onLost);
       unsubscribe();
       editor?.destroy();
+      messagesEditor?.destroy();
       panel?.destroy();
       message?.destroy();
       renderer.dispose();

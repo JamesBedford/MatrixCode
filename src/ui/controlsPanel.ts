@@ -5,6 +5,7 @@ export interface PanelCallbacks {
   onToggleFullscreen: () => void;
   onReplayIntro: () => void;
   onEditIntro: () => void;
+  onEditMessages: () => void;
 }
 
 const HIDE_DELAY_MS = 2800;
@@ -78,6 +79,10 @@ export class ControlsPanel {
     const edit = this.button("✎ Edit intro", () => this.cb.onEditIntro());
     edit.style.marginTop = "6px";
     this.panel.appendChild(edit);
+
+    const editMsgs = this.button("✎ Edit messages", () => this.cb.onEditMessages());
+    editMsgs.style.marginTop = "6px";
+    this.panel.appendChild(editMsgs);
 
     const reset = this.button("↺ Reset to defaults", () => {
       controls.set(DEFAULT_CONTROLS);
