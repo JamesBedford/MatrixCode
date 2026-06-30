@@ -33,6 +33,8 @@ export interface Controls {
   trailLength: number;
   /** Stream spawn density multiplier. */
   density: number;
+  /** How often lit trail glyphs mutate, as a multiplier on the base mutation rate (independent of fall speed). */
+  glyphRate: number;
   /** Glyph size multiplier — scales the grid cell size (bigger = larger glyphs, fewer columns). */
   glyphScale: number;
   /** Bloom strength. */

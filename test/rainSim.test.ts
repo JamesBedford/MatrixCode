@@ -2,13 +2,14 @@ import { describe, it, expect } from "vitest";
 import { RainSim, packCell, unpackCell, decayBrightness } from "../src/sim/rainSim.ts";
 import { createGlyphSet } from "../src/sim/glyphSet.ts";
 import { DEFAULT_SIM_CONFIG } from "../src/config/simConfig.ts";
-import { FLAG_IS_HEAD } from "../src/types.ts";
+import { FLAG_IS_HEAD, PHASE_MASK } from "../src/types.ts";
 import type { Controls } from "../src/types.ts";
 
 const CONTROLS: Controls = {
   speed: 1,
   trailLength: 0.08,
   density: 1,
+  glyphRate: 1,
   glyphScale: 1,
   glow: 1,
   leadBrightness: 1.6,
@@ -246,6 +247,35 @@ describe("density drives concurrent streams per column", () => {
       dense.update(1 / 60, { ...CONTROLS, density: 30 });
     }
     expect(litFrac(dense)).toBeGreaterThan(litFrac(sparse) * 1.5);
+  });
+});
+
+describe("glyphRate scales how often trail glyphs mutate", () => {
+  // A trail mutation resets the cell's crossfade phase to 0, whereas a head light sets phase to 1, so a
+  // lit, non-head cell still mid-crossfade (phase < 1) is unambiguous evidence of a trail mutation.
+  const mutationActivity = (controls: Controls, frames = 1200, seed = 4242): number => {
+    const sim = makeSim(40, 60, seed);
+    let count = 0;
+    for (let f = 0; f < frames; f++) {
+      sim.update(1 / 60, controls);
+      for (let idx = 0; idx < sim.cols * sim.rows; idx++) {
+        const o = idx * 4;
+        const flags = sim.state[o + 2]!;
+        const lit = sim.state[o + 1]! > 12; // brightness > ~0.05, the mutation threshold
+        if (lit && (flags & FLAG_IS_HEAD) === 0 && (flags & PHASE_MASK) < PHASE_MASK) count++;
+      }
+    }
+    return count;
+  };
+
+  it("never mutates trail glyphs when glyphRate is 0 (only head passes change them)", () => {
+    expect(mutationActivity({ ...CONTROLS, glyphRate: 0 })).toBe(0);
+  });
+
+  it("mutates trail glyphs more often as glyphRate rises", () => {
+    const slow = mutationActivity({ ...CONTROLS, glyphRate: 0.5 });
+    const fast = mutationActivity({ ...CONTROLS, glyphRate: 3 });
+    expect(fast).toBeGreaterThan(slow * 1.5);
   });
 });
 

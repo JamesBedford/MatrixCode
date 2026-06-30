@@ -234,9 +234,10 @@ export class RainSim {
 
     const decayMul = Math.pow(controls.trailLength, dt / cfg.trailLengthScale);
     const crossfadeStep = dt / cfg.crossfadeDuration;
-    // Global mutation-sync: swaps cluster loosely in time (a film tell).
+    // Global mutation-sync: swaps cluster loosely in time (a film tell). The glyphRate control scales
+    // how often trail glyphs change, independent of fall speed (glyphRate 0 = trail cells never mutate).
     const sync = Math.max(0, 1 + cfg.globalSyncAmount * Math.sin(this.time * cfg.globalSyncHz * TWO_PI));
-    const mutChance = 1 - Math.exp(-cfg.mutationRate * sync * dt);
+    const mutChance = 1 - Math.exp(-cfg.mutationRate * controls.glyphRate * sync * dt);
     const respawnProb = 1 - Math.exp(-cfg.respawnChance * controls.density * dt);
     const speedMul = controls.speed;
     // Density controls how many streams a column sustains at once, and how

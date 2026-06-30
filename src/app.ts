@@ -37,6 +37,8 @@ export interface MatrixRainHandle {
 const ATLAS_CELL_PX = 64;
 const INTRO_KEY = "mx-intro-seen";
 const WARMUP_SECONDS = 2.5;
+// Multiplicative step for the −/= density shortcuts (density spans 0.1–100, so a geometric nudge feels even across the range).
+const DENSITY_KEY_STEP = 1.2;
 // The message scheduler's own PRNG seed, kept separate from the sim's so scheduling never perturbs the rain.
 const MSG_SEED = 0x5eed1e;
 // Super-fullscreen lockstep: advance the shared sim in fixed steps toward the
@@ -597,6 +599,8 @@ export async function mountMatrixRain(
     }
     if (e.key === "f" || e.key === "F") toggleFullscreen();
     else if (e.key === "h" || e.key === "H") panel?.toggleVisible();
+    else if (e.key === "-" || e.key === "_") controls.set({ density: controls.get().density / DENSITY_KEY_STEP });
+    else if (e.key === "=" || e.key === "+") controls.set({ density: controls.get().density * DENSITY_KEY_STEP });
     else if (e.key === "p" || e.key === "P") {
       userPaused = !userPaused;
       if (userPaused) stop();

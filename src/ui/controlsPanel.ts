@@ -1,4 +1,4 @@
-import type { PresetName, QualityTier } from "../types.ts";
+import type { Controls, PresetName, QualityTier } from "../types.ts";
 import { DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
 
 export interface PanelCallbacks {
@@ -17,8 +17,11 @@ export class ControlsPanel {
   private hideTimer = 0;
   private pinned = false;
   private destroyed = false;
+  // Updates a slider's thumb + readout when its control changes from elsewhere (e.g. keyboard shortcuts).
+  private rangeSyncers = new Map<keyof Controls, (c: Controls) => void>();
+  private unsubscribe?: () => void;
 
-  constructor(parent: HTMLElement, controls: ControlsStore, private cb: PanelCallbacks) {
+  constructor(parent: HTMLElement, private controls: ControlsStore, private cb: PanelCallbacks) {
     const c = controls.get();
 
     this.el = document.createElement("div");
@@ -38,15 +41,17 @@ export class ControlsPanel {
     title.textContent = "Matrix";
     this.panel.appendChild(title);
 
-    this.range("Speed", c.speed, 0.2, 3, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
+    this.range("Speed", "speed", 0.2, 3, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
     // Slider is inverted: right = longer trail. Map slider [0.01,0.5] → stored decay [0.5,0.01].
-    this.range("Trail length", 0.51 - c.trailLength, 0.01, 0.5, 0.01,
+    this.range("Trail length", "trailLength", 0.01, 0.5, 0.01,
       (v) => controls.set({ trailLength: 0.51 - v }),
-      (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`);
-    this.range("Density", c.density, 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
-    this.range("Glyph size", c.glyphScale, 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
-    this.range("Glow", c.glow, 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
-    this.range("Lead glow", c.leadBrightness, 0, 3, 0.05, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
+      (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`,
+      (c) => 0.51 - c.trailLength);
+    this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
+    this.range("Glyph change", "glyphRate", 0, 5, 0.05, (v) => controls.set({ glyphRate: v }), (v) => `${v.toFixed(2)}×`);
+    this.range("Glyph size", "glyphScale", 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
+    this.range("Glow", "glow", 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
+    this.range("Lead glow", "leadBrightness", 0, 3, 0.05, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
 
     this.select<PresetName>("Color", c.preset, [
       ["classic", "Classic green"],
@@ -93,7 +98,7 @@ export class ControlsPanel {
 
     const hint = document.createElement("p");
     hint.className = "mx-hint";
-    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel";
+    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>−</kbd>/<kbd>=</kbd> density";
     this.panel.appendChild(hint);
 
     this.el.appendChild(this.panel);
@@ -108,6 +113,9 @@ export class ControlsPanel {
     this.onActivity = this.onActivity.bind(this);
     window.addEventListener("pointermove", this.onActivity, { passive: true });
     window.addEventListener("pointerdown", this.onActivity, { passive: true });
+    this.unsubscribe = controls.subscribe((state, changed) => {
+      for (const key of changed) this.rangeSyncers.get(key)?.(state);
+    });
     this.show();
   }
 
@@ -132,30 +140,36 @@ export class ControlsPanel {
 
   private range(
     label: string,
-    value: number,
+    key: keyof Controls,
     min: number,
     max: number,
     step: number,
     onInput: (v: number) => void,
     fmt: (v: number) => string,
+    read: (c: Controls) => number = (c) => c[key] as number,
   ): void {
     const row = this.row(label);
     const val = document.createElement("span");
     val.className = "mx-val";
-    val.textContent = fmt(value);
     row.appendChild(val);
     const input = document.createElement("input");
     input.type = "range";
     input.min = String(min);
     input.max = String(max);
     input.step = String(step);
-    input.value = String(value);
+    const apply = (v: number): void => {
+      input.value = String(v);
+      val.textContent = fmt(v);
+    };
+    apply(read(this.controls.get()));
     input.addEventListener("input", () => {
       const v = Number(input.value);
       val.textContent = fmt(v);
       onInput(v);
     });
     row.appendChild(input);
+    // Reflect external changes (keyboard shortcuts, reset) back onto the slider.
+    this.rangeSyncers.set(key, (c) => apply(read(c)));
   }
 
   private select<T extends string>(
@@ -227,6 +241,7 @@ export class ControlsPanel {
 
   destroy(): void {
     this.destroyed = true;
+    this.unsubscribe?.();
     window.clearTimeout(this.hideTimer);
     window.removeEventListener("pointermove", this.onActivity);
     window.removeEventListener("pointerdown", this.onActivity);

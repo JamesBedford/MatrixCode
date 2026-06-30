@@ -14,6 +14,7 @@ const CONTROLS: Controls = {
   speed: 1,
   trailLength: 0.08,
   density: 1,
+  glyphRate: 1,
   glyphScale: 1,
   glow: 1,
   leadBrightness: 1.6,
