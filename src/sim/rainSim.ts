@@ -59,6 +59,8 @@ export class RainSim {
   // `claimed` holds the target cells the rain has lit at least once this activation, so they hold.
   private messageTargets: Map<number, number> | null = null;
   private claimed = new Set<number>();
+  // 0..1 fade envelope scaling the message hold brightness — driven by the scheduler for fade in/out.
+  private messageIntensity = 1;
 
   constructor(opts: RainSimOptions) {
     this.cols = opts.cols;
@@ -133,6 +135,7 @@ export class RainSim {
     // Cell indices depend on `cols`, so any active message's targets are now stale — drop them.
     this.messageTargets = null;
     this.claimed.clear();
+    this.messageIntensity = 1;
   }
 
   /** Pre-fill the screen so it doesn't start empty. */
@@ -152,6 +155,7 @@ export class RainSim {
     this.seedColumns(0, this.cols); // deactivate every column + restagger respawn timers
     this.messageTargets = null;
     this.claimed.clear();
+    this.messageIntensity = 1;
   }
 
   /**
@@ -168,19 +172,23 @@ export class RainSim {
     }
     this.messageTargets = next;
     this.claimed.clear();
+    this.messageIntensity = 1;
   }
 
   /** Remove the active message so its revealed cells dissolve back into random rain. */
   clearMessageTargets(): void {
-    if (this.messageTargets !== null) {
-      // Lift each revealed cell to the floor so the letter dissolves smoothly instead of snapping off.
-      const floor = this.cfg.messageBrightFloor;
-      for (const idx of this.claimed) {
-        if (this.bright[idx]! < floor) this.bright[idx] = floor;
-      }
-    }
     this.messageTargets = null;
     this.claimed.clear();
+    this.messageIntensity = 1;
+  }
+
+  /**
+   * Scale the brightness a revealed message cell holds, 0..1. The scheduler ramps this to fade the
+   * message in and out; because it only scales the hold floor (display, not the underlying brightness),
+   * a fade to 0 lands exactly on the un-held value — no pop when the message is cleared.
+   */
+  setMessageIntensity(intensity: number): void {
+    this.messageIntensity = clamp(intensity, 0, 1);
   }
 
   /** Whether an in-rain message is currently active. */
@@ -290,7 +298,9 @@ export class RainSim {
         const o = idx * 4;
         // A revealed (claimed) message cell holds at least the floor brightness so the letter stays
         // legible between head passes; the underlying `bright` keeps decaying, so the rng is unaffected.
-        const packB = target !== undefined && b < floor && this.claimed.has(idx) ? floor : b;
+        // The floor is scaled by the fade envelope (messageIntensity) so the message fades in/out.
+        const heldFloor = floor * this.messageIntensity;
+        const packB = target !== undefined && this.claimed.has(idx) && b < heldFloor ? heldFloor : b;
         this.state[o] = this.glyphNew[idx]!;
         this.state[o + 1] = Math.round(clamp(packB, 0, 1) * 255);
         this.state[o + 2] =

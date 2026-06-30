@@ -12,6 +12,8 @@ export const DEFAULT_MESSAGES: MessagesDoc = {
   enabled: true,
   frequencyMs: 8000,
   persistenceMs: 4000,
+  appearMs: 600,
+  disappearMs: 1200,
 };
 
 /** Deep copy so callers can mutate a working draft without touching shared state. */
@@ -30,6 +32,8 @@ export function sanitizeMessages(raw: unknown): MessagesDoc {
     enabled: bool(r.enabled, DEFAULT_MESSAGES.enabled),
     frequencyMs: num(r.frequencyMs, MIN_MS, MAX_MS, DEFAULT_MESSAGES.frequencyMs),
     persistenceMs: num(r.persistenceMs, MIN_MS, MAX_MS, DEFAULT_MESSAGES.persistenceMs),
+    appearMs: num(r.appearMs, 0, MAX_MS, DEFAULT_MESSAGES.appearMs),
+    disappearMs: num(r.disappearMs, 0, MAX_MS, DEFAULT_MESSAGES.disappearMs),
   };
 }
 

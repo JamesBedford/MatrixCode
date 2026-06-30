@@ -358,4 +358,27 @@ describe("RainSim — message injection", () => {
     for (let i = 0; i < 200; i++) sim.update(1 / 60, DENSE);
     expect(sim.hasMessageTargets()).toBe(true);
   });
+
+  it("the fade intensity dims a held message and never brightens it", () => {
+    // Intensity is display-only (it doesn't touch `bright` or the rng), so two identically-seeded
+    // sims evolve the same rain; only the packed brightness of held message cells differs.
+    const full = makeSim(16, 40, 555);
+    const faded = makeSim(16, 40, 555);
+    full.setMessageTargets(rowTargets(full, 20, 2, MSG_GLYPHS));
+    faded.setMessageTargets(rowTargets(faded, 20, 2, MSG_GLYPHS));
+    let sumFull = 0, sumFaded = 0;
+    for (let i = 0; i < 1500; i++) {
+      full.update(1 / 60, DENSE);
+      faded.setMessageIntensity(0.3);
+      faded.update(1 / 60, DENSE);
+      MSG_GLYPHS.forEach((_g, j) => {
+        const bf = brightAt(full, 2 + j, 20);
+        const bd = brightAt(faded, 2 + j, 20);
+        expect(bd).toBeLessThanOrEqual(bf); // a lower intensity is never brighter
+        sumFull += bf;
+        sumFaded += bd;
+      });
+    }
+    expect(sumFaded).toBeLessThan(sumFull); // and is dimmer overall
+  });
 });

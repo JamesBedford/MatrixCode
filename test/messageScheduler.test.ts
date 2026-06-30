@@ -11,6 +11,7 @@ class FakeSim {
   last: Map<number, number> | null = null;
   sets = 0;
   cleared = 0;
+  intensity = 1;
   constructor(cols: number, rows: number) {
     this.cols = cols;
     this.rows = rows;
@@ -22,6 +23,10 @@ class FakeSim {
   clearMessageTargets(): void {
     this.last = null;
     this.cleared++;
+    this.intensity = 1;
+  }
+  setMessageIntensity(v: number): void {
+    this.intensity = v;
   }
 }
 
@@ -31,6 +36,8 @@ const doc = (over: Partial<MessagesDoc> = {}): MessagesDoc => ({
   enabled: true,
   frequencyMs: 1000,
   persistenceMs: 500,
+  appearMs: 0,
+  disappearMs: 0,
   ...over,
 });
 const sched = (seed = 1): MessageScheduler => new MessageScheduler({ glyphSet, rng: createRng(seed) });
@@ -184,5 +191,52 @@ describe("MessageScheduler.update scheduling", () => {
     s.configure(doc({ frequencyMs: 100000 })); // would not fire for a long time
     s.previewOne(5, sim, doc({ messages: ["NEO"] }));
     expect(sim.last).not.toBeNull();
+  });
+});
+
+describe("MessageScheduler fade envelope", () => {
+  it("ramps intensity 0→1 over appearMs, holds, then 1→0 over disappearMs", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 40);
+    // persistence 2000, appear 400, disappear 600 → hold from 400..1400
+    s.previewOne(0, sim, doc({ messages: ["NEO"], persistenceMs: 2000, appearMs: 400, disappearMs: 600 }));
+    expect(sim.intensity).toBeCloseTo(0, 5); // fade-in start
+    s.update(200, sim);
+    expect(sim.intensity).toBeCloseTo(0.5, 2); // mid fade-in
+    s.update(400, sim);
+    expect(sim.intensity).toBeCloseTo(1, 5); // fade-in complete
+    s.update(1000, sim);
+    expect(sim.intensity).toBe(1); // hold
+    s.update(1700, sim);
+    expect(sim.intensity).toBeCloseTo(0.5, 2); // mid fade-out
+    s.update(1999, sim);
+    expect(sim.intensity).toBeLessThan(0.05); // nearly gone
+    s.update(2000, sim);
+    expect(sim.last).toBeNull(); // expired and cleared
+  });
+
+  it("holds intensity at 1 when appear and disappear are 0 (instant)", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 40);
+    s.previewOne(0, sim, doc({ messages: ["NEO"], persistenceMs: 1000, appearMs: 0, disappearMs: 0 }));
+    expect(sim.intensity).toBe(1);
+    s.update(500, sim);
+    expect(sim.intensity).toBe(1);
+    s.update(999, sim);
+    expect(sim.intensity).toBe(1);
+  });
+
+  it("scales appear+disappear to fit when they exceed persistence", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 40);
+    // 2000+2000 > 1000 → scaled to 500 each: fade in 0..500, fade out 500..1000, no hold
+    s.previewOne(0, sim, doc({ messages: ["NEO"], persistenceMs: 1000, appearMs: 2000, disappearMs: 2000 }));
+    expect(sim.intensity).toBeCloseTo(0, 5);
+    s.update(250, sim);
+    expect(sim.intensity).toBeCloseTo(0.5, 2);
+    s.update(500, sim);
+    expect(sim.intensity).toBeCloseTo(1, 2);
+    s.update(750, sim);
+    expect(sim.intensity).toBeCloseTo(0.5, 2);
   });
 });

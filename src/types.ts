@@ -59,8 +59,12 @@ export interface MessagesDoc {
   enabled: boolean;
   /** Average gap between messages in ms (jittered ±25%). */
   frequencyMs: number;
-  /** How long each message stays before dissolving back into rain, in ms. */
+  /** Total time each message is on screen, in ms (includes the appear and disappear phases). */
   persistenceMs: number;
+  /** How long the message fades in, in ms (0 = instant). */
+  appearMs: number;
+  /** How long the message fades out, in ms (0 = instant). */
+  disappearMs: number;
 }
 
 /** Empirical tuning constants for the rain simulation (not user-facing). */
