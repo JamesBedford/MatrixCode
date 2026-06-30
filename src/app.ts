@@ -11,6 +11,7 @@ import { ControlsStore } from "./config/controls.ts";
 import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
 import { StateTexture } from "./gl/stateTexture.ts";
 import { Renderer } from "./gl/renderer.ts";
+import { AdaptiveResolution } from "./gl/adaptiveResolution.ts";
 import { ControlsPanel } from "./ui/controlsPanel.ts";
 import { IntroStore, sanitizeIntro, toTypeConfig, type IntroScript } from "./config/introStore.ts";
 import { IntroEditor } from "./ui/introEditor.ts";
@@ -94,6 +95,16 @@ function showNotice(parent: HTMLElement, text: string): HTMLElement {
   return n;
 }
 
+/** A tiny diagnostics overlay (smoothed FPS · render scale · backing resolution), shown with ?hud. */
+function createHud(parent: HTMLElement): HTMLElement {
+  const d = document.createElement("div");
+  d.style.cssText =
+    "position:fixed;top:8px;left:8px;z-index:9999;font:12px/1.5 ui-monospace,monospace;color:#00ff41;" +
+    "background:rgba(0,0,0,.55);padding:4px 8px;border-radius:4px;pointer-events:none;white-space:pre;letter-spacing:.02em;";
+  parent.appendChild(d);
+  return d;
+}
+
 export async function mountMatrixRain(
   container: HTMLElement,
   options?: Partial<Controls>,
@@ -145,6 +156,13 @@ export async function mountMatrixRain(
   let cssH = 1;
   let deviceW = 1;
   let deviceH = 1;
+  // Adaptive resolution: render scale is the fraction of the full device-pixel backing actually
+  // drawn. It stays at 1.0 (full, visually identical) while there's frame-rate headroom and only
+  // drops under sustained load to keep the rain smooth. Disable with ?adaptive=0.
+  let renderScale = 1;
+  const adaptiveRes = new AdaptiveResolution();
+  const adaptiveEnabled = new URLSearchParams(location.search).get("adaptive") !== "0";
+  const hud = new URLSearchParams(location.search).has("hud") ? createHud(container) : null;
   let pending: { w: number; h: number } | null = null;
   let running = false;
   let raf = 0;
@@ -168,6 +186,17 @@ export async function mountMatrixRain(
   let superState: SuperState | null = null;
   let exitChan: ReturnType<typeof openExitChannel> | null = null;
 
+  // Size the canvas backing + renderer targets to the full device resolution times the current
+  // adaptive render scale. The CSS size stays full-viewport, so a scale < 1 simply renders fewer
+  // pixels and lets the browser upscale — the grid (and thus the look) is unchanged.
+  const applyBackingSize = (): void => {
+    const w = Math.max(1, Math.round(deviceW * renderScale));
+    const h = Math.max(1, Math.round(deviceH * renderScale));
+    canvas.width = w;
+    canvas.height = h;
+    renderer?.resize(w, h, controls.get().quality);
+  };
+
   const applySize = (w: number, h: number): void => {
     cssW = w;
     cssH = h;
@@ -175,11 +204,9 @@ export async function mountMatrixRain(
     grid = d.grid;
     deviceW = d.devW;
     deviceH = d.devH;
-    canvas.width = deviceW;
-    canvas.height = deviceH;
     sim?.resize(grid.cols, grid.rows);
     stateTex?.resize(grid.cols, grid.rows);
-    renderer?.resize(deviceW, deviceH, controls.get().quality);
+    applyBackingSize();
   };
 
   const flushResize = (): void => {
@@ -194,7 +221,7 @@ export async function mountMatrixRain(
     sim = new RainSim({ cols: grid.cols, rows: grid.rows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: 0x1a2b3c });
     stateTex = new StateTexture(gl, grid.cols, grid.rows);
     renderer = new Renderer(gl, atlas, stateTex);
-    renderer.resize(deviceW, deviceH, controls.get().quality);
+    applyBackingSize();
     sim.warmUp(controls.get(), WARMUP_SECONDS);
   };
 
@@ -369,8 +396,21 @@ export async function mountMatrixRain(
       return;
     }
     flushResize();
-    const dt = Math.min((now - last) / 1000, 1 / 15);
+    const intervalMs = now - last;
+    const dt = Math.min(intervalMs / 1000, 1 / 15);
     last = now;
+    // Adaptive resolution: feed the achieved frame interval; reallocate the backing only when the
+    // scale actually changes (the controller's cooldown keeps that rare). The controller's EMA is
+    // updated either way so the HUD reads a stable FPS even when scaling is disabled.
+    const s = adaptiveRes.update(Math.min(intervalMs, 100));
+    if (adaptiveEnabled && s !== renderScale) {
+      renderScale = s;
+      applyBackingSize();
+    }
+    if (hud) {
+      const fps = adaptiveRes.smoothedMs > 0 ? 1000 / adaptiveRes.smoothedMs : 0;
+      hud.textContent = `${fps.toFixed(0)} fps · ${Math.round(renderScale * 100)}% res · ${canvas.width}×${canvas.height}`;
+    }
     if (now >= rainStartAtMs) {
       // Ramp toward full by linearly raising the cap on concurrently-raining columns, so the
       // rain fades in gradually. (Scaling density instead leaves it ~empty then bursts at the end.)
