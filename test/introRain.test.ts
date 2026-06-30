@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { densityRampFactor } from "../src/sim/introRain.ts";
+import { densityRampFactor, loadRampMs } from "../src/sim/introRain.ts";
 
 describe("densityRampFactor", () => {
   it("is 0 before the rain starts", () => {
@@ -27,5 +27,24 @@ describe("densityRampFactor", () => {
   it("treats a -Infinity start as already running at full", () => {
     expect(densityRampFactor(0, Number.NEGATIVE_INFINITY, 0)).toBe(1);
     expect(densityRampFactor(0, Number.NEGATIVE_INFINITY, 5000)).toBe(1);
+  });
+});
+
+describe("loadRampMs", () => {
+  it("is 0 on a first visit, regardless of the configured ramp", () => {
+    expect(loadRampMs(false, 5000, false)).toBe(0);
+  });
+
+  it("is 0 under reduced motion", () => {
+    expect(loadRampMs(true, 5000, true)).toBe(0);
+  });
+
+  it("is 0 when the configured ramp is zero or negative", () => {
+    expect(loadRampMs(true, 0, false)).toBe(0);
+    expect(loadRampMs(true, -1, false)).toBe(0);
+  });
+
+  it("is the configured ramp on a repeat visit with motion allowed", () => {
+    expect(loadRampMs(true, 5000, false)).toBe(5000);
   });
 });
