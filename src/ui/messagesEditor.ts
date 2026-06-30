@@ -12,7 +12,7 @@ export interface MessagesEditorCallbacks {
 }
 
 // Longest the modal stays hidden during a preview before it pops back (a preview is just a peek).
-const PREVIEW_MAX_HIDE_MS = 6000;
+const PREVIEW_MAX_HIDE_MS = 8000;
 
 /** Centered modal for editing the in-rain messages and their scheduling. Built on the ModalEditor kit. */
 export class MessagesEditor extends ModalEditor {
@@ -52,7 +52,9 @@ export class MessagesEditor extends ModalEditor {
     this.beginPreview(); // hide the modal so the rain message is unobstructed
     this.cb.onPreview(cloneMessages(this.draft));
     this.clearPreviewTimer();
-    const hideMs = Math.min(this.draft.persistenceMs + 500, PREVIEW_MAX_HIDE_MS);
+    // Stay hidden for the whole animation (fade in + hold + fade out), capped so it's only a peek.
+    const total = this.draft.appearMs + this.draft.persistenceMs + this.draft.disappearMs;
+    const hideMs = Math.min(total + 500, PREVIEW_MAX_HIDE_MS);
     this.previewTimer = window.setTimeout(() => {
       this.previewTimer = null;
       this.restoreFromPreview();
@@ -95,6 +97,7 @@ export class MessagesEditor extends ModalEditor {
     behaviour.appendChild(this.secondsField("Each stays for (s)", this.draft.persistenceMs, (ms) => (this.draft.persistenceMs = ms)));
     behaviour.appendChild(this.secondsField("Appear over (s)", this.draft.appearMs, (ms) => (this.draft.appearMs = ms)));
     behaviour.appendChild(this.secondsField("Disappear over (s)", this.draft.disappearMs, (ms) => (this.draft.disappearMs = ms)));
+    behaviour.appendChild(this.toggleField("Flicker dissolve", this.draft.flickerOut, (v) => (this.draft.flickerOut = v)));
     this.dialog.appendChild(behaviour);
 
     this.dialog.appendChild(this.footer([

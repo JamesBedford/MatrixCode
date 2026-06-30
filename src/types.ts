@@ -65,6 +65,8 @@ export interface MessagesDoc {
   appearMs: number;
   /** How long the message fades out, in ms (0 = instant); added after the hold. */
   disappearMs: number;
+  /** Also dissolve on exit by flickering the letters back to random glyphs over the disappear time. */
+  flickerOut: boolean;
 }
 
 /** Empirical tuning constants for the rain simulation (not user-facing). */

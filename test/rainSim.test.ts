@@ -381,4 +381,21 @@ describe("RainSim — message injection", () => {
     }
     expect(sumFaded).toBeLessThan(sumFull); // and is dimmer overall
   });
+
+  it("scrambles message cells back to random glyphs when scramble is high", () => {
+    const sim = makeSim(16, 40);
+    const row = 20, start = 2;
+    sim.setMessageTargets(rowTargets(sim, row, start, MSG_GLYPHS));
+    for (let i = 0; i < 1500; i++) sim.update(1 / 60, DENSE); // reveal & hold; scramble 0 → letters pinned
+    MSG_GLYPHS.forEach((g, i) => expect(glyphAt(sim, start + i, row)).toBe(g));
+
+    // Full scramble: every head/mutation roll picks a random glyph, so the letters flicker away.
+    sim.setMessageScramble(1);
+    let sawRandom = false;
+    for (let i = 0; i < 300; i++) {
+      sim.update(1 / 60, DENSE);
+      MSG_GLYPHS.forEach((g, j) => { if (glyphAt(sim, start + j, row) !== g) sawRandom = true; });
+    }
+    expect(sawRandom).toBe(true);
+  });
 });

@@ -61,6 +61,8 @@ export class RainSim {
   private claimed = new Set<number>();
   // 0..1 fade envelope scaling the message hold brightness — driven by the scheduler for fade in/out.
   private messageIntensity = 1;
+  // 0..1 probability a message cell shows a random glyph instead of its letter (flicker dissolve on exit).
+  private messageScramble = 0;
 
   constructor(opts: RainSimOptions) {
     this.cols = opts.cols;
@@ -108,7 +110,10 @@ export class RainSim {
     const target = this.messageTargets?.get(idx);
     this.bright[idx] = 1;
     this.glyphOld[idx] = this.glyphNew[idx]!;
-    this.glyphNew[idx] = target ?? g; // a passing head delivers the message letter; otherwise a random glyph
+    // A passing head delivers the message letter; otherwise a random glyph. During a flicker dissolve
+    // the head may stamp a random glyph instead (the extra rng draw only happens while scrambling).
+    this.glyphNew[idx] =
+      target === undefined ? g : this.messageScramble > 0 && this.rng() < this.messageScramble ? g : target;
     this.phase[idx] = 1;
     if (target !== undefined) this.claimed.add(idx);
   }
@@ -136,6 +141,7 @@ export class RainSim {
     this.messageTargets = null;
     this.claimed.clear();
     this.messageIntensity = 1;
+    this.messageScramble = 0;
   }
 
   /** Pre-fill the screen so it doesn't start empty. */
@@ -156,6 +162,7 @@ export class RainSim {
     this.messageTargets = null;
     this.claimed.clear();
     this.messageIntensity = 1;
+    this.messageScramble = 0;
   }
 
   /**
@@ -173,22 +180,35 @@ export class RainSim {
     this.messageTargets = next;
     this.claimed.clear();
     this.messageIntensity = 1;
+    this.messageScramble = 0;
   }
 
   /** Remove the active message so its revealed cells dissolve back into random rain. */
   clearMessageTargets(): void {
+    // The fade-out has dimmed each revealed cell toward 0; zero it so the pin releasing can't flash
+    // a cell that a head happened to re-light on the final frame.
+    if (this.messageTargets !== null) for (const idx of this.claimed) this.bright[idx] = 0;
     this.messageTargets = null;
     this.claimed.clear();
     this.messageIntensity = 1;
+    this.messageScramble = 0;
   }
 
   /**
-   * Scale the brightness a revealed message cell holds, 0..1. The scheduler ramps this to fade the
-   * message in and out; because it only scales the hold floor (display, not the underlying brightness),
-   * a fade to 0 lands exactly on the un-held value — no pop when the message is cleared.
+   * Scale the brightness a revealed message cell shows, 0..1. The scheduler ramps this to fade the
+   * message in and out; the whole displayed brightness (including head flashes) is scaled, so the
+   * fade is visible even when dense rain keeps re-lighting the letters.
    */
   setMessageIntensity(intensity: number): void {
     this.messageIntensity = clamp(intensity, 0, 1);
+  }
+
+  /**
+   * Probability (0..1) that a message cell shows a random glyph instead of its letter. Ramped up over
+   * the fade-out for a "flicker dissolve" where the letters scramble back into the rain.
+   */
+  setMessageScramble(p: number): void {
+    this.messageScramble = clamp(p, 0, 1);
   }
 
   /** Whether an in-rain message is currently active. */
@@ -282,10 +302,12 @@ export class RainSim {
           const g = this.glyph.randomGlyphIndex(this.rng); // always drawn so the rng stream is message-independent
           if (target !== undefined) {
             // A lit message cell resolves to its letter on this mutation and holds it (revealed via mutation).
+            // During a flicker dissolve it may instead resolve to a random glyph (extra rng only while scrambling).
             this.claimed.add(idx);
-            if (target !== this.glyphNew[idx]) {
+            const next = this.messageScramble > 0 && this.rng() < this.messageScramble ? g : target;
+            if (next !== this.glyphNew[idx]) {
               this.glyphOld[idx] = this.glyphNew[idx]!;
-              this.glyphNew[idx] = target;
+              this.glyphNew[idx] = next;
               this.phase[idx] = 0;
             }
           } else {
@@ -297,10 +319,11 @@ export class RainSim {
 
         const o = idx * 4;
         // A revealed (claimed) message cell holds at least the floor brightness so the letter stays
-        // legible between head passes; the underlying `bright` keeps decaying, so the rng is unaffected.
-        // The floor is scaled by the fade envelope (messageIntensity) so the message fades in/out.
-        const heldFloor = floor * this.messageIntensity;
-        const packB = target !== undefined && this.claimed.has(idx) && b < heldFloor ? heldFloor : b;
+        // legible between head passes. The whole held brightness is scaled by the fade envelope
+        // (messageIntensity) — including head flashes — so the fade is visible even in dense rain. The
+        // underlying `bright` is untouched, so the rng stays message-independent.
+        const packB =
+          target !== undefined && this.claimed.has(idx) ? Math.max(b, floor) * this.messageIntensity : b;
         this.state[o] = this.glyphNew[idx]!;
         this.state[o + 1] = Math.round(clamp(packB, 0, 1) * 255);
         this.state[o + 2] =

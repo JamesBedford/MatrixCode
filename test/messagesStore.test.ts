@@ -59,6 +59,12 @@ describe("sanitizeMessages", () => {
     expect(s.enabled).toBe(DEFAULT_MESSAGES.enabled);
     expect(s.appearMs).toBe(DEFAULT_MESSAGES.appearMs);
     expect(s.disappearMs).toBe(DEFAULT_MESSAGES.disappearMs);
+    expect(s.flickerOut).toBe(DEFAULT_MESSAGES.flickerOut);
+  });
+
+  it("coerces flickerOut to a boolean", () => {
+    expect(sanitizeMessages({ flickerOut: true }).flickerOut).toBe(true);
+    expect(sanitizeMessages({ flickerOut: "yes" }).flickerOut).toBe(DEFAULT_MESSAGES.flickerOut);
   });
 
   it("clamps appear/disappear and allows 0 (instant)", () => {
@@ -84,14 +90,14 @@ describe("MessagesStore", () => {
 
   it("persists across instances (round-trip)", () => {
     const a = new MessagesStore();
-    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900 });
+    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true });
     const b = new MessagesStore();
-    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900 });
+    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true });
   });
 
   it("reset clears storage and returns defaults", () => {
     const s = new MessagesStore();
-    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0 });
+    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true });
     const after = s.reset();
     expect(after.messages).toEqual(DEFAULT_MESSAGES.messages);
     expect(new MessagesStore().get().messages).toEqual(DEFAULT_MESSAGES.messages);

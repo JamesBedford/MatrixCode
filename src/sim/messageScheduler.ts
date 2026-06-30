@@ -16,6 +16,7 @@ export interface MessageSink {
   setMessageTargets(targets: Map<number, number>): void;
   clearMessageTargets(): void;
   setMessageIntensity(intensity: number): void;
+  setMessageScramble(p: number): void;
 }
 
 export interface MessageSchedulerDeps {
@@ -97,6 +98,7 @@ export class MessageScheduler {
         this.nextFireAt = nowMs + this.gap();
       } else {
         sim.setMessageIntensity(this.envelope(nowMs)); // fade in/out across the active window
+        sim.setMessageScramble(this.cfg!.flickerOut ? this.scramble(nowMs) : 0);
       }
       return; // one message at a time
     }
@@ -181,6 +183,7 @@ export class MessageScheduler {
     const disappear = Math.max(0, cfg.disappearMs);
     this.activeUntil = nowMs + appear + cfg.persistenceMs + disappear;
     sim.setMessageIntensity(this.envelope(nowMs));
+    sim.setMessageScramble(cfg.flickerOut ? this.scramble(nowMs) : 0);
   }
 
   /**
@@ -195,5 +198,15 @@ export class MessageScheduler {
     const fadeOutStart = this.activeUntil! - this.activeStart! - disappear; // = appear + hold
     if (disappear > 0 && t > fadeOutStart) return Math.max(0, (this.activeUntil! - nowMs) / disappear); // fade out
     return 1; // hold
+  }
+
+  /** The flicker-dissolve scramble probability at `nowMs`: 0 until the fade-out, then ramps 0→1 across it. */
+  private scramble(nowMs: number): number {
+    const disappear = Math.max(0, this.cfg!.disappearMs);
+    if (disappear <= 0) return 0;
+    const fadeOutStart = this.activeUntil! - this.activeStart! - disappear;
+    const t = nowMs - this.activeStart!;
+    if (t <= fadeOutStart) return 0;
+    return Math.min(1, (t - fadeOutStart) / disappear);
   }
 }

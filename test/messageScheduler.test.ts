@@ -12,6 +12,7 @@ class FakeSim {
   sets = 0;
   cleared = 0;
   intensity = 1;
+  scramble = 0;
   constructor(cols: number, rows: number) {
     this.cols = cols;
     this.rows = rows;
@@ -24,9 +25,13 @@ class FakeSim {
     this.last = null;
     this.cleared++;
     this.intensity = 1;
+    this.scramble = 0;
   }
   setMessageIntensity(v: number): void {
     this.intensity = v;
+  }
+  setMessageScramble(v: number): void {
+    this.scramble = v;
   }
 }
 
@@ -38,6 +43,7 @@ const doc = (over: Partial<MessagesDoc> = {}): MessagesDoc => ({
   persistenceMs: 500,
   appearMs: 0,
   disappearMs: 0,
+  flickerOut: false,
   ...over,
 });
 const sched = (seed = 1): MessageScheduler => new MessageScheduler({ glyphSet, rng: createRng(seed) });
@@ -245,5 +251,28 @@ describe("MessageScheduler fade envelope", () => {
     expect(sim.last).not.toBeNull(); // still active long past persistenceMs — no clipping
     s.update(5000, sim);
     expect(sim.last).toBeNull();
+  });
+
+  it("ramps the scramble 0→1 over the fade-out when flickerOut is enabled", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 40);
+    // appear 0 + hold 1000 + disappear 2000 = 3000; fade-out 1000..3000
+    s.previewOne(0, sim, doc({ messages: ["NEO"], persistenceMs: 1000, appearMs: 0, disappearMs: 2000, flickerOut: true }));
+    s.update(500, sim);
+    expect(sim.scramble).toBe(0); // during hold, no scramble
+    s.update(1000, sim);
+    expect(sim.scramble).toBeCloseTo(0, 5); // fade-out start
+    s.update(2000, sim);
+    expect(sim.scramble).toBeCloseTo(0.5, 2); // mid fade-out
+    s.update(2999, sim);
+    expect(sim.scramble).toBeGreaterThan(0.95); // nearly fully random
+  });
+
+  it("keeps scramble at 0 when flickerOut is disabled", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 40);
+    s.previewOne(0, sim, doc({ messages: ["NEO"], persistenceMs: 1000, appearMs: 0, disappearMs: 2000, flickerOut: false }));
+    s.update(2000, sim);
+    expect(sim.scramble).toBe(0);
   });
 });
