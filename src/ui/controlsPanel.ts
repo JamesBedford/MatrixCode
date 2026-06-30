@@ -89,6 +89,9 @@ export class ControlsPanel {
     editMsgs.style.marginTop = "6px";
     this.panel.appendChild(editMsgs);
 
+    // Resets the tunable controls only — the user's custom intro (mx-intro) and
+    // messages (mx-messages) live in separate stores and are intentionally left
+    // untouched; each has its own "Reset to default" button inside its edit modal.
     const reset = this.button("↺ Reset to defaults", () => {
       controls.set(DEFAULT_CONTROLS);
       location.reload();
