@@ -5,10 +5,3 @@ dist-ssr
 .DS_Store
 .vite
 coverage
-
-# Generated benchmark artifacts (perf/run_bench.py is tracked)
-perf/*.html
-perf/shots/
-perf/results.json
-perf/REPORT.md
-perf/dpr_curve.json
