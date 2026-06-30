@@ -13,6 +13,7 @@ import { StateTexture } from "./gl/stateTexture.ts";
 import { Renderer } from "./gl/renderer.ts";
 import { AdaptiveResolution } from "./gl/adaptiveResolution.ts";
 import { ControlsPanel } from "./ui/controlsPanel.ts";
+import { applyFavicon } from "./ui/favicon.ts";
 import { IntroStore, sanitizeIntro, toTypeConfig, type IntroScript } from "./config/introStore.ts";
 import { IntroEditor } from "./ui/introEditor.ts";
 import { MessagesStore } from "./config/messagesStore.ts";
@@ -114,6 +115,7 @@ export async function mountMatrixRain(
   const controls = new ControlsStore();
   if (options) controls.set(options);
   applyChromeAccent(getPreset(controls.get().preset));
+  applyFavicon(getPreset(controls.get().preset));
 
   const canvas = document.createElement("canvas");
   container.appendChild(canvas);
@@ -685,7 +687,9 @@ export async function mountMatrixRain(
   // ---------- React to control changes ----------
   const unsubscribe = controls.subscribe((_state, changed) => {
     if (changed.has("preset")) {
-      applyChromeAccent(getPreset(controls.get().preset));
+      const preset = getPreset(controls.get().preset);
+      applyChromeAccent(preset);
+      applyFavicon(preset);
     }
     if (changed.has("glyphScale") && !superState) {
       applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
