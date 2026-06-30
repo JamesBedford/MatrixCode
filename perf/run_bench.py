@@ -26,16 +26,28 @@ PERF_DIR = Path(__file__).resolve().parent
 SHOTS_DIR = PERF_DIR / "shots"
 
 
-def bench_one(page, html_path: Path, q: dict, frames: int):
+def cdp_heap(cdp):
+    """Clean JS-heap bytes via CDP, after forcing a GC so retained-only footprint is measured."""
+    try:
+        cdp.send("HeapProfiler.collectGarbage")
+    except Exception:
+        pass
+    metrics = {m["name"]: m["value"] for m in cdp.send("Performance.getMetrics")["metrics"]}
+    return metrics.get("JSHeapUsedSize")
+
+
+def bench_one(page, cdp, html_path: Path, q: dict, frames: int):
     params = f"bench=1&w={q['w']}&h={q['h']}&dpr={q['dpr']}&quality={q['quality']}"
     url = f"file://{html_path}?{params}"
     page.goto(url)
     page.wait_for_function("window.__bench && window.__bench.ready === true", timeout=60000)
     info = page.evaluate("window.__bench.info()")
+    idle_heap = cdp_heap(cdp)  # clean, post-warmup, pre-run
     result = page.evaluate(
         "async (frames) => await window.__bench.run({ frames })", frames
     )
-    return info, result
+    retained_heap = cdp_heap(cdp)  # clean, post-run
+    return info, result, idle_heap, retained_heap
 
 
 def screenshot_canvas(page, out_path: Path):
@@ -99,14 +111,23 @@ def main():
     out = {"config": {**q, "frames": args.frames}, "versions": {}}
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--use-gl=angle", "--ignore-gpu-blocklist"])
-        page = browser.new_page(viewport={"width": args.w, "height": args.h})
+        browser = p.chromium.launch(headless=True, args=[
+            "--use-gl=angle",
+            "--ignore-gpu-blocklist",
+            "--enable-precise-memory-info",  # populate performance.memory for the heap metric
+            "--js-flags=--expose-gc",
+        ])
         for label, path in versions:
             if not path.exists():
                 print(f"!! missing {path}", file=sys.stderr)
                 continue
             print(f"== {label}: {path}")
-            info, result = bench_one(page, path, q, args.frames)
+            # Fresh page per version so JS heap + GL state never carry across versions.
+            page = browser.new_page(viewport={"width": args.w, "height": args.h})
+            cdp = page.context.new_cdp_session(page)
+            cdp.send("Performance.enable")
+            cdp.send("HeapProfiler.enable")
+            info, result, idle_heap, retained_heap = bench_one(page, cdp, path, q, args.frames)
             shot = SHOTS_DIR / f"{label}.png"
             screenshot_canvas(page, shot)
             ttff = measure_ttff(page, path, q)
@@ -114,12 +135,16 @@ def main():
                 "info": info,
                 "result": result,
                 "ttff_ms": ttff,
+                "idle_heap_bytes": idle_heap,
+                "retained_heap_bytes": retained_heap,
                 "screenshot": str(shot),
             }
+            page.close()
             fm = result["frameMs"]
             fps = result["fps"]
+            ih = f"{idle_heap/1e6:.2f}MB" if idle_heap else "n/a"
             print(f"   frameMs avg={fm['avg']:.3f} min={fm['min']:.3f} max={fm['max']:.3f} "
-                  f"p95={fm['p95']:.3f} | fps avg={fps['avg']:.1f}")
+                  f"p95={fm['p95']:.3f} | fps avg={fps['avg']:.1f} | idle heap {ih}")
         browser.close()
 
     # Fidelity diffs vs baseline.
