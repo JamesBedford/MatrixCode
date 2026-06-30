@@ -46,10 +46,14 @@ void main() {
   float phase = float(b & 63) / 63.0;
   float giOld = floor(st.a * 255.0 + 0.5);
 
-  // Continuous (non-fract) atlas-UV gradients shared by both glyph samples.
+  // Continuous (non-fract) atlas-UV gradients shared by both glyph samples (computed before any
+  // branch so textureGrad stays valid — it uses these explicit gradients, not implicit derivatives).
   vec2 duvdx = vec2(dFdx(colF), dFdx(rowF)) / uAtlasGrid;
   vec2 duvdy = vec2(dFdy(colF), dFdy(rowF)) / uAtlasGrid;
-  float ink = mix(sampleGlyph(giOld, cellUv, duvdx, duvdy), sampleGlyph(giNew, cellUv, duvdx, duvdy), phase);
+  float inkNew = sampleGlyph(giNew, cellUv, duvdx, duvdy);
+  // Once the crossfade finishes (phase == 1) mix(old, new, 1) == new exactly, so skip the second
+  // atlas fetch — most cells are settled, so they pay one glyph sample instead of two.
+  float ink = phase < 1.0 ? mix(sampleGlyph(giOld, cellUv, duvdx, duvdy), inkNew, phase) : inkNew;
 
   // Head/body/tail color ramp (exponential brightness already baked in the sim).
   vec3 col = mix(uTail, uBody, smoothstep(0.0, 0.5, bright));

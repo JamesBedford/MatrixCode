@@ -37,6 +37,11 @@ export class Renderer {
   readonly hdr: boolean;
   private internalFormat: number;
   private texType: number;
+  // Bloom levels never use alpha, so they use a packed 32-bpp HDR format (R11F_G11F_B10F) instead of
+  // RGBA16F — half the bloom-chain bandwidth and VRAM, with ample precision for the green glow.
+  private bloomInternalFormat: number;
+  private bloomFormat: number;
+  private bloomType: number;
 
   private deviceW = 1;
   private deviceH = 1;
@@ -58,6 +63,9 @@ export class Renderer {
     this.hdr = canFloat || canHalf;
     this.internalFormat = this.hdr ? gl.RGBA16F : gl.RGBA8;
     this.texType = this.hdr ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+    this.bloomInternalFormat = this.hdr ? gl.R11F_G11F_B10F : gl.RGBA8;
+    this.bloomFormat = this.hdr ? gl.RGB : gl.RGBA;
+    this.bloomType = this.hdr ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
 
     this.tri = createFullscreenTri(gl);
     this.glyphProg = twgl.createProgramInfo(gl, [fullscreenVert, glyphFrag]);
@@ -71,21 +79,29 @@ export class Renderer {
     this.atlas = atlas;
   }
 
-  private makeTarget(w: number, h: number): twgl.FramebufferInfo {
+  private makeTargetFmt(
+    w: number,
+    h: number,
+    internalFormat: number,
+    format: number,
+    type: number,
+  ): twgl.FramebufferInfo {
     return twgl.createFramebufferInfo(
       this.gl,
-      [
-        {
-          internalFormat: this.internalFormat,
-          type: this.texType,
-          format: this.gl.RGBA,
-          minMag: this.gl.LINEAR,
-          wrap: this.gl.CLAMP_TO_EDGE,
-        },
-      ],
+      [{ internalFormat, type, format, minMag: this.gl.LINEAR, wrap: this.gl.CLAMP_TO_EDGE }],
       w,
       h,
     );
+  }
+
+  /** Scene target — RGBA (the alpha channel carries the head bloom mask). */
+  private makeTarget(w: number, h: number): twgl.FramebufferInfo {
+    return this.makeTargetFmt(w, h, this.internalFormat, this.gl.RGBA, this.texType);
+  }
+
+  /** Bloom-level target — 32-bpp packed-float RGB (no alpha needed). */
+  private makeBloomTarget(w: number, h: number): twgl.FramebufferInfo {
+    return this.makeTargetFmt(w, h, this.bloomInternalFormat, this.bloomFormat, this.bloomType);
   }
 
   /** (Re)allocate the scene + bloom targets for a device-pixel size and quality. */
@@ -107,7 +123,7 @@ export class Renderer {
     for (let k = 0; k < count; k++) {
       const w = Math.max(1, deviceW >> (k + 1));
       const h = Math.max(1, deviceH >> (k + 1));
-      this.levels.push({ main: this.makeTarget(w, h), tmp: this.makeTarget(w, h), w, h });
+      this.levels.push({ main: this.makeBloomTarget(w, h), tmp: this.makeBloomTarget(w, h), w, h });
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
