@@ -59,11 +59,11 @@ export interface MessagesDoc {
   enabled: boolean;
   /** Average gap between messages in ms (jittered ±25%). */
   frequencyMs: number;
-  /** Total time each message is on screen, in ms (includes the appear and disappear phases). */
+  /** How long the message holds at full brightness, in ms (the fades are added on top of this). */
   persistenceMs: number;
-  /** How long the message fades in, in ms (0 = instant). */
+  /** How long the message fades in, in ms (0 = instant); added before the hold. */
   appearMs: number;
-  /** How long the message fades out, in ms (0 = instant). */
+  /** How long the message fades out, in ms (0 = instant); added after the hold. */
   disappearMs: number;
 }
 

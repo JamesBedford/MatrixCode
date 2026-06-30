@@ -175,27 +175,25 @@ export class MessageScheduler {
 
     sim.setMessageTargets(targets);
     this.activeStart = nowMs;
-    this.activeUntil = nowMs + cfg.persistenceMs;
+    // Total on-screen time = fade in + hold + fade out. The fades extend the animation; they never
+    // clip or scale the hold.
+    const appear = Math.max(0, cfg.appearMs);
+    const disappear = Math.max(0, cfg.disappearMs);
+    this.activeUntil = nowMs + appear + cfg.persistenceMs + disappear;
     sim.setMessageIntensity(this.envelope(nowMs));
   }
 
   /**
-   * The fade envelope at `nowMs`: ramps 0→1 over `appearMs`, holds at 1, then ramps 1→0 over
-   * `disappearMs`, all within the persistence window. If appear+disappear exceed the window they are
-   * scaled down to fit, so the message always fully fades in and out.
+   * The fade envelope at `nowMs`: ramps 0→1 over `appearMs`, holds at 1 for `persistenceMs`, then
+   * ramps 1→0 over `disappearMs`. No scaling — the phases run their full length back to back.
    */
   private envelope(nowMs: number): number {
-    const total = this.activeUntil! - this.activeStart!; // persistenceMs
-    let appear = Math.max(0, this.cfg!.appearMs);
-    let disappear = Math.max(0, this.cfg!.disappearMs);
-    if (appear + disappear > total && appear + disappear > 0) {
-      const scale = total / (appear + disappear);
-      appear *= scale;
-      disappear *= scale;
-    }
+    const appear = Math.max(0, this.cfg!.appearMs);
+    const disappear = Math.max(0, this.cfg!.disappearMs);
     const t = nowMs - this.activeStart!;
     if (appear > 0 && t < appear) return t / appear; // fade in
-    if (disappear > 0 && t > total - disappear) return Math.max(0, (this.activeUntil! - nowMs) / disappear); // fade out
+    const fadeOutStart = this.activeUntil! - this.activeStart! - disappear; // = appear + hold
+    if (disappear > 0 && t > fadeOutStart) return Math.max(0, (this.activeUntil! - nowMs) / disappear); // fade out
     return 1; // hold
   }
 }
