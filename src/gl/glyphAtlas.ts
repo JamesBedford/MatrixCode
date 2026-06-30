@@ -117,12 +117,19 @@ export async function buildGlyphAtlas(gl: WebGL2RenderingContext, opts: AtlasOpt
     }
   }
 
+  // The glyph shader samples a single coverage channel, so upload just that as an R8 texture
+  // instead of RGBA8 — a quarter of the VRAM and a quarter of the per-pixel sample bandwidth on
+  // the full-resolution glyph pass, with identical sampled values. The coverage lives in the
+  // canvas alpha channel; read it back AFTER any tofu fallbacks were drawn.
+  const finalAlpha = ctx.getImageData(0, 0, texW, texH).data;
+  const coverage = new Uint8Array(texW * texH);
+  for (let i = 0; i < coverage.length; i++) coverage[i] = finalAlpha[i * 4 + 3]!;
+
   const texture = gl.createTexture();
   if (!texture) throw new Error("Failed to create atlas texture");
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1); // single-byte rows
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, texW, texH, 0, gl.RED, gl.UNSIGNED_BYTE, coverage);
   gl.generateMipmap(gl.TEXTURE_2D); // WebGL2 supports mipmaps on NPOT textures
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);

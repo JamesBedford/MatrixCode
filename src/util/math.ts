@@ -1,5 +1,3 @@
-import type { Rng } from "./rng.ts";
-
 export function clamp(x: number, lo: number, hi: number): number {
   return x < lo ? lo : x > hi ? hi : x;
 }
@@ -20,21 +18,6 @@ export function nextPOT(n: number): number {
   let p = 1;
   while (p < n) p <<= 1;
   return p;
-}
-
-/**
- * Pick an index in [0, weights.length) with probability proportional to its weight.
- * Weights need not be normalized.
- */
-export function weightedPick(weights: readonly number[], rng: Rng): number {
-  let total = 0;
-  for (const w of weights) total += w;
-  let r = rng() * total;
-  for (let i = 0; i < weights.length; i++) {
-    r -= weights[i]!;
-    if (r < 0) return i;
-  }
-  return weights.length - 1;
 }
 
 /** Parse "#RRGGBB" (or "#RGB") into a normalized [r, g, b] triplet in 0..1. */

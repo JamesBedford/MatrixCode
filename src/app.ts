@@ -356,11 +356,14 @@ export async function mountMatrixRain(
   const loop = (now: number): void => {
     if (!running) return;
     raf = requestAnimationFrame(loop);
+    // Snapshot the controls once per frame and reuse for both the sim step and the render
+    // params, instead of spreading the store twice.
+    const c = controls.get();
     if (superState) {
       // Advance toward the shared wall-clock so every window stays in lockstep.
       const target = superState.config.warmupSeconds + (Date.now() - superState.config.epoch) / 1000;
       const steps = stepsToAdvance(target, superState.simClock, SUPER_FIXED_DT, SUPER_MAX_STEPS);
-      for (let i = 0; i < steps; i++) sim.update(SUPER_FIXED_DT, controls.get());
+      for (let i = 0; i < steps; i++) sim.update(SUPER_FIXED_DT, c);
       superState.simClock += steps * SUPER_FIXED_DT;
       paint();
       return;
@@ -375,11 +378,11 @@ export async function mountMatrixRain(
       sim.activeColumnLimit = f >= 1 ? Number.POSITIVE_INFINITY : Math.ceil(f * grid.cols);
       // Set/clear in-rain message targets before stepping so they take effect this frame.
       messageScheduler?.update(now, sim);
-      sim.update(dt, controls.get());
+      sim.update(dt, c);
     }
     // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
     stateTex.upload(sim.state);
-    renderer.renderFrame(paramsOf(controls.get()), grid);
+    renderer.renderFrame(paramsOf(c), grid);
     noteFirstFrame();
     message?.update(now);
   };
@@ -647,8 +650,10 @@ export async function mountMatrixRain(
     if (changed.has("mirror")) {
       void buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX, mirrorExcludeFrom: glyphSet.ranges.message.start }).then(
         (a) => {
+          const previous = atlas;
           atlas = a;
           renderer.setAtlas(a);
+          gl.deleteTexture(previous.texture); // release the replaced atlas so toggling mirror doesn't leak VRAM
           if (!running) renderStatic();
         },
       );

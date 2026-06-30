@@ -10,7 +10,7 @@ in vec2 vUv;
 out vec4 frag;
 
 uniform sampler2D uState; // cols x rows, RGBA8 (NEAREST)
-uniform sampler2D uAtlas; // glyph atlas (LINEAR + mips)
+uniform sampler2D uAtlas; // glyph atlas, R8 coverage (LINEAR + mips)
 uniform vec2 uGrid;       // (cols, rows)
 uniform vec2 uAtlasGrid;  // (atlasCols, atlasRows)
 uniform vec3 uTail;
@@ -26,7 +26,7 @@ float sampleGlyph(float gi, vec2 cellUv, vec2 duvdx, vec2 duvdy) {
   float ax = mod(gi, uAtlasGrid.x);
   float ay = floor(gi / uAtlasGrid.x);
   vec2 uv = (vec2(ax, ay) + cellUv) / uAtlasGrid;
-  return textureGrad(uAtlas, uv, duvdx, duvdy).a;
+  return textureGrad(uAtlas, uv, duvdx, duvdy).r; // R8 coverage atlas
 }
 
 void main() {

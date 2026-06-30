@@ -40,6 +40,10 @@ export class MessageScheduler {
   private glyph: GlyphSet;
   private rng: Rng;
   private cfg: MessagesDoc | null = null;
+  // Whether the current config has at least one message that lays out to renderable glyphs.
+  // Computed once when the config changes (in configure()) so the per-frame update() doesn't
+  // re-lay-out every message every frame.
+  private hasRenderable = false;
   private nextFireAt: number | null = null;
   private activeStart: number | null = null;
   private activeUntil: number | null = null;
@@ -55,6 +59,7 @@ export class MessageScheduler {
   /** Adopt a new config. Cancels any in-flight message and re-arms relative to the next update's clock. */
   configure(doc: MessagesDoc): void {
     this.cfg = doc;
+    this.hasRenderable = this.computeHasRenderable(doc);
     if (this.activeUntil !== null) this.pendingClear = true;
     this.activeStart = null;
     this.activeUntil = null;
@@ -69,7 +74,7 @@ export class MessageScheduler {
     }
 
     const cfg = this.cfg;
-    if (cfg === null || !cfg.enabled || !this.hasRenderableMessage(cfg)) {
+    if (cfg === null || !cfg.enabled || !this.hasRenderable) {
       if (this.activeUntil !== null) {
         sim.clearMessageTargets();
         this.activeStart = null;
@@ -129,7 +134,7 @@ export class MessageScheduler {
     return this.cfg!.frequencyMs * (JITTER_MIN + JITTER_SPAN * this.rng());
   }
 
-  private hasRenderableMessage(cfg: MessagesDoc): boolean {
+  private computeHasRenderable(cfg: MessagesDoc): boolean {
     return cfg.messages.some((m) => this.layout(m).glyphs.length > 0);
   }
 

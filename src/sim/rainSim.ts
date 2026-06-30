@@ -55,10 +55,12 @@ export class RainSim {
   // Scratch: per-row head markers, reused each column during the cell pass.
   private headMark!: Uint8Array;
 
-  // In-rain message overlay: cell index -> target glyph for the active message (null = none).
-  // `claimed` holds the target cells the rain has lit at least once this activation, so they hold.
-  private messageTargets: Map<number, number> | null = null;
-  private claimed = new Set<number>();
+  // In-rain message overlay, kept as index-parallel typed arrays (no per-cell Map/Set hashing on
+  // the hot path). `messageTargets[idx]` = target glyph for the active message, or -1 where there is
+  // none; null when no message is active (the zero-overhead fast path). `claimed[idx]` = 1 once the
+  // rain has lit that target cell this activation, so it holds the letter.
+  private messageTargets: Int16Array | null = null;
+  private claimed!: Uint8Array;
   // 0..1 fade envelope scaling the message hold brightness — driven by the scheduler for fade in/out.
   private messageIntensity = 1;
   // 0..1 probability a message cell shows a random glyph instead of its letter (flicker dissolve on exit).
@@ -83,6 +85,7 @@ export class RainSim {
     this.glyphNew = new Uint8Array(cols * rows);
     this.glyphOld = new Uint8Array(cols * rows);
     this.phase = new Float32Array(cols * rows);
+    this.claimed = new Uint8Array(cols * rows);
   }
 
   /** Initialize columns [from, to) as idle with staggered respawn timers. */
@@ -107,15 +110,15 @@ export class RainSim {
   private lightHeadCell(col: number, row: number): void {
     const idx = row * this.cols + col;
     const g = this.glyph.randomGlyphIndex(this.rng); // always drawn so the rng stream is message-independent
-    const target = this.messageTargets?.get(idx);
+    const target = this.messageTargets !== null ? this.messageTargets[idx]! : -1; // -1 = not a message cell
     this.bright[idx] = 1;
     this.glyphOld[idx] = this.glyphNew[idx]!;
     // A passing head delivers the message letter; otherwise a random glyph. During a flicker dissolve
     // the head may stamp a random glyph instead (the extra rng draw only happens while scrambling).
     this.glyphNew[idx] =
-      target === undefined ? g : this.messageScramble > 0 && this.rng() < this.messageScramble ? g : target;
+      target < 0 ? g : this.messageScramble > 0 && this.rng() < this.messageScramble ? g : target;
     this.phase[idx] = 1;
-    if (target !== undefined) this.claimed.add(idx);
+    if (target >= 0) this.claimed[idx] = 1;
   }
 
   /** Resize the grid, preserving per-column head state where columns still exist. */
@@ -138,8 +141,8 @@ export class RainSim {
     this.cols = cols;
     this.rows = rows;
     // Cell indices depend on `cols`, so any active message's targets are now stale — drop them.
+    // (allocate() above already replaced `claimed` with a fresh zeroed buffer of the new size.)
     this.messageTargets = null;
-    this.claimed.clear();
     this.messageIntensity = 1;
     this.messageScramble = 0;
   }
@@ -160,7 +163,7 @@ export class RainSim {
     this.time = 0;
     this.seedColumns(0, this.cols); // deactivate every column + restagger respawn timers
     this.messageTargets = null;
-    this.claimed.clear();
+    this.claimed.fill(0);
     this.messageIntensity = 1;
     this.messageScramble = 0;
   }
@@ -173,12 +176,12 @@ export class RainSim {
    */
   setMessageTargets(targets: Map<number, number>): void {
     const cells = this.cols * this.rows;
-    const next = new Map<number, number>();
+    const next = new Int16Array(cells).fill(-1);
     for (const [idx, glyph] of targets) {
-      if (idx >= 0 && idx < cells) next.set(idx, glyph);
+      if (idx >= 0 && idx < cells) next[idx] = glyph;
     }
     this.messageTargets = next;
-    this.claimed.clear();
+    this.claimed.fill(0);
     this.messageIntensity = 1;
     this.messageScramble = 0;
   }
@@ -190,10 +193,13 @@ export class RainSim {
     // faded-out message, and no flash down when the brightness fade is disabled (intensity 1).
     if (this.messageTargets !== null) {
       const floor = this.cfg.messageBrightFloor;
-      for (const idx of this.claimed) this.bright[idx] = Math.max(this.bright[idx]!, floor) * this.messageIntensity;
+      const claimed = this.claimed;
+      for (let idx = 0; idx < claimed.length; idx++) {
+        if (claimed[idx]) this.bright[idx] = Math.max(this.bright[idx]!, floor) * this.messageIntensity;
+      }
     }
     this.messageTargets = null;
-    this.claimed.clear();
+    this.claimed.fill(0);
     this.messageIntensity = 1;
     this.messageScramble = 0;
   }
@@ -275,15 +281,16 @@ export class RainSim {
       if (limited && hadStreams && streams.length === 0) activeNow--;
 
       // --- mark this column's head rows for the cell pass ---
-      for (const stream of streams) {
-        const headRow = Math.floor(stream.y);
-        if (headRow >= 0 && headRow < rows) this.headMark[headRow]! |= stream.white ? 0b11 : 0b01;
+      for (let s = 0; s < streams.length; s++) {
+        const st = streams[s]!;
+        const headRow = Math.floor(st.y);
+        if (headRow >= 0 && headRow < rows) this.headMark[headRow]! |= st.white ? 0b11 : 0b01;
       }
 
       // --- decay, mutate, (pin), pack each cell ---
       for (let r = 0; r < rows; r++) {
         const idx = r * cols + col;
-        const target = targets !== null ? targets.get(idx) : undefined;
+        const target = targets !== null ? targets[idx]! : -1; // -1 = not a message cell
         let b = this.bright[idx]!;
         if (b > MIN_BRIGHT) {
           b *= decayMul;
@@ -304,10 +311,10 @@ export class RainSim {
         const white = (mark & 0b10) !== 0;
         if (!isHead && b > 0.05 && this.rng() < mutChance) {
           const g = this.glyph.randomGlyphIndex(this.rng); // always drawn so the rng stream is message-independent
-          if (target !== undefined) {
+          if (target >= 0) {
             // A lit message cell resolves to its letter on this mutation and holds it (revealed via mutation).
             // During a flicker dissolve it may instead resolve to a random glyph (extra rng only while scrambling).
-            this.claimed.add(idx);
+            this.claimed[idx] = 1;
             const next = this.messageScramble > 0 && this.rng() < this.messageScramble ? g : target;
             if (next !== this.glyphNew[idx]) {
               this.glyphOld[idx] = this.glyphNew[idx]!;
@@ -327,7 +334,7 @@ export class RainSim {
         // (messageIntensity) — including head flashes — so the fade is visible even in dense rain. The
         // underlying `bright` is untouched, so the rng stays message-independent.
         const packB =
-          target !== undefined && this.claimed.has(idx) ? Math.max(b, floor) * this.messageIntensity : b;
+          target >= 0 && this.claimed[idx] === 1 ? Math.max(b, floor) * this.messageIntensity : b;
         this.state[o] = this.glyphNew[idx]!;
         this.state[o + 1] = Math.round(clamp(packB, 0, 1) * 255);
         this.state[o + 2] =

@@ -1,5 +1,4 @@
 import type { Rng } from "../util/rng.ts";
-import { weightedPick } from "../util/math.ts";
 import { MAX_GLYPHS } from "../types.ts";
 
 // The authentic Matrix glyph mix, in canonical index order. Katakana dominate;
@@ -78,6 +77,10 @@ export function createGlyphSet(): GlyphSet {
   };
   // Random rain draws only from the authentic groups — the message charset is excluded.
   const groups = [ranges.katakana, ranges.digits, ranges.latin, ranges.symbols];
+  // Total group weight, summed once (left-to-right, matching the original weightedPick) so the
+  // per-draw group pick doesn't re-sum the weights every call.
+  let weightTotal = 0;
+  for (const w of GROUP_WEIGHTS) weightTotal += w;
 
   // Reverse lookup (char -> glyph index) built from the MESSAGE charset only, so message
   // characters resolve to their dedicated unmirrored glyphs (not the mirrored rain copies).
@@ -92,7 +95,18 @@ export function createGlyphSet(): GlyphSet {
     count: chars.length,
     ranges,
     randomGlyphIndex(rng: Rng): number {
-      const g = weightedPick(GROUP_WEIGHTS as unknown as number[], rng);
+      // Group pick: identical arithmetic to the original weightedPick (r = rng()*total, subtract
+      // weights left-to-right, first to go negative wins, last group on fallthrough) so the rng
+      // draw sequence — and thus the rain — is byte-identical, just without the per-call re-sum.
+      let r = rng() * weightTotal;
+      let g = GROUP_WEIGHTS.length - 1;
+      for (let i = 0; i < GROUP_WEIGHTS.length; i++) {
+        r -= GROUP_WEIGHTS[i]!;
+        if (r < 0) {
+          g = i;
+          break;
+        }
+      }
       const range = groups[g]!;
       return range.start + Math.floor(rng() * range.count);
     },
