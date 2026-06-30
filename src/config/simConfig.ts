@@ -5,8 +5,8 @@ import type { SimConfig } from "../types.ts";
 // dedicated tuning pass. Keep every value named here so iteration is fast.
 export const DEFAULT_SIM_CONFIG: SimConfig = {
   targetCellPx: 18,
-  minSpeed: 7,
-  speedRange: 16,
+  minSpeed: 3.5,
+  speedRange: 8,
   // Per-second brightness multiplier. Lower = shorter, snappier trails.
   decayPerSecond: 0.08,
   // Per-second chance a lit (non-head) cell swaps glyph.

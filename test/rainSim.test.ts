@@ -195,7 +195,7 @@ describe("RainSim.activeColumnLimit", () => {
       if (Math.abs(t - sec) < dt / 2) at[sec] = litFrac(sim);
     }
     // Visible rain well before the end of the ramp (the old density-scaling bug showed ~0% here).
-    expect(at[3]!).toBeGreaterThan(0.03);
+    expect(at[3]!).toBeGreaterThan(0.015);
     expect(at[5]!).toBeGreaterThan(at[3]!);
     expect(at[8]!).toBeGreaterThan(at[5]!);
   });
