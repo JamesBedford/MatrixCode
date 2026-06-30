@@ -600,6 +600,18 @@ export async function mountMatrixRain(
     controls.set({ density: d > 5 ? Math.round(d) : d });
   };
 
+  // Toggle the "Show messages" setting — the shortcut and the editor toggle share one source of
+  // truth. Persists, reconfigures the live scheduler, and reflects into an open editor.
+  const toggleMessages = (): void => {
+    if (!messagesStore || !messageScheduler) return;
+    const doc = messagesStore.get();
+    doc.enabled = !doc.enabled;
+    messagesStore.set(doc);
+    messageScheduler.configure(messagesStore.get());
+    messagesEditor?.syncEnabled(doc.enabled);
+    flashNotice(doc.enabled ? "Messages on." : "Messages off.");
+  };
+
   const onKey = (e: KeyboardEvent): void => {
     if (superState) {
       if (e.key === "Escape") exitSuper(true);
@@ -609,6 +621,7 @@ export async function mountMatrixRain(
     else if (e.key === "h" || e.key === "H") panel?.toggleVisible();
     else if (e.key === "i" || e.key === "I") editor?.open();
     else if (e.key === "m" || e.key === "M") messagesEditor?.open();
+    else if (e.key === "n" || e.key === "N") toggleMessages();
     else if (e.key === "-" || e.key === "_") nudgeDensity(1 / DENSITY_KEY_STEP);
     else if (e.key === "=" || e.key === "+") nudgeDensity(DENSITY_KEY_STEP);
     else if (e.key === "p" || e.key === "P") {

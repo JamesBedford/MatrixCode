@@ -36,6 +36,13 @@ export class MessagesEditor extends ModalEditor {
     this.cancel();
   }
 
+  /** Reflect an externally-toggled "Show messages" (the keyboard shortcut) into an open editor, keeping other edits. */
+  syncEnabled(enabled: boolean): void {
+    if (!this.isOpen || this.draft.enabled === enabled) return;
+    this.draft.enabled = enabled;
+    this.build();
+  }
+
   private cancel(): void {
     this.clearPreviewTimer();
     this.hide();

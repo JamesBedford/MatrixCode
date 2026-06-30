@@ -101,7 +101,7 @@ export class ControlsPanel {
 
     const hint = document.createElement("p");
     hint.className = "mx-hint";
-    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>−</kbd>/<kbd>=</kbd> density";
+    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>N</kbd> toggle msgs · <kbd>−</kbd>/<kbd>=</kbd> density";
     this.panel.appendChild(hint);
 
     this.el.appendChild(this.panel);
