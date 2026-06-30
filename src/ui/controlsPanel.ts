@@ -47,7 +47,7 @@ export class ControlsPanel {
       (v) => controls.set({ trailLength: 0.51 - v }),
       (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`,
       (c) => 0.51 - c.trailLength);
-    this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2));
+    this.range("Density", "density", 0, 100, 1, (v) => controls.set({ density: v }), (v) => v.toFixed(0));
     this.range("Glyph change", "glyphRate", 0, 5, 0.05, (v) => controls.set({ glyphRate: v }), (v) => `${v.toFixed(2)}×`);
     this.range("Glyph size", "glyphScale", 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
     this.range("Glow", "glow", 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
@@ -98,7 +98,7 @@ export class ControlsPanel {
 
     const hint = document.createElement("p");
     hint.className = "mx-hint";
-    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>−</kbd>/<kbd>=</kbd> density";
+    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>−</kbd>/<kbd>=</kbd> density";
     this.panel.appendChild(hint);
 
     this.el.appendChild(this.panel);
