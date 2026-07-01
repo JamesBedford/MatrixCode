@@ -81,10 +81,20 @@ export interface MessagesDoc {
   verticalJitter: number;
 }
 
-/** The `{countdown}` target, persisted to localStorage. null = unset (countdown shows 00:00). */
-export interface CountdownDoc {
-  /** Target instant as epoch ms, or null when no countdown is set. */
+/** A named instant referenced by {countdown:name} / {countup:name}. */
+export interface CountdownMoment {
+  /** Unique, non-empty label used in the token (no : { } characters). */
+  name: string;
+  /** Target instant as epoch ms, or null when unset (⇒ 00:00). */
   targetMs: number | null;
+}
+
+/** The countdown/countup targets, persisted to localStorage. */
+export interface CountdownDoc {
+  /** Default (unnamed) target for bare {countdown}/{countup}. null = unset (shows 00:00). */
+  targetMs: number | null;
+  /** Named moments, order preserved. */
+  moments: CountdownMoment[];
 }
 
 /** Empirical tuning constants for the rain simulation (not user-facing). */

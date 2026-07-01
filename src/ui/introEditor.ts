@@ -1,6 +1,7 @@
 import { type IntroScript, IntroStore, DEFAULT_INTRO, cloneIntro } from "../config/introStore.ts";
 import { DEFAULT_HOLD_MS, DEFAULT_PAUSE_MS } from "../sim/messageOverlay.ts";
 import { ModalEditor } from "./modalKit.ts";
+import { momentHint } from "../sim/tokens.ts";
 
 export interface IntroEditorCallbacks {
   /** Play the draft over the rain (the editor hides itself first). */
@@ -16,7 +17,12 @@ export class IntroEditor extends ModalEditor {
   private linesEl: HTMLDivElement;
   private draft: IntroScript;
 
-  constructor(parent: HTMLElement, private store: IntroStore, private cb: IntroEditorCallbacks) {
+  constructor(
+    parent: HTMLElement,
+    private store: IntroStore,
+    private cb: IntroEditorCallbacks,
+    private getMomentNames: () => string[],
+  ) {
     super(parent, "Edit intro");
     this.draft = cloneIntro(DEFAULT_INTRO);
     this.linesEl = document.createElement("div");
@@ -60,7 +66,9 @@ export class IntroEditor extends ModalEditor {
 
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint";
-    hint.textContent = "Use {name}, {time}, {time:%H:%M} or {countdown}.";
+    hint.textContent = "Use {name}, {time}, {time:%H:%M}, {countdown} or {countup}. ⓘ";
+    hint.title = momentHint(this.getMomentNames());
+    hint.style.cursor = "help";
     this.dialog.appendChild(hint);
 
     this.linesEl = document.createElement("div");

@@ -408,7 +408,7 @@ git commit -m "Resolve {countup} and named {countdown:NAME}/{countup:NAME} momen
 
 **Interfaces:**
 - Consumes: `resolveTokens` + `TokenContext.moments` (Task 2); `countdownStore.get().moments` (Task 1).
-- Produces: `getMomentNames: () => string[]` in `app.ts` scope (consumed in Task 5).
+- Produces: the live `moments` record inside `resolveMessageText`. (`getMomentNames` is defined in Task 5, not here — `noUnusedLocals` forbids declaring it before it is used.)
 
 - [ ] **Step 1: Build the moments record in the resolver**
 
@@ -433,14 +433,14 @@ with:
       moments: Object.fromEntries((doc?.moments ?? []).map((m) => [m.name, m.targetMs])),
     });
   };
-  // Current moment names, for the intro/messages editors' token hover.
-  const getMomentNames = (): string[] => (countdownStore?.get().moments ?? []).map((m) => m.name);
 ```
+
+(`getMomentNames` is intentionally NOT added here — this project's `tsconfig.json` sets `"noUnusedLocals": true`, so an unused local fails the build. It is defined in Task 5, where it is consumed, in the same commit.)
 
 - [ ] **Step 2: Typecheck**
 
 Run: `npx tsc --noEmit`
-Expected: PASS for `app.ts` and `tokens.ts`. (`getMomentNames` is unused until Task 5; `noUnusedLocals` is not enabled in this project — confirm `tsc` stays clean. If it flags `getMomentNames` as unused, proceed — Task 5 consumes it in the same working session.)
+Expected: PASS — `resolveMessageText`'s `moments` record is used immediately, so no unused-local error.
 
 - [ ] **Step 3: Build**
 
@@ -570,10 +570,11 @@ git commit -m "Add named-moments list to the countdown editor"
 **Files:**
 - Modify: `src/ui/introEditor.ts`
 - Modify: `src/ui/messagesEditor.ts`
-- Modify: `src/app.ts` (pass `getMomentNames` to both editors)
+- Modify: `src/app.ts` (define `getMomentNames`, pass it to both editors)
 
 **Interfaces:**
-- Consumes: `momentHint` (Task 2); `getMomentNames` (Task 3).
+- Consumes: `momentHint` (Task 2); `countdownStore.get().moments` (Task 1).
+- Produces/defines: `getMomentNames: () => string[]` in `app.ts` (moved here from Task 3 so it is declared in the same commit that uses it — `noUnusedLocals`).
 
 - [ ] **Step 1: Give `IntroEditor` the moment-names getter and a hover**
 
@@ -647,9 +648,16 @@ import { momentHint } from "../sim/tokens.ts";
     this.dialog.appendChild(hint);
 ```
 
-- [ ] **Step 3: Pass `getMomentNames` from app.ts**
+- [ ] **Step 3: Define `getMomentNames` and pass it from app.ts**
 
-In `src/app.ts`, update the two editor constructions.
+In `src/app.ts`, first define `getMomentNames` immediately after the `resolveMessageText` closure (this is where it belongs — `noUnusedLocals` forbade adding it in Task 3 before it was consumed):
+
+```ts
+  // Current moment names, for the intro/messages editors' token hover.
+  const getMomentNames = (): string[] => (countdownStore?.get().moments ?? []).map((m) => m.name);
+```
+
+Then update the two editor constructions.
 
 For the intro editor:
 

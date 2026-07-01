@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveTokens, strftime, formatCountdown, DEFAULT_USER_NAME } from "../src/sim/tokens.ts";
+import { resolveTokens, strftime, formatCountdown, DEFAULT_USER_NAME, momentHint } from "../src/sim/tokens.ts";
 
 // All clocks/targets are built via new Date(y, m, d, ...) (local time) and formatted via the same
 // local getters, so these assertions are timezone-independent.
@@ -99,5 +99,61 @@ describe("resolveTokens — mixed & unknown", () => {
   });
   it("leaves unknown tokens untouched", () => {
     expect(resolveTokens("keep {foo} and {bar}", ctx())).toBe("keep {foo} and {bar}");
+  });
+});
+
+// Build an epoch-ms from local components so assertions are timezone-independent.
+const AT = (y: number, mo: number, d: number, h: number, mi: number, s = 0): number =>
+  new Date(y, mo - 1, d, h, mi, s).getTime();
+
+describe("resolveTokens — countup & named moments", () => {
+  const now = AT(2026, 7, 1, 12, 0, 0);
+
+  it("{countup} mirrors {countdown} for the same delta", () => {
+    const target = now - 3_661_000; // 1h 1m 1s ago
+    expect(resolveTokens("{countup}", { name: "", nowMs: now, countdownTargetMs: target })).toBe("01:01:01");
+  });
+
+  it("{countdown:NAME} and {countup:NAME} resolve via the moments record", () => {
+    const ctx = {
+      name: "",
+      nowMs: now,
+      countdownTargetMs: null,
+      moments: { launch: now + 60_000, born: now - 120_000 },
+    };
+    expect(resolveTokens("{countdown:launch}", ctx)).toBe("01:00");
+    expect(resolveTokens("{countup:born}", ctx)).toBe("02:00");
+  });
+
+  it("an unknown name resolves to 00:00", () => {
+    const ctx = { name: "", nowMs: now, countdownTargetMs: null, moments: {} };
+    expect(resolveTokens("{countdown:nope}", ctx)).toBe("00:00");
+  });
+
+  it("countup on a future moment clamps to 00:00", () => {
+    const ctx = { name: "", nowMs: now, countdownTargetMs: null, moments: { soon: now + 60_000 } };
+    expect(resolveTokens("{countup:soon}", ctx)).toBe("00:00");
+  });
+
+  it("trims the captured name", () => {
+    const ctx = { name: "", nowMs: now, countdownTargetMs: null, moments: { launch: now + 60_000 } };
+    expect(resolveTokens("{countdown: launch }", ctx)).toBe("01:00");
+  });
+
+  it("bare tokens use the default target; null default → 00:00", () => {
+    expect(resolveTokens("{countdown}", { name: "", nowMs: now, countdownTargetMs: null })).toBe("00:00");
+    expect(resolveTokens("{countup}", { name: "", nowMs: now, countdownTargetMs: now - 60_000 })).toBe("01:00");
+  });
+});
+
+describe("momentHint", () => {
+  it("lists names as tokens", () => {
+    expect(momentHint(["launch", "newyear"])).toBe(
+      "Available: {countdown:launch}, {countdown:newyear} — also {countup:…}",
+    );
+  });
+
+  it("handles the empty case", () => {
+    expect(momentHint([])).toBe("No named moments yet.");
   });
 });
