@@ -133,6 +133,6 @@ export function momentHint(names: string[]): string {
   const yours = names.length
     ? `Your moments: ${names.map((n) => `{countdown:${n}}`).join(", ")}`
     : "No named moments yet.";
-  const holidays = `Holidays (use {countdown:NAME}): ${HOLIDAY_TOKENS.join(", ")}`;
-  return `${yours}\n${holidays}\nAlso {countup:…} for any of these.`;
+  const builtins = `Built-in (use {countdown:NAME}): ${HOLIDAY_TOKENS.join(", ")}`;
+  return `${yours}\n${builtins}\nAlso {countup:…} for any of these.`;
 }

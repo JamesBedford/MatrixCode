@@ -164,6 +164,13 @@ describe("resolveTokens — built-in holidays & run-time countup", () => {
     expect(resolveTokens("{countdown:christmas}", ctx)).toBe("01:00");
   });
 
+  it("{countdown:newmoon} counts down to the next new moon (a real countdown, not 00:00)", () => {
+    const now = AT(2026, 7, 1, 12, 0, 0);
+    const out = resolveTokens("{countdown:newmoon}", { name: "", nowMs: now, countdownTargetMs: null });
+    expect(out).toMatch(/^\d{2}:\d{2}:\d{2}(:\d{2})?$/);
+    expect(out).not.toBe("00:00");
+  });
+
   it("bare {countup} counts up from runStartMs when no default target is set", () => {
     const now = AT(2026, 7, 1, 12, 0, 0);
     expect(resolveTokens("{countup}", { name: "", nowMs: now, countdownTargetMs: null, runStartMs: now - 65_000 })).toBe("01:05");
@@ -176,20 +183,21 @@ describe("resolveTokens — built-in holidays & run-time countup", () => {
 });
 
 describe("momentHint", () => {
-  it("lists the user's moments as tokens plus the built-in holidays", () => {
+  it("lists the user's moments as tokens plus the built-in dates", () => {
     const h = momentHint(["launch", "party"]);
     expect(h).toContain("Your moments: {countdown:launch}, {countdown:party}");
-    expect(h).toContain("Holidays");
+    expect(h).toContain("Built-in");
     expect(h).toContain("christmas");
     expect(h).toContain("easter");
     expect(h).toContain("diwali");
+    expect(h).toContain("newmoon");
     expect(h).toContain("{countup:…}");
   });
 
-  it("still shows the holidays when there are no user moments", () => {
+  it("still shows the built-ins when there are no user moments", () => {
     const h = momentHint([]);
     expect(h).toContain("No named moments yet.");
-    expect(h).toContain("Holidays (use {countdown:NAME}):");
+    expect(h).toContain("Built-in (use {countdown:NAME}):");
     expect(h).toContain("newyear");
   });
 });

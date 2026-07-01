@@ -136,6 +136,17 @@ export function computeDiwali(year: number): [number, number] {
   return [diwali.getUTCMonth(), diwali.getUTCDate()];
 }
 
+/** Epoch-ms (UTC) of the next new moon strictly after `nowMs` — for the recurring {countdown:newmoon}. */
+export function nextNewMoonMs(nowMs: number): number {
+  const jdNow = nowMs / 86_400_000 + 2440587.5;
+  let k = Math.floor((jdNow - 2451550.09766) / 29.530588861) - 1; // start ~one lunation before now
+  for (let guard = 0; guard < 6; guard++, k++) {
+    const ms = (newMoonJDE(k) - 2440587.5) * 86_400_000;
+    if (ms > nowMs) return ms;
+  }
+  return (newMoonJDE(k) - 2440587.5) * 86_400_000; // fallback (not expected)
+}
+
 /** Returns the event's local Date (with time-of-day) for a calendar year, or null if unknown. */
 type YearToDate = (year: number) => Date | null;
 
@@ -173,8 +184,8 @@ const ALIASES: Record<string, string> = {
   turkeyday: "thanksgiving",
 };
 
-/** Canonical holiday token names (in calendar order, excluding aliases) — for the editor hover. */
-export const HOLIDAY_TOKENS: string[] = Object.keys(HOLIDAYS);
+/** Canonical built-in token names (annual holidays in calendar order, then the recurring new moon) — for the editor hover. */
+export const HOLIDAY_TOKENS: string[] = [...Object.keys(HOLIDAYS), "newmoon"];
 
 /**
  * Epoch-ms of the holiday's currently-relevant occurrence, or null when `name` is not a holiday
@@ -185,6 +196,7 @@ export const HOLIDAY_TOKENS: string[] = Object.keys(HOLIDAYS);
  */
 export function holidayTargetMs(name: string, nowMs: number): number | null {
   const key = ALIASES[name] ?? name;
+  if (key === "newmoon") return nextNewMoonMs(nowMs); // recurring (~monthly), not a fixed annual date
   const dateForYear = HOLIDAYS[key];
   if (!dateForYear) return null;
   const year0 = new Date(nowMs).getFullYear();
