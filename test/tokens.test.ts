@@ -103,6 +103,7 @@ describe("resolveTokens — mixed & unknown", () => {
 });
 
 // Build an epoch-ms from local components so assertions are timezone-independent.
+// NOTE: months are 1-indexed here (human-friendly), unlike the `at` helper above (0-indexed JS months).
 const AT = (y: number, mo: number, d: number, h: number, mi: number, s = 0): number =>
   new Date(y, mo - 1, d, h, mi, s).getTime();
 

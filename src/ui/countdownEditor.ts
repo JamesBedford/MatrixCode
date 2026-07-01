@@ -50,7 +50,7 @@ export class CountdownEditor extends ModalEditor {
 
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint";
-    hint.textContent = "Counts down to this date & time. Use {countdown} in the intro or a message.";
+    hint.textContent = "Counts down to this date & time. Use {countdown} or {countup} in the intro or a message.";
     this.dialog.appendChild(hint);
 
     this.dialog.appendChild(
