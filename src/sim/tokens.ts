@@ -3,7 +3,7 @@
 // deterministic and unit-testable. `{name}` is resolved here too (it used to live in
 // messageOverlay.ts) so every surface substitutes tokens through one code path.
 
-import { holidayTargetMs } from "./holidays.ts";
+import { holidayTargetMs, HOLIDAY_TOKENS } from "./holidays.ts";
 
 /** Name used when the viewer's own name can't be determined. */
 export const DEFAULT_USER_NAME = "Neo";
@@ -128,9 +128,11 @@ function countTarget(
   return kind === "countup" ? ctx.runStartMs ?? null : null;
 }
 
-/** UI copy: the list of available moment names as ready-to-type tokens (for the editors' hover). */
+/** UI copy for the editors' hover: the user's named moments plus the built-in holidays, as ready-to-type tokens. */
 export function momentHint(names: string[]): string {
-  if (names.length === 0) return "No named moments yet.";
-  const list = names.map((n) => `{countdown:${n}}`).join(", ");
-  return `Available: ${list} — also {countup:…}`;
+  const yours = names.length
+    ? `Your moments: ${names.map((n) => `{countdown:${n}}`).join(", ")}`
+    : "No named moments yet.";
+  const holidays = `Holidays (use {countdown:NAME}): ${HOLIDAY_TOKENS.join(", ")}`;
+  return `${yours}\n${holidays}\nAlso {countup:…} for any of these.`;
 }

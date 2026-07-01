@@ -51,8 +51,9 @@ describe("holidayTargetMs", () => {
     expect(holidayTargetMs("thanksgiving", AT(2026, 1, 1))).toBe(AT(2026, 11, 26, 7)); // Nov 26, 2026
   });
 
-  it("uses the Diwali table and returns null beyond it", () => {
+  it("uses the Diwali table (extended) and returns null beyond it", () => {
     expect(holidayTargetMs("diwali", AT(2026, 1, 1))).toBe(AT(2026, 11, 8, 7)); // Nov 8, 2026
-    expect(holidayTargetMs("diwali", AT(2040, 1, 1))).toBe(null); // beyond the table
+    expect(holidayTargetMs("diwali", AT(2033, 1, 1))).toBe(AT(2033, 10, 22, 7)); // Oct 22, 2033
+    expect(holidayTargetMs("diwali", AT(2050, 1, 1))).toBe(null); // beyond the table
   });
 });

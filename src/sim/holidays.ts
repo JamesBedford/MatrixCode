@@ -43,6 +43,16 @@ const DIWALI: Record<number, [number, number]> = {
   2028: [9, 17], // Oct 17, 2028
   2029: [10, 5], // Nov 5, 2029
   2030: [9, 26], // Oct 26, 2030
+  2031: [10, 14], // Nov 14, 2031
+  2032: [10, 2], // Nov 2, 2032
+  2033: [9, 22], // Oct 22, 2033
+  2034: [10, 10], // Nov 10, 2034
+  2035: [9, 30], // Oct 30, 2035
+  2036: [9, 19], // Oct 19, 2036
+  2037: [10, 7], // Nov 7, 2037
+  2038: [9, 27], // Oct 27, 2038
+  2039: [9, 17], // Oct 17, 2039
+  2040: [10, 4], // Nov 4, 2040
 };
 
 /** Returns the event's local Date (with time-of-day) for a calendar year, or null if unknown. */
@@ -82,8 +92,8 @@ const ALIASES: Record<string, string> = {
   turkeyday: "thanksgiving",
 };
 
-/** Every recognised holiday token (canonical names + aliases) — for discoverability and tests. */
-export const HOLIDAY_NAMES: string[] = [...Object.keys(HOLIDAYS), ...Object.keys(ALIASES)];
+/** Canonical holiday token names (in calendar order, excluding aliases) — for the editor hover. */
+export const HOLIDAY_TOKENS: string[] = Object.keys(HOLIDAYS);
 
 /**
  * Epoch-ms of the holiday's currently-relevant occurrence, or null when `name` is not a holiday

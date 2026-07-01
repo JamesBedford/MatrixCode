@@ -176,13 +176,20 @@ describe("resolveTokens — built-in holidays & run-time countup", () => {
 });
 
 describe("momentHint", () => {
-  it("lists names as tokens", () => {
-    expect(momentHint(["launch", "newyear"])).toBe(
-      "Available: {countdown:launch}, {countdown:newyear} — also {countup:…}",
-    );
+  it("lists the user's moments as tokens plus the built-in holidays", () => {
+    const h = momentHint(["launch", "party"]);
+    expect(h).toContain("Your moments: {countdown:launch}, {countdown:party}");
+    expect(h).toContain("Holidays");
+    expect(h).toContain("christmas");
+    expect(h).toContain("easter");
+    expect(h).toContain("diwali");
+    expect(h).toContain("{countup:…}");
   });
 
-  it("handles the empty case", () => {
-    expect(momentHint([])).toBe("No named moments yet.");
+  it("still shows the holidays when there are no user moments", () => {
+    const h = momentHint([]);
+    expect(h).toContain("No named moments yet.");
+    expect(h).toContain("Holidays (use {countdown:NAME}):");
+    expect(h).toContain("newyear");
   });
 });
