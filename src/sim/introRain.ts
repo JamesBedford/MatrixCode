@@ -21,3 +21,20 @@ export function loadRampMs(introSeen: boolean, rampUpMs: number, reducedMotion: 
   if (!introSeen || reducedMotion || rampUpMs <= 0) return 0;
   return rampUpMs;
 }
+
+/**
+ * Shape a 0..1 ramp progress with soft ends but a linear middle: the rate eases up over the first
+ * `edge` fraction, holds constant through the middle, then eases down over the last `edge` (a
+ * trapezoidal velocity profile — continuous in value and slope). `edge` 0 → linear, 0.5 → pure
+ * ease-in-out with no linear stretch. Symmetric: rampEase(p) + rampEase(1 - p) === 1.
+ */
+export function rampEase(p: number, edge = 0.2): number {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  const e = clamp(edge, 0, 0.5);
+  if (e <= 0) return p;
+  const v = 1 / (1 - e); // peak rate chosen so the area (total rise) is exactly 1
+  if (p < e) return (v * p * p) / (2 * e);
+  if (p > 1 - e) return 1 - (v * (1 - p) * (1 - p)) / (2 * e);
+  return (v * e) / 2 + v * (p - e);
+}

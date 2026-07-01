@@ -4,7 +4,7 @@ import { RainSim } from "./sim/rainSim.ts";
 import { MessageScheduler } from "./sim/messageScheduler.ts";
 import { createRng } from "./util/rng.ts";
 import { MessageOverlay, resolveLines, resolveUserName } from "./sim/messageOverlay.ts";
-import { densityRampFactor, loadRampMs } from "./sim/introRain.ts";
+import { densityRampFactor, loadRampMs, rampEase } from "./sim/introRain.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
@@ -421,9 +421,9 @@ export async function mountMatrixRain(
       hud.textContent = `${fps.toFixed(0)} fps · ${Math.round(renderScale * 100)}% res · ${canvas.width}×${canvas.height}`;
     }
     if (now >= rainStartAtMs) {
-      // Ramp the rain in by scaling the spawn rate uniformly across every column (0 = empty, 1 = full),
-      // so density builds up evenly everywhere rather than sweeping across the screen left-to-right.
-      sim.spawnRateScale = densityRampFactor(now, rainStartAtMs, rampUpMs);
+      // Ramp the rain in uniformly (columns fade in in random order, coverage scales linearly), with an
+      // eased-in/eased-out but mostly-linear progress curve so the build-up feels steady, not front-loaded.
+      sim.spawnRateScale = rampEase(densityRampFactor(now, rainStartAtMs, rampUpMs));
       // Set/clear in-rain message targets before stepping so they take effect this frame.
       messageScheduler?.update(now, sim);
       sim.update(dt, c);

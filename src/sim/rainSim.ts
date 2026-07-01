@@ -33,19 +33,23 @@ export class RainSim {
   rows: number;
   /** cols*rows*4 packed bytes — see types.ts for the channel layout. */
   state: Uint8Array;
-  /** Global spawn-rate multiplier (0..1) scaling the per-frame stream-spawn probability uniformly
-   * across all columns — ramped to fade the rain in evenly (0 = no new streams, 1 = full density). */
+  /** Ramp intensity (0..1): the fraction of columns allowed to rain. Each column has a fixed random
+   * activation threshold, so as this rises columns switch on in random order (uniform, not
+   * left-to-right) and coverage scales linearly with it. 0 = empty, 1 = full density. */
   spawnRateScale = 1;
 
   private cfg: SimConfig;
   private glyph: GlyphSet;
   private rng: Rng;
+  private seed: number;
   private time = 0;
 
   // Per-column state. A column holds zero or more concurrently-falling streams
   // (heads); the count it sustains scales with the density control.
   private streams!: Stream[][];
   private respawnTimer!: Float32Array;
+  // Per-column activation threshold in [0,1): a column rains once spawnRateScale exceeds it.
+  private columnGate!: Float32Array;
 
   // Per-cell state.
   private bright!: Float32Array;
@@ -72,7 +76,8 @@ export class RainSim {
     this.rows = opts.rows;
     this.cfg = opts.config;
     this.glyph = opts.glyphSet;
-    this.rng = createRng(opts.seed ?? 0x9e3779b9);
+    this.seed = opts.seed ?? 0x9e3779b9;
+    this.rng = createRng(this.seed);
     this.state = new Uint8Array(opts.cols * opts.rows * 4);
     this.allocate(opts.cols, opts.rows);
     this.seedColumns(0, opts.cols);
@@ -87,6 +92,11 @@ export class RainSim {
     this.glyphOld = new Uint8Array(cols * rows);
     this.phase = new Float32Array(cols * rows);
     this.claimed = new Uint8Array(cols * rows);
+    // Assign each column a random ramp-in threshold from a SEPARATE rng so it never perturbs the spawn
+    // stream (keeps golden determinism). Random order → columns fade in uniformly, not left-to-right.
+    const gateRng = createRng((this.seed ^ 0x85ebca6b) >>> 0);
+    this.columnGate = new Float32Array(cols);
+    for (let c = 0; c < cols; c++) this.columnGate[c] = gateRng();
   }
 
   /** Initialize columns [from, to) as idle with staggered respawn timers. */
@@ -239,9 +249,7 @@ export class RainSim {
     // how often trail glyphs change, independent of fall speed (glyphRate 0 = trail cells never mutate).
     const sync = Math.max(0, 1 + cfg.globalSyncAmount * Math.sin(this.time * cfg.globalSyncHz * TWO_PI));
     const mutChance = 1 - Math.exp(-cfg.mutationRate * controls.glyphRate * sync * dt);
-    // spawnRateScale (0..1) scales the spawn probability uniformly across every column, so density
-    // ramps in evenly everywhere rather than capping which columns may rain (that swept left-to-right).
-    const respawnProb = (1 - Math.exp(-cfg.respawnChance * controls.density * dt)) * this.spawnRateScale;
+    const respawnProb = 1 - Math.exp(-cfg.respawnChance * controls.density * dt);
     const speedMul = controls.speed;
     // Density controls how many streams a column sustains at once, and how
     // quickly it refills toward that count (the inter-stream gap shrinks).
@@ -255,8 +263,10 @@ export class RainSim {
 
       // --- spawn a new stream when the gap timer elapses ---
       this.respawnTimer[col] = this.respawnTimer[col]! - dt;
+      // A column rains only once the ramp level passes its fixed random threshold (spawnRateScale = 1
+      // opens every column). rng is drawn first so the full-rain path stays bit-identical.
       if (this.respawnTimer[col]! <= 0 && streams.length < maxStreams) {
-        if (this.rng() < respawnProb) {
+        if (this.rng() < respawnProb && this.spawnRateScale > this.columnGate[col]!) {
           this.spawnStream(col);
           this.respawnTimer[col] = (cfg.respawnDelayMin + this.rng() * cfg.respawnDelayJitter) * gapScale;
         }
