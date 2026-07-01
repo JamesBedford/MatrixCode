@@ -40,6 +40,13 @@ describe("cloneCountdown", () => {
     expect(b).toEqual(a);
     expect(b).not.toBe(a);
   });
+
+  it("deep-copies the moments array", () => {
+    const src = { targetMs: null, moments: [{ name: "a", targetMs: 1 }] };
+    const copy = cloneCountdown(src);
+    copy.moments[0]!.name = "b";
+    expect(src.moments[0]!.name).toBe("a");
+  });
 });
 
 describe("sanitizeCountdown — named moments", () => {
@@ -77,15 +84,6 @@ describe("sanitizeCountdown — named moments", () => {
   it("nulls a non-numeric moment target", () => {
     const doc = sanitizeCountdown({ moments: [{ name: "x", targetMs: "soon" }] });
     expect(doc.moments).toEqual([{ name: "x", targetMs: null }]);
-  });
-});
-
-describe("cloneCountdown", () => {
-  it("deep-copies the moments array", () => {
-    const src = { targetMs: null, moments: [{ name: "a", targetMs: 1 }] };
-    const copy = cloneCountdown(src);
-    copy.moments[0]!.name = "b";
-    expect(src.moments[0]!.name).toBe("a");
   });
 });
 
