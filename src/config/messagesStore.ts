@@ -9,9 +9,9 @@ const MAX_MS = 600000;
 
 export const DEFAULT_MESSAGES: MessagesDoc = {
   messages: ["WAKE UP", "THE MATRIX HAS YOU", "FOLLOW THE WHITE RABBIT", "KNOCK, KNOCK"],
-  enabled: true,
+  enabled: false,
   frequencyMs: 8000,
-  persistenceMs: 4000,
+  persistenceMs: 10000,
   appearMs: 4000,
   disappearMs: 4000,
   flickerOut: true,
