@@ -1,5 +1,7 @@
 # MatrixCode — Film-Accurate Matrix Digital Rain for the Browser (WebGL2)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 MatrixCode is an open-source **Matrix digital rain effect** that runs directly in the browser: a full-viewport WebGL2 "code rain" screensaver, bundled into one self-contained HTML file with no server, no build step, and no external dependencies at runtime. Unlike most Matrix rain demos, the rendering model is film-accurate — glyphs sit on a **stationary grid** and a wave of illumination sweeps down each column, leaving an exponentially decaying trail, rather than scrolling text down the screen.
 
 ![MatrixCode running in a browser — green Matrix-style glyphs falling down a black background with a soft bloom glow](docs/screenshot.png)
@@ -11,6 +13,7 @@ MatrixCode is an open-source **Matrix digital rain effect** that runs directly i
 - [Controls](#controls)
 - [Getting Started](#getting-started)
 - [Architecture](#architecture)
+- [License](#license)
 
 ## Why MatrixCode
 
@@ -64,3 +67,7 @@ Data flows in one direction each frame:
 **Configuration:** `ControlsStore` (`src/config/controls.ts`) is an observable store of user-facing settings. Static tuning lives in `src/config/simConfig.ts`; color themes in `src/config/colorPresets.ts`.
 
 **Multi-monitor:** all windows run the same deterministic simulation against a shared seed and `Date.now()` epoch — same clock ⇒ pixel-aligned seams with no per-frame cross-window messaging. A `BroadcastChannel` is used only to coordinate exit. See `src/super/`.
+
+## License
+
+[MIT](LICENSE)
