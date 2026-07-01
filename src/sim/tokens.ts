@@ -13,10 +13,12 @@ export const NAME_TOKEN = "{name}";
 export interface TokenContext {
   /** Viewer name for `{name}` (blank falls back to DEFAULT_USER_NAME). */
   name: string;
-  /** Current wall-clock, epoch ms — drives `{time}`/`{countdown}`. */
+  /** Current wall-clock, epoch ms — drives `{time}`/`{countdown}`/`{countup}`. */
   nowMs: number;
-  /** Countdown target, epoch ms, or null when unset (⇒ `{countdown}` is 00:00). */
+  /** Default target for bare `{countdown}`/`{countup}`, epoch ms, or null when unset. */
   countdownTargetMs: number | null;
+  /** Named moments, name → target epoch ms (null = unset). Omitted ⇒ no named moments. */
+  moments?: Record<string, number | null>;
 }
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -83,18 +85,27 @@ export function formatCountdown(remainingMs: number): string {
   return `${pad2(minutes)}:${pad2(seconds)}`;
 }
 
-// One pass over the text: {name}, {countdown}, {time}, or {time:FORMAT}. Unknown {foo} is left as-is.
-const TOKEN_RE = /\{(name|countdown|time(?::([^}]*))?)\}/g;
+// One pass over the text: {name}, {time[:FORMAT]}, {countdown[:NAME]}, {countup[:NAME]}.
+// Group 1 = kind, group 2 = optional argument (a strftime format for time, a moment name otherwise).
+// Unknown {foo} is left as-is.
+const TOKEN_RE = /\{(name|time|countdown|countup)(?::([^}]*))?\}/g;
 
 /** Substitute all supported tokens in `text` using `ctx`. Pure — unknown tokens pass through. */
 export function resolveTokens(text: string, ctx: TokenContext): string {
-  return text.replace(TOKEN_RE, (_whole, kind: string, timeFmt: string | undefined) => {
+  const moments = ctx.moments ?? {};
+  return text.replace(TOKEN_RE, (_whole, kind: string, arg: string | undefined) => {
     if (kind === "name") return ctx.name.trim() || DEFAULT_USER_NAME;
-    if (kind === "countdown") {
-      const remaining = (ctx.countdownTargetMs ?? ctx.nowMs) - ctx.nowMs;
-      return formatCountdown(remaining);
-    }
-    // kind starts with "time": bare {time} → HH:MM, {time:FORMAT} → strftime(FORMAT).
-    return strftime(new Date(ctx.nowMs), timeFmt !== undefined ? timeFmt : "%H:%M");
+    if (kind === "time") return strftime(new Date(ctx.nowMs), arg !== undefined ? arg : "%H:%M");
+    // kind === "countdown" | "countup": a NAME selects a moment, else the default target.
+    const target = arg !== undefined ? moments[arg.trim()] ?? null : ctx.countdownTargetMs;
+    if (target === null) return formatCountdown(0);
+    return formatCountdown(kind === "countup" ? ctx.nowMs - target : target - ctx.nowMs);
   });
+}
+
+/** UI copy: the list of available moment names as ready-to-type tokens (for the editors' hover). */
+export function momentHint(names: string[]): string {
+  if (names.length === 0) return "No named moments yet.";
+  const list = names.map((n) => `{countdown:${n}}`).join(", ");
+  return `Available: ${list} — also {countup:…}`;
 }
