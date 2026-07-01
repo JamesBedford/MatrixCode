@@ -3,6 +3,8 @@
 // deterministic and unit-testable. `{name}` is resolved here too (it used to live in
 // messageOverlay.ts) so every surface substitutes tokens through one code path.
 
+import { holidayTargetMs } from "./holidays.ts";
+
 /** Name used when the viewer's own name can't be determined. */
 export const DEFAULT_USER_NAME = "Neo";
 
@@ -19,6 +21,8 @@ export interface TokenContext {
   countdownTargetMs: number | null;
   /** Named moments, name → target epoch ms (null = unset). Omitted ⇒ no named moments. */
   moments?: Record<string, number | null>;
+  /** When this run began, epoch ms. Bare `{countup}` counts up from here when no default target is set. Omitted ⇒ bare `{countup}` with no target shows 00:00. */
+  runStartMs?: number;
 }
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -96,11 +100,32 @@ export function resolveTokens(text: string, ctx: TokenContext): string {
   return text.replace(TOKEN_RE, (_whole, kind: string, arg: string | undefined) => {
     if (kind === "name") return ctx.name.trim() || DEFAULT_USER_NAME;
     if (kind === "time") return strftime(new Date(ctx.nowMs), arg !== undefined ? arg : "%H:%M");
-    // kind === "countdown" | "countup": a NAME selects a moment, else the default target.
-    const target = arg !== undefined ? moments[arg.trim()] ?? null : ctx.countdownTargetMs;
+    // kind === "countdown" | "countup"
+    const target = countTarget(kind, arg, ctx, moments);
     if (target === null) return formatCountdown(0);
     return formatCountdown(kind === "countup" ? ctx.nowMs - target : target - ctx.nowMs);
   });
+}
+
+/**
+ * The instant a {countdown}/{countup} measures to/from:
+ *   - `{…:NAME}` → a user moment of that name if defined, else a built-in holiday, else null (⇒ 00:00).
+ *   - bare `{…}` → the user's default target; and for `{countup}` with no default target, the
+ *     run-start time so it counts up from when the animation began.
+ */
+function countTarget(
+  kind: string,
+  arg: string | undefined,
+  ctx: TokenContext,
+  moments: Record<string, number | null>,
+): number | null {
+  if (arg !== undefined) {
+    const key = arg.trim();
+    if (Object.prototype.hasOwnProperty.call(moments, key)) return moments[key] ?? null;
+    return holidayTargetMs(key, ctx.nowMs);
+  }
+  if (ctx.countdownTargetMs !== null) return ctx.countdownTargetMs;
+  return kind === "countup" ? ctx.runStartMs ?? null : null;
 }
 
 /** UI copy: the list of available moment names as ready-to-type tokens (for the editors' hover). */

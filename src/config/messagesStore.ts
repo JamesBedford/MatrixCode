@@ -8,7 +8,7 @@ const MIN_MS = 500;
 const MAX_MS = 600000;
 
 export const DEFAULT_MESSAGES: MessagesDoc = {
-  messages: ["WAKE UP", "THE MATRIX HAS YOU", "FOLLOW THE WHITE RABBIT", "KNOCK, KNOCK"],
+  messages: ["WAKE UP", "THE MATRIX HAS YOU", "FOLLOW THE WHITE RABBIT", "{countup}"],
   enabled: false,
   frequencyMs: 8000,
   persistenceMs: 10000,

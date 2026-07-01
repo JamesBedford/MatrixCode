@@ -147,6 +147,34 @@ describe("resolveTokens — countup & named moments", () => {
   });
 });
 
+describe("resolveTokens — built-in holidays & run-time countup", () => {
+  it("{countdown:christmas} counts down to Dec 25 07:00", () => {
+    const now = AT(2026, 12, 20, 7, 0, 0); // exactly 5 days before
+    expect(resolveTokens("{countdown:christmas}", { name: "", nowMs: now, countdownTargetMs: null })).toBe("05:00:00:00");
+  });
+
+  it("{countdown:christmas} holds at 00:00 during Christmas day", () => {
+    const now = AT(2026, 12, 25, 15, 0, 0);
+    expect(resolveTokens("{countdown:christmas}", { name: "", nowMs: now, countdownTargetMs: null })).toBe("00:00");
+  });
+
+  it("a user moment overrides a built-in holiday of the same name", () => {
+    const now = AT(2026, 7, 1, 12, 0, 0);
+    const ctx = { name: "", nowMs: now, countdownTargetMs: null, moments: { christmas: now + 60_000 } };
+    expect(resolveTokens("{countdown:christmas}", ctx)).toBe("01:00");
+  });
+
+  it("bare {countup} counts up from runStartMs when no default target is set", () => {
+    const now = AT(2026, 7, 1, 12, 0, 0);
+    expect(resolveTokens("{countup}", { name: "", nowMs: now, countdownTargetMs: null, runStartMs: now - 65_000 })).toBe("01:05");
+  });
+
+  it("bare {countup} still shows 00:00 with neither a target nor a run start", () => {
+    const now = AT(2026, 7, 1, 12, 0, 0);
+    expect(resolveTokens("{countup}", { name: "", nowMs: now, countdownTargetMs: null })).toBe("00:00");
+  });
+});
+
 describe("momentHint", () => {
   it("lists names as tokens", () => {
     expect(momentHint(["launch", "newyear"])).toBe(

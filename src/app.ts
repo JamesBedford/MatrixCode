@@ -290,6 +290,8 @@ export async function mountMatrixRain(
   const messagesStore = panelConfig ? null : new MessagesStore();
   const countdownStore = panelConfig ? null : new CountdownStore();
   const viewerName = resolveUserName();
+  // When this run began — bare {countup} counts up from here (see resolveTokens / countTarget).
+  const runStartMs = Date.now();
   // One pure resolver for every surface (intro + in-rain messages). Reads the clock, the default
   // target, and the named moments live, so {time}/{countdown}/{countup} tick without any reconfigure.
   const resolveMessageText = (raw: string): string => {
@@ -299,6 +301,7 @@ export async function mountMatrixRain(
       nowMs: Date.now(),
       countdownTargetMs: doc?.targetMs ?? null,
       moments: Object.fromEntries((doc?.moments ?? []).map((m) => [m.name, m.targetMs])),
+      runStartMs,
     });
   };
   // Current moment names, for the intro/messages editors' token hover.
