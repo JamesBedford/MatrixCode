@@ -301,6 +301,9 @@ export async function mountMatrixRain(
       moments: Object.fromEntries((doc?.moments ?? []).map((m) => [m.name, m.targetMs])),
     });
   };
+  // Current moment names, for the intro/messages editors' token hover.
+  const getMomentNames = (): string[] => (countdownStore?.get().moments ?? []).map((m) => m.name);
+
   const messageScheduler = panelConfig ? null : new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED), resolveText: resolveMessageText });
   if (messageScheduler && messagesStore) messageScheduler.configure(messagesStore.get());
   const message = panelConfig ? null : new MessageOverlay(container, { resolveText: resolveMessageText });
@@ -403,7 +406,7 @@ export async function mountMatrixRain(
       onPreview: previewIntro,
       onSave: saveIntro,
       onCancel: () => seedOverlay(),
-    });
+    }, getMomentNames);
   }
 
   let messagesEditor: MessagesEditor | null = null;
@@ -412,7 +415,7 @@ export async function mountMatrixRain(
       onPreview: previewMessages,
       onSave: saveMessages,
       onCancel: () => {},
-    });
+    }, getMomentNames);
   }
 
   let countdownEditor: CountdownEditor | null = null;

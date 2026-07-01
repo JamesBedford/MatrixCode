@@ -1,6 +1,7 @@
 import type { MessagesDoc } from "../types.ts";
 import { MessagesStore, DEFAULT_MESSAGES, cloneMessages } from "../config/messagesStore.ts";
 import { ModalEditor } from "./modalKit.ts";
+import { momentHint } from "../sim/tokens.ts";
 
 export interface MessagesEditorCallbacks {
   /** Fire one message immediately over the rain (the editor hides itself first). */
@@ -20,7 +21,12 @@ export class MessagesEditor extends ModalEditor {
   private draft: MessagesDoc;
   private previewTimer: number | null = null;
 
-  constructor(parent: HTMLElement, private store: MessagesStore, private cb: MessagesEditorCallbacks) {
+  constructor(
+    parent: HTMLElement,
+    private store: MessagesStore,
+    private cb: MessagesEditorCallbacks,
+    private getMomentNames: () => string[],
+  ) {
     super(parent, "Edit messages");
     this.draft = cloneMessages(DEFAULT_MESSAGES);
     this.listEl = document.createElement("div");
@@ -83,7 +89,9 @@ export class MessagesEditor extends ModalEditor {
 
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint";
-    hint.textContent = "Messages appear scattered inside the rain. Raise Density to make them easier to read. Use {name}, {time}, {time:%H:%M} or {countdown}.";
+    hint.textContent = "Messages appear scattered inside the rain. Raise Density to make them easier to read. Use {name}, {time}, {countdown} or {countup}. ⓘ";
+    hint.title = momentHint(this.getMomentNames());
+    hint.style.cursor = "help";
     this.dialog.appendChild(hint);
 
     this.listEl = document.createElement("div");
