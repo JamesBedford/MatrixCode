@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { westernEaster, nthWeekdayOfMonth, holidayTargetMs } from "../src/sim/holidays.ts";
+import { westernEaster, nthWeekdayOfMonth, holidayTargetMs, computeDiwali } from "../src/sim/holidays.ts";
 
 // Local epoch-ms; mo is 1-indexed (human-friendly).
 const AT = (y: number, mo: number, d: number, h = 0, mi = 0, s = 0): number =>
@@ -51,9 +51,31 @@ describe("holidayTargetMs", () => {
     expect(holidayTargetMs("thanksgiving", AT(2026, 1, 1))).toBe(AT(2026, 11, 26, 7)); // Nov 26, 2026
   });
 
-  it("uses the Diwali table (extended) and returns null beyond it", () => {
-    expect(holidayTargetMs("diwali", AT(2026, 1, 1))).toBe(AT(2026, 11, 8, 7)); // Nov 8, 2026
-    expect(holidayTargetMs("diwali", AT(2033, 1, 1))).toBe(AT(2033, 10, 22, 7)); // Oct 22, 2033
-    expect(holidayTargetMs("diwali", AT(2050, 1, 1))).toBe(null); // beyond the table
+  it("uses the Diwali table for verified years and computes beyond it", () => {
+    expect(holidayTargetMs("diwali", AT(2026, 1, 1))).toBe(AT(2026, 11, 8, 7)); // table: Nov 8, 2026
+    expect(holidayTargetMs("diwali", AT(2033, 1, 1))).toBe(AT(2033, 10, 22, 7)); // table: Oct 22, 2033
+    // Beyond the table it is computed (never null) and lands on a plausible Oct/Nov 07:00 date.
+    const far = holidayTargetMs("diwali", AT(2099, 6, 1));
+    expect(far).not.toBe(null);
+    const d = new Date(far!);
+    expect(d.getFullYear()).toBe(2099);
+    expect([9, 10]).toContain(d.getMonth()); // October or November
+    expect(d.getHours()).toBe(7);
+  });
+});
+
+describe("computeDiwali", () => {
+  // The published dates for these years are authoritative; the astronomical computation must
+  // reproduce them within a day, which validates the new-moon algorithm end to end.
+  const PUBLISHED: Array<[number, number, number]> = [
+    [2024, 9, 31], [2026, 10, 8], [2028, 9, 17], [2030, 9, 26],
+    [2033, 9, 22], [2037, 10, 7], [2040, 10, 4],
+  ];
+  it("reproduces the published Diwali dates within one day", () => {
+    for (const [year, mo, day] of PUBLISHED) {
+      const got = computeDiwali(year);
+      const diffDays = Math.abs(new Date(year, got[0], got[1]).getTime() - new Date(year, mo, day).getTime()) / 86_400_000;
+      expect(diffDays, `Diwali ${year}: computed [${got}], published [${mo},${day}]`).toBeLessThanOrEqual(1);
+    }
   });
 });

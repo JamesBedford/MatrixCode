@@ -32,9 +32,9 @@ export function nthWeekdayOfMonth(year: number, month0: number, weekday: number,
   return 1 + offset + (n - 1) * 7;
 }
 
-// Diwali (Lakshmi Puja) main-day dates are lunisolar and region-dependent — there is no simple
-// formula, so we table the published dates ([month0, day]). Approximate; extend as needed. Years
-// outside the table resolve to null (⇒ {countdown:diwali} shows 00:00).
+// Diwali (Lakshmi Puja) is lunisolar and region-dependent. Verified published dates ([month0, day],
+// IST) are tabled as authoritative overrides; any year outside the table is computed astronomically
+// (see computeDiwali), so {countdown:diwali} works indefinitely.
 const DIWALI: Record<number, [number, number]> = {
   2024: [9, 31], // Oct 31, 2024
   2025: [9, 20], // Oct 20, 2025
@@ -55,6 +55,87 @@ const DIWALI: Record<number, [number, number]> = {
   2040: [10, 4], // Nov 4, 2040
 };
 
+// Beyond the verified table, Diwali is computed: it is the Amavasya (new moon) of Kartik, so we
+// find the new moon in the mid-Oct..mid-Nov window and take the day before it (Lakshmi Puja is
+// observed at that evening's pradosh). Reckoned in Indian Standard Time. ~±1 day vs. Panchang.
+const IST_OFFSET_MS = 5.5 * 3_600_000;
+
+/** Julian Ephemeris Day of the k-th new moon after 2000, via Meeus's algorithm (accurate to minutes). */
+function newMoonJDE(k: number): number {
+  const T = k / 1236.85;
+  const T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+  const JDE = 2451550.09766 + 29.530588861 * k + 0.00015437 * T2 - 0.000000150 * T3 + 0.00000000073 * T4;
+  const E = 1 - 0.002516 * T - 0.0000074 * T2;
+  const rad = Math.PI / 180;
+  const M = (2.5534 + 29.10535670 * k - 0.0000014 * T2 - 0.00000011 * T3) * rad; // Sun's mean anomaly
+  const Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T2 + 0.00001238 * T3 - 0.000000058 * T4) * rad; // Moon's
+  const F = (160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T4) * rad; // arg. latitude
+  const Om = (124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3) * rad; // ascending node
+  const c =
+      -0.40720 * Math.sin(Mp)
+    + 0.17241 * E * Math.sin(M)
+    + 0.01608 * Math.sin(2 * Mp)
+    + 0.01039 * Math.sin(2 * F)
+    + 0.00739 * E * Math.sin(Mp - M)
+    - 0.00514 * E * Math.sin(Mp + M)
+    + 0.00208 * E * E * Math.sin(2 * M)
+    - 0.00111 * Math.sin(Mp - 2 * F)
+    - 0.00057 * Math.sin(Mp + 2 * F)
+    + 0.00056 * E * Math.sin(2 * Mp + M)
+    - 0.00042 * Math.sin(3 * Mp)
+    + 0.00042 * E * Math.sin(M + 2 * F)
+    + 0.00038 * E * Math.sin(M - 2 * F)
+    - 0.00024 * E * Math.sin(2 * Mp - M)
+    - 0.00017 * Math.sin(Om)
+    - 0.00007 * Math.sin(Mp + 2 * M)
+    + 0.00004 * Math.sin(2 * Mp - 2 * F)
+    + 0.00004 * Math.sin(3 * M)
+    + 0.00003 * Math.sin(Mp + M - 2 * F)
+    + 0.00003 * Math.sin(2 * Mp + 2 * F)
+    - 0.00003 * Math.sin(Mp + M + 2 * F)
+    + 0.00003 * Math.sin(Mp - M + 2 * F)
+    - 0.00002 * Math.sin(Mp - M - 2 * F)
+    - 0.00002 * Math.sin(3 * Mp + M)
+    + 0.00002 * Math.sin(4 * Mp);
+  return JDE + c;
+}
+
+/** Sun's apparent tropical longitude (degrees) at `jde`, low-accuracy (Meeus ch. 25) — ample here. */
+function sunLongitude(jde: number): number {
+  const T = (jde - 2451545) / 36525;
+  const rad = Math.PI / 180;
+  const L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T;
+  const M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) * rad;
+  const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M)
+    + (0.019993 - 0.000101 * T) * Math.sin(2 * M)
+    + 0.000289 * Math.sin(3 * M);
+  return (((L0 + C) % 360) + 360) % 360;
+}
+
+/**
+ * IST calendar [month0, day] of Diwali (Lakshmi Puja) for `year`. Diwali is the Kartik Amavasya —
+ * the new moon while the Sun is in sidereal Libra — observed on the evening before that new moon.
+ * The solar-longitude test uniquely picks the right lunation (a date window cannot, since Diwali's
+ * new moon spans nearly a full month across years).
+ */
+export function computeDiwali(year: number): [number, number] {
+  const kEst = Math.round((year - 2000 + 0.83) * 12.3685); // ≈ a new moon in late Oct / early Nov
+  const ayanamsa = 24.1 + (year - 2024) * 0.0139; // Lahiri ayanamsa (approx): tropical → sidereal
+  for (let k = kEst - 2; k <= kEst + 2; k++) {
+    const jde = newMoonJDE(k);
+    const siderealSun = (((sunLongitude(jde) - ayanamsa) % 360) + 360) % 360;
+    if (siderealSun >= 180 && siderealSun < 210) {
+      // Baking the IST offset into the epoch lets getUTC* read the IST wall-clock directly.
+      const nmIst = new Date((jde - 2440587.5) * 86_400_000 + IST_OFFSET_MS);
+      const diwali = new Date(nmIst.getTime() - 86_400_000); // the evening before the new moon
+      return [diwali.getUTCMonth(), diwali.getUTCDate()];
+    }
+  }
+  // Fallback (not expected): the estimated new moon's eve.
+  const diwali = new Date((newMoonJDE(kEst) - 2440587.5) * 86_400_000 + IST_OFFSET_MS - 86_400_000);
+  return [diwali.getUTCMonth(), diwali.getUTCDate()];
+}
+
 /** Returns the event's local Date (with time-of-day) for a calendar year, or null if unknown. */
 type YearToDate = (year: number) => Date | null;
 
@@ -70,7 +151,7 @@ const HOLIDAYS: Record<string, YearToDate> = {
   easter: (y) => { const e = westernEaster(y); return new Date(y, e.month, e.day, H, 0, 0); },
   july4: (y) => new Date(y, 6, 4, H, 0, 0),
   halloween: (y) => new Date(y, 9, 31, H, 0, 0),
-  diwali: (y) => { const md = DIWALI[y]; return md ? new Date(y, md[0], md[1], H, 0, 0) : null; },
+  diwali: (y) => { const md = DIWALI[y] ?? computeDiwali(y); return new Date(y, md[0], md[1], H, 0, 0); },
   thanksgiving: (y) => new Date(y, 10, nthWeekdayOfMonth(y, 10, 4, 4), H, 0, 0), // 4th Thursday of Nov (US)
   christmaseve: (y) => new Date(y, 11, 24, H, 0, 0),
   christmas: (y) => new Date(y, 11, 25, H, 0, 0),
