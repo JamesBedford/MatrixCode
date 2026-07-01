@@ -290,10 +290,17 @@ export async function mountMatrixRain(
   const messagesStore = panelConfig ? null : new MessagesStore();
   const countdownStore = panelConfig ? null : new CountdownStore();
   const viewerName = resolveUserName();
-  // One pure resolver for every surface (intro + in-rain messages). Reads the clock and the countdown
-  // target live, so {time}/{countdown} tick each frame without any explicit reconfigure.
-  const resolveMessageText = (raw: string): string =>
-    resolveTokens(raw, { name: viewerName, nowMs: Date.now(), countdownTargetMs: countdownStore?.get().targetMs ?? null });
+  // One pure resolver for every surface (intro + in-rain messages). Reads the clock, the default
+  // target, and the named moments live, so {time}/{countdown}/{countup} tick without any reconfigure.
+  const resolveMessageText = (raw: string): string => {
+    const doc = countdownStore?.get();
+    return resolveTokens(raw, {
+      name: viewerName,
+      nowMs: Date.now(),
+      countdownTargetMs: doc?.targetMs ?? null,
+      moments: Object.fromEntries((doc?.moments ?? []).map((m) => [m.name, m.targetMs])),
+    });
+  };
   const messageScheduler = panelConfig ? null : new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED), resolveText: resolveMessageText });
   if (messageScheduler && messagesStore) messageScheduler.configure(messagesStore.get());
   const message = panelConfig ? null : new MessageOverlay(container, { resolveText: resolveMessageText });
