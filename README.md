@@ -1,12 +1,12 @@
 # MatrixCode
 
-Film-accurate Matrix digital rain — full-viewport WebGL2 effect, bundled into a single self-contained HTML file.
+Film-accurate Matrix digital rain — full-viewport WebGL effect, bundled into a single self-contained HTML file.
 
 The rendering model is faithful to the films: glyphs sit on a stationary grid and a wave of illumination sweeps down each column, leaving an exponentially decaying trail. The grid does not scroll.
 
 ## Features
 
-- **WebGL2 renderer** with multi-level bloom (brightpass → blur → composite), scanlines, and vignette
+- **WebGL renderer** with multi-level bloom (brightpass → blur → composite), scanlines, and vignette
 - **Film-accurate simulation** — stationary glyph grid, wave-of-illumination model, per-cell brightness decay
 - **Single-file build** — `vite build` produces one inlined `matrixcode.html` with no external dependencies
 - **Multi-monitor super fullscreen** — triple-click spans the rain across every connected display as one continuous grid (Chromium only; see [docs/multimonitor-setup.md](docs/multimonitor-setup.md))
