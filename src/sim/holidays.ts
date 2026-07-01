@@ -60,8 +60,39 @@ const DIWALI: Record<number, [number, number]> = {
 // observed at that evening's pradosh). Reckoned in Indian Standard Time. ~±1 day vs. Panchang.
 const IST_OFFSET_MS = 5.5 * 3_600_000;
 
-/** Julian Ephemeris Day of the k-th new moon after 2000, via Meeus's algorithm (accurate to minutes). */
-function newMoonJDE(k: number): number {
+// Meeus (Astronomical Algorithms, ch. 49) mean-phase corrections. Columns: new-moon coefficient,
+// full-moon coefficient, power of E, then the integer multipliers of (M', M, F, Ω) in the sine
+// argument. New and full moon share the argument set and differ only in the leading coefficients.
+const PHASE_TERMS: ReadonlyArray<readonly [number, number, number, number, number, number, number]> = [
+  [-0.40720, -0.40614, 0, 1, 0, 0, 0],
+  [ 0.17241,  0.17302, 1, 0, 1, 0, 0],
+  [ 0.01608,  0.01614, 0, 2, 0, 0, 0],
+  [ 0.01039,  0.01043, 0, 0, 0, 2, 0],
+  [ 0.00739,  0.00734, 1, 1, -1, 0, 0],
+  [-0.00514, -0.00515, 1, 1, 1, 0, 0],
+  [ 0.00208,  0.00209, 2, 0, 2, 0, 0],
+  [-0.00111, -0.00111, 0, 1, 0, -2, 0],
+  [-0.00057, -0.00057, 0, 1, 0, 2, 0],
+  [ 0.00056,  0.00056, 1, 2, 1, 0, 0],
+  [-0.00042, -0.00042, 0, 3, 0, 0, 0],
+  [ 0.00042,  0.00042, 1, 0, 1, 2, 0],
+  [ 0.00038,  0.00038, 1, 0, 1, -2, 0],
+  [-0.00024, -0.00024, 1, 2, -1, 0, 0],
+  [-0.00017, -0.00017, 0, 0, 0, 0, 1],
+  [-0.00007, -0.00007, 0, 1, 2, 0, 0],
+  [ 0.00004,  0.00004, 0, 2, 0, -2, 0],
+  [ 0.00004,  0.00004, 0, 0, 3, 0, 0],
+  [ 0.00003,  0.00003, 0, 1, 1, -2, 0],
+  [ 0.00003,  0.00003, 0, 2, 0, 2, 0],
+  [-0.00003, -0.00003, 0, 1, 1, 2, 0],
+  [ 0.00003,  0.00003, 0, 1, -1, 2, 0],
+  [-0.00002, -0.00002, 0, 1, -1, -2, 0],
+  [-0.00002, -0.00002, 0, 3, 1, 0, 0],
+  [ 0.00002,  0.00002, 0, 4, 0, 0, 0],
+];
+
+/** JDE of a lunar phase at mean-phase index `k` (integer ⇒ new moon; +0.5 ⇒ full moon). Meeus ch. 49. */
+function phaseJDE(k: number, full: boolean): number {
   const T = k / 1236.85;
   const T2 = T * T, T3 = T2 * T, T4 = T3 * T;
   const JDE = 2451550.09766 + 29.530588861 * k + 0.00015437 * T2 - 0.000000150 * T3 + 0.00000000073 * T4;
@@ -71,33 +102,21 @@ function newMoonJDE(k: number): number {
   const Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T2 + 0.00001238 * T3 - 0.000000058 * T4) * rad; // Moon's
   const F = (160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T4) * rad; // arg. latitude
   const Om = (124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3) * rad; // ascending node
-  const c =
-      -0.40720 * Math.sin(Mp)
-    + 0.17241 * E * Math.sin(M)
-    + 0.01608 * Math.sin(2 * Mp)
-    + 0.01039 * Math.sin(2 * F)
-    + 0.00739 * E * Math.sin(Mp - M)
-    - 0.00514 * E * Math.sin(Mp + M)
-    + 0.00208 * E * E * Math.sin(2 * M)
-    - 0.00111 * Math.sin(Mp - 2 * F)
-    - 0.00057 * Math.sin(Mp + 2 * F)
-    + 0.00056 * E * Math.sin(2 * Mp + M)
-    - 0.00042 * Math.sin(3 * Mp)
-    + 0.00042 * E * Math.sin(M + 2 * F)
-    + 0.00038 * E * Math.sin(M - 2 * F)
-    - 0.00024 * E * Math.sin(2 * Mp - M)
-    - 0.00017 * Math.sin(Om)
-    - 0.00007 * Math.sin(Mp + 2 * M)
-    + 0.00004 * Math.sin(2 * Mp - 2 * F)
-    + 0.00004 * Math.sin(3 * M)
-    + 0.00003 * Math.sin(Mp + M - 2 * F)
-    + 0.00003 * Math.sin(2 * Mp + 2 * F)
-    - 0.00003 * Math.sin(Mp + M + 2 * F)
-    + 0.00003 * Math.sin(Mp - M + 2 * F)
-    - 0.00002 * Math.sin(Mp - M - 2 * F)
-    - 0.00002 * Math.sin(3 * Mp + M)
-    + 0.00002 * Math.sin(4 * Mp);
-  return JDE + c;
+  let corr = 0;
+  for (const [cn, cf, ep, a, b, c, d] of PHASE_TERMS) {
+    corr += (full ? cf : cn) * E ** ep * Math.sin(a * Mp + b * M + c * F + d * Om);
+  }
+  return JDE + corr;
+}
+
+/** JDE of the k-th new moon after 2000 (k integer). */
+function newMoonJDE(k: number): number {
+  return phaseJDE(k, false);
+}
+
+/** JDE of the k-th full moon after 2000 (mean phase k + 0.5). */
+function fullMoonJDE(k: number): number {
+  return phaseJDE(k + 0.5, true);
 }
 
 /** Sun's apparent tropical longitude (degrees) at `jde`, low-accuracy (Meeus ch. 25) — ample here. */
@@ -136,15 +155,25 @@ export function computeDiwali(year: number): [number, number] {
   return [diwali.getUTCMonth(), diwali.getUTCDate()];
 }
 
-/** Epoch-ms (UTC) of the next new moon strictly after `nowMs` — for the recurring {countdown:newmoon}. */
-export function nextNewMoonMs(nowMs: number): number {
+/** Epoch-ms (UTC) of the next lunar phase strictly after `nowMs`. `kOffset` = 0 for new, 0.5 for full. */
+function nextPhaseMs(nowMs: number, phaseFn: (k: number) => number, kOffset: number): number {
   const jdNow = nowMs / 86_400_000 + 2440587.5;
-  let k = Math.floor((jdNow - 2451550.09766) / 29.530588861) - 1; // start ~one lunation before now
+  let k = Math.floor((jdNow - 2451550.09766) / 29.530588861 - kOffset) - 1; // start ~one lunation before now
   for (let guard = 0; guard < 6; guard++, k++) {
-    const ms = (newMoonJDE(k) - 2440587.5) * 86_400_000;
+    const ms = (phaseFn(k) - 2440587.5) * 86_400_000;
     if (ms > nowMs) return ms;
   }
-  return (newMoonJDE(k) - 2440587.5) * 86_400_000; // fallback (not expected)
+  return (phaseFn(k) - 2440587.5) * 86_400_000; // fallback (not expected)
+}
+
+/** Epoch-ms (UTC) of the next new moon strictly after `nowMs` — for the recurring {countdown:newmoon}. */
+export function nextNewMoonMs(nowMs: number): number {
+  return nextPhaseMs(nowMs, newMoonJDE, 0);
+}
+
+/** Epoch-ms (UTC) of the next full moon strictly after `nowMs` — for the recurring {countdown:fullmoon}. */
+export function nextFullMoonMs(nowMs: number): number {
+  return nextPhaseMs(nowMs, fullMoonJDE, 0.5);
 }
 
 /** Returns the event's local Date (with time-of-day) for a calendar year, or null if unknown. */
@@ -184,8 +213,8 @@ const ALIASES: Record<string, string> = {
   turkeyday: "thanksgiving",
 };
 
-/** Canonical built-in token names (annual holidays in calendar order, then the recurring new moon) — for the editor hover. */
-export const HOLIDAY_TOKENS: string[] = [...Object.keys(HOLIDAYS), "newmoon"];
+/** Canonical built-in token names (annual holidays in calendar order, then the recurring lunar phases) — for the editor hover. */
+export const HOLIDAY_TOKENS: string[] = [...Object.keys(HOLIDAYS), "newmoon", "fullmoon"];
 
 /**
  * Epoch-ms of the holiday's currently-relevant occurrence, or null when `name` is not a holiday
@@ -197,6 +226,7 @@ export const HOLIDAY_TOKENS: string[] = [...Object.keys(HOLIDAYS), "newmoon"];
 export function holidayTargetMs(name: string, nowMs: number): number | null {
   const key = ALIASES[name] ?? name;
   if (key === "newmoon") return nextNewMoonMs(nowMs); // recurring (~monthly), not a fixed annual date
+  if (key === "fullmoon") return nextFullMoonMs(nowMs);
   const dateForYear = HOLIDAYS[key];
   if (!dateForYear) return null;
   const year0 = new Date(nowMs).getFullYear();

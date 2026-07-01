@@ -2,10 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Fully self-contained and offline: forbid every network connection (fetch/XHR/WebSocket/etc.). -->
+    <meta http-equiv="Content-Security-Policy" content="connect-src 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0D0208" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Matrix</title>
   </head>
   <body>

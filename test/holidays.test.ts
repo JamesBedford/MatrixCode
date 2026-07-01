@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { westernEaster, nthWeekdayOfMonth, holidayTargetMs, computeDiwali, nextNewMoonMs } from "../src/sim/holidays.ts";
+import {
+  westernEaster,
+  nthWeekdayOfMonth,
+  holidayTargetMs,
+  computeDiwali,
+  nextNewMoonMs,
+  nextFullMoonMs,
+} from "../src/sim/holidays.ts";
 
 // Local epoch-ms; mo is 1-indexed (human-friendly).
 const AT = (y: number, mo: number, d: number, h = 0, mi = 0, s = 0): number =>
@@ -90,6 +97,36 @@ describe("nextNewMoonMs", () => {
   it("holidayTargetMs('newmoon', now) returns the next new moon", () => {
     const now = Date.UTC(2026, 6, 1);
     expect(holidayTargetMs("newmoon", now)).toBe(nextNewMoonMs(now));
+  });
+});
+
+describe("nextFullMoonMs", () => {
+  it("finds the next full moon after a given instant (2024-11-15 ~21:28 UTC)", () => {
+    const d = new Date(nextFullMoonMs(Date.UTC(2024, 10, 1))); // from Nov 1, 2024
+    expect(d.getUTCFullYear()).toBe(2024);
+    expect(d.getUTCMonth()).toBe(10); // November
+    expect(d.getUTCDate()).toBe(15);
+  });
+
+  it("returns a time strictly after now and within one synodic month", () => {
+    const now = Date.UTC(2031, 5, 3, 4, 15);
+    const fm = nextFullMoonMs(now);
+    expect(fm).toBeGreaterThan(now);
+    expect(fm - now).toBeLessThanOrEqual(29.6 * 86_400_000);
+  });
+
+  it("falls roughly midway between the surrounding new moons (~14.75 days after one)", () => {
+    const now = Date.UTC(2026, 6, 1);
+    const nm = nextNewMoonMs(now);
+    const fm = nextFullMoonMs(nm); // the full moon after that new moon
+    const gapDays = (fm - nm) / 86_400_000;
+    expect(gapDays).toBeGreaterThan(13);
+    expect(gapDays).toBeLessThan(16);
+  });
+
+  it("holidayTargetMs('fullmoon', now) returns the next full moon", () => {
+    const now = Date.UTC(2026, 6, 1);
+    expect(holidayTargetMs("fullmoon", now)).toBe(nextFullMoonMs(now));
   });
 });
 

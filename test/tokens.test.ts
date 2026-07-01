@@ -171,6 +171,13 @@ describe("resolveTokens — built-in holidays & run-time countup", () => {
     expect(out).not.toBe("00:00");
   });
 
+  it("{countdown:fullmoon} counts down to the next full moon", () => {
+    const now = AT(2026, 7, 1, 12, 0, 0);
+    const out = resolveTokens("{countdown:fullmoon}", { name: "", nowMs: now, countdownTargetMs: null });
+    expect(out).toMatch(/^\d{2}:\d{2}:\d{2}(:\d{2})?$/);
+    expect(out).not.toBe("00:00");
+  });
+
   it("bare {countup} counts up from runStartMs when no default target is set", () => {
     const now = AT(2026, 7, 1, 12, 0, 0);
     expect(resolveTokens("{countup}", { name: "", nowMs: now, countdownTargetMs: null, runStartMs: now - 65_000 })).toBe("01:05");
@@ -191,6 +198,7 @@ describe("momentHint", () => {
     expect(h).toContain("easter");
     expect(h).toContain("diwali");
     expect(h).toContain("newmoon");
+    expect(h).toContain("fullmoon");
     expect(h).toContain("{countup:…}");
   });
 
