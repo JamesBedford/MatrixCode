@@ -23,6 +23,7 @@ const CONTROLS: Controls = {
   mirror: true,
   scanlines: false,
   vignette: false,
+  allowOverlap: true,
   quality: "high",
 };
 const DENSE: Controls = { ...CONTROLS, density: 6 };

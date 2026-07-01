@@ -43,7 +43,7 @@ export class ControlsPanel {
     title.textContent = "Matrix";
     this.panel.appendChild(title);
 
-    this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =");
+    this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =. Turn up past 20 (with Allow overlap on) to make raindrops overlap between columns.");
     this.range("Ramp-up", "rampUpMs", 0, 30000, 500, (v) => controls.set({ rampUpMs: v }), (v) => (v === 0 ? "off" : `${(v / 1000).toFixed(1)}s`), undefined, "How long the rain builds up to full density when it first starts, on load (0 = instant)");
     // Slider is inverted: right = longer trail. Map slider [0.01,0.5] → stored decay [0.5,0.01].
     this.range("Trail length", "trailLength", 0.01, 0.5, 0.01,
@@ -76,6 +76,7 @@ export class ControlsPanel {
     this.toggle("Mirror glyphs", c.mirror, (v) => controls.set({ mirror: v }));
     this.toggle("Scanlines", c.scanlines, (v) => controls.set({ scanlines: v }));
     this.toggle("Vignette", c.vignette, (v) => controls.set({ vignette: v }));
+    this.toggle("Allow overlap", c.allowOverlap, (v) => controls.set({ allowOverlap: v }));
 
     const replay = this.button("▷ Replay intro", () => {
       this.cb.onReplayIntro();

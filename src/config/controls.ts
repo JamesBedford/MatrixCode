@@ -15,6 +15,7 @@ export const DEFAULT_CONTROLS: Controls = {
   mirror: true,
   scanlines: false,
   vignette: false,
+  allowOverlap: true,
   quality: "high",
 };
 
@@ -35,6 +36,7 @@ const URL_PARAMS = {
   mirror: "mirror",
   scanlines: "scanlines",
   vignette: "vignette",
+  allowOverlap: "overlap",
   quality: "quality",
 } as const satisfies Record<keyof Controls, string>;
 
@@ -61,6 +63,7 @@ function sanitize(input: Partial<Controls>): Partial<Controls> {
   if (typeof input.mirror === "boolean") out.mirror = input.mirror;
   if (typeof input.scanlines === "boolean") out.scanlines = input.scanlines;
   if (typeof input.vignette === "boolean") out.vignette = input.vignette;
+  if (typeof input.allowOverlap === "boolean") out.allowOverlap = input.allowOverlap;
   if (input.quality && QUALITIES.includes(input.quality)) out.quality = input.quality;
   return out;
 }

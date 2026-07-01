@@ -21,6 +21,12 @@ interface BloomLevel {
   h: number;
 }
 
+/** An extra rain layer to composite additively over the base: its state texture and horizontal cell offset. */
+export interface ExtraLayer {
+  texture: WebGLTexture;
+  colOffset: number;
+}
+
 export class Renderer {
   private gl: WebGL2RenderingContext;
   private atlas: GlyphAtlas;
@@ -128,7 +134,24 @@ export class Renderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  renderFrame(params: RenderParams, grid: Grid): void {
+  /** Draw one glyph layer's state texture into the currently-bound framebuffer at a horizontal cell offset. */
+  private drawGlyphLayer(texture: WebGLTexture, colOffset: number, grid: Grid, params: RenderParams): void {
+    const preset = params.preset;
+    drawFullscreen(this.gl, this.glyphProg, this.tri, {
+      uState: texture,
+      uAtlas: this.atlas.texture,
+      uGrid: [grid.cols, grid.rows],
+      uAtlasGrid: [this.atlas.atlasCols, this.atlas.atlasRows],
+      uTail: preset.tail,
+      uBody: preset.body,
+      uBright: preset.bright,
+      uHead: preset.head,
+      uLeadBrightness: params.leadBrightness,
+      uColOffset: colOffset,
+    });
+  }
+
+  renderFrame(params: RenderParams, grid: Grid, extraLayers?: readonly ExtraLayer[]): void {
     const gl = this.gl;
     if (params.quality !== this.quality) {
       this.resize(this.deviceW, this.deviceH, params.quality);
@@ -138,19 +161,16 @@ export class Renderer {
 
     gl.disable(gl.BLEND);
 
-    // 1. Glyph pass -> HDR scene.
+    // 1. Glyph pass -> HDR scene. The base layer (offset 0) overwrites the frame (no glClear); any
+    //    overlap layers then add on top so overlapping trails/heads accumulate emissively.
     twgl.bindFramebufferInfo(gl, this.scene);
-    drawFullscreen(gl, this.glyphProg, this.tri, {
-      uState: this.state.texture,
-      uAtlas: this.atlas.texture,
-      uGrid: [grid.cols, grid.rows],
-      uAtlasGrid: [this.atlas.atlasCols, this.atlas.atlasRows],
-      uTail: preset.tail,
-      uBody: preset.body,
-      uBright: preset.bright,
-      uHead: preset.head,
-      uLeadBrightness: params.leadBrightness,
-    });
+    this.drawGlyphLayer(this.state.texture, 0, grid, params);
+    if (extraLayers && extraLayers.length > 0) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      for (const layer of extraLayers) this.drawGlyphLayer(layer.texture, layer.colOffset, grid, params);
+      gl.disable(gl.BLEND);
+    }
 
     // 2. Bright-pass -> level 0 (half res).
     const levels = this.levels;

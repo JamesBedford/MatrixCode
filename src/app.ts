@@ -6,12 +6,13 @@ import { createRng } from "./util/rng.ts";
 import { MessageOverlay, resolveUserName } from "./sim/messageOverlay.ts";
 import { resolveTokens } from "./sim/tokens.ts";
 import { densityRampFactor, loadRampMs, rampEase } from "./sim/introRain.ts";
+import { computeLanes, tierCap, seedForLayer, MAX_LANES, type Lane } from "./sim/overlapLanes.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
 import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
 import { StateTexture } from "./gl/stateTexture.ts";
-import { Renderer } from "./gl/renderer.ts";
+import { Renderer, type ExtraLayer } from "./gl/renderer.ts";
 import { AdaptiveResolution } from "./gl/adaptiveResolution.ts";
 import { ControlsPanel } from "./ui/controlsPanel.ts";
 import { applyFavicon } from "./ui/favicon.ts";
@@ -41,6 +42,8 @@ export interface MatrixRainHandle {
 const ATLAS_CELL_PX = 64;
 const INTRO_KEY = "mx-intro-seen";
 const WARMUP_SECONDS = 2.5;
+// Base rain sim seed; overlap layers derive distinct seeds from it via seedForLayer.
+const BASE_SEED = 0x1a2b3c;
 // Multiplicative step for the −/= density shortcuts (density spans 0.1–100, so a geometric nudge feels even across the range).
 const DENSITY_KEY_STEP = 1.2;
 // The message scheduler's own PRNG seed, kept separate from the sim's so scheduling never perturbs the rain.
@@ -158,6 +161,12 @@ export async function mountMatrixRain(
   let sim: RainSim;
   let stateTex: StateTexture;
   let renderer: Renderer;
+  // Overlap-layer pool (lane indices 1..MAX_LANES-1): independent rain sims rendered at fractional
+  // column offsets and composited additively over the base layer (index 0 = `sim`/`stateTex`) once
+  // density is turned well up. Only the lanes active at the current density are stepped each frame.
+  let extraSims: RainSim[] = [];
+  let extraTexs: StateTexture[] = [];
+  const extraActive = new Array<boolean>(MAX_LANES - 1).fill(false);
   let grid: Grid = { cols: 1, rows: 1 };
   let cssW = 1;
   let cssH = 1;
@@ -208,6 +217,8 @@ export async function mountMatrixRain(
     deviceH = d.devH;
     sim?.resize(grid.cols, grid.rows);
     stateTex?.resize(grid.cols, grid.rows);
+    for (const s of extraSims) s.resize(grid.cols, grid.rows);
+    for (const t of extraTexs) t.resize(grid.cols, grid.rows);
     applyBackingSize();
   };
 
@@ -218,13 +229,37 @@ export async function mountMatrixRain(
     if (w !== cssW || h !== cssH) applySize(w, h);
   };
 
+  // Empty every overlap layer. Used whenever the base sim is reset for the intro/ramp black phase, so
+  // the overlap lanes fade back in together with the base instead of snapping in already-full.
+  const resetExtras = (): void => {
+    for (const s of extraSims) s.reset();
+    extraActive.fill(false);
+  };
+
   const buildGpu = async (): Promise<void> => {
     atlas = await buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX, mirrorExcludeFrom: glyphSet.ranges.message.start });
-    sim = new RainSim({ cols: grid.cols, rows: grid.rows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: 0x1a2b3c });
+    sim = new RainSim({ cols: grid.cols, rows: grid.rows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: BASE_SEED });
     stateTex = new StateTexture(gl, grid.cols, grid.rows);
+    // Pre-allocate the overlap-layer pool (memory is tiny; each is a cols×rows sim + state texture).
+    extraSims = [];
+    extraTexs = [];
+    for (let i = 1; i < MAX_LANES; i++) {
+      extraSims.push(new RainSim({ cols: grid.cols, rows: grid.rows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: seedForLayer(BASE_SEED, i) }));
+      extraTexs.push(new StateTexture(gl, grid.cols, grid.rows));
+    }
+    extraActive.fill(false);
     renderer = new Renderer(gl, atlas, stateTex);
     applyBackingSize();
-    sim.warmUp(controls.get(), WARMUP_SECONDS);
+    const c = controls.get();
+    sim.warmUp(c, WARMUP_SECONDS);
+    // Warm only the overlap lanes active at the initial density so a high-density load isn't briefly empty.
+    for (const lane of computeLanes(c.density, c.allowOverlap, tierCap(c.quality))) {
+      if (lane.index === 0) continue;
+      const s = extraSims[lane.index - 1]!;
+      s.spawnRateScale = lane.weight;
+      s.warmUp({ ...c, density: lane.density }, WARMUP_SECONDS);
+      extraActive[lane.index - 1] = true;
+    }
   };
 
   // Initial size before building GPU resources (sim needs grid dimensions).
@@ -278,6 +313,7 @@ export async function mountMatrixRain(
     rampUpMs = ms;
     rainPendingAfterIntro = false;
     sim.reset();
+    resetExtras();
     rainStartAtMs = performance.now();
   };
 
@@ -294,6 +330,7 @@ export async function mountMatrixRain(
         rampUpMs = ramp;
         rainPendingAfterIntro = false;
         sim.reset(); // black until the intro ends
+        resetExtras();
         rainStartAtMs = Number.POSITIVE_INFINITY;
         rainPendingAfterIntro = true;
         pendingPostIntroDelayMs = script.postIntroDelayMs;
@@ -407,6 +444,34 @@ export async function mountMatrixRain(
   };
   const renderStatic = paint;
 
+  // A per-lane controls snapshot: only the density differs between lanes, so reuse `c` unchanged when
+  // the lane density matches (keeps the base layer's inputs — and thus its output — bit-identical).
+  const laneControls = (c: Controls, density: number): Controls =>
+    density === c.density ? c : { ...c, density };
+
+  // Step, upload, and collect the active overlap layers for this frame. Idle lanes are skipped (zero
+  // cost); a lane reactivating after being idle is reset first so it fades in from empty rather than
+  // resuming stale rain. Returns the layer list for the renderer's additive pass.
+  const updateExtraLayers = (lanes: Lane[], dt: number, c: Controls, intro: number): ExtraLayer[] => {
+    const layers: ExtraLayer[] = [];
+    const activeNow = new Array<boolean>(extraSims.length).fill(false);
+    for (const lane of lanes) {
+      if (lane.index === 0) continue; // index 0 is the base sim, handled separately
+      const j = lane.index - 1;
+      const s = extraSims[j];
+      const t = extraTexs[j];
+      if (!s || !t) continue;
+      if (!extraActive[j]) s.reset();
+      s.spawnRateScale = intro * lane.weight;
+      s.update(dt, laneControls(c, lane.density));
+      t.upload(s.state);
+      activeNow[j] = true;
+      layers.push({ texture: t.texture, colOffset: lane.offset });
+    }
+    for (let j = 0; j < extraActive.length; j++) extraActive[j] = activeNow[j]!;
+    return layers;
+  };
+
   const loop = (now: number): void => {
     if (!running) return;
     raf = requestAnimationFrame(loop);
@@ -438,17 +503,23 @@ export async function mountMatrixRain(
       const fps = adaptiveRes.smoothedMs > 0 ? 1000 / adaptiveRes.smoothedMs : 0;
       hud.textContent = `${fps.toFixed(0)} fps · ${Math.round(renderScale * 100)}% res · ${canvas.width}×${canvas.height}`;
     }
+    let extraLayers: ExtraLayer[] = [];
     if (now >= rainStartAtMs) {
       // Ramp the rain in uniformly (columns fade in in random order, coverage scales linearly), with an
       // eased-in/eased-out but mostly-linear progress curve so the build-up feels steady, not front-loaded.
-      sim.spawnRateScale = rampEase(densityRampFactor(now, rainStartAtMs, rampUpMs));
-      // Set/clear in-rain message targets before stepping so they take effect this frame.
+      const intro = rampEase(densityRampFactor(now, rainStartAtMs, rampUpMs));
+      const lanes = computeLanes(c.density, c.allowOverlap, tierCap(c.quality));
+      // Base layer (index 0, weight 1): its density is pinned by computeLanes once overlap kicks in.
+      sim.spawnRateScale = intro * lanes[0]!.weight;
+      // Set/clear in-rain message targets before stepping so they take effect this frame (base layer only).
       messageScheduler?.update(now, sim);
-      sim.update(dt, c);
+      sim.update(dt, laneControls(c, lanes[0]!.density));
+      // Overlap layers (index >= 1): independent sims at fractional offsets, composited additively.
+      extraLayers = updateExtraLayers(lanes, dt, c, intro);
     }
     // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
     stateTex.upload(sim.state);
-    renderer.renderFrame(paramsOf(c), grid);
+    renderer.renderFrame(paramsOf(c), grid, extraLayers);
     message?.update(now);
   };
 
@@ -574,6 +645,7 @@ export async function mountMatrixRain(
       }
       pending = null; // a stale fullscreen-sized resize must not survive the switch back
       applySize(cssW, cssH); // rebuild sim/state/renderer back to this window's own grid
+      resetExtras(); // overlap is disabled in super mode; start the overlap lanes clean on return
       renderStatic();
     } else {
       try {
@@ -716,7 +788,10 @@ export async function mountMatrixRain(
       await buildGpu();
       // If context loss happened before the choreographed rain start, the fresh sim is
       // warmed-up; empty it again so the black-then-build effect is preserved.
-      if (performance.now() < rainStartAtMs) sim.reset();
+      if (performance.now() < rainStartAtMs) {
+        sim.reset();
+        resetExtras();
+      }
       applySize(cssW, cssH);
       if (reduceMq.matches) renderStatic();
       else start();
@@ -823,6 +898,7 @@ export async function mountMatrixRain(
       message?.destroy();
       renderer.dispose();
       stateTex.dispose();
+      for (const t of extraTexs) t.dispose();
       canvas.remove();
     },
   };

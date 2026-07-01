@@ -51,6 +51,8 @@ export interface Controls {
   scanlines: boolean;
   /** Subtle edge vignette. */
   vignette: boolean;
+  /** Allow raindrops to overlap between columns once density is turned well up (fractional interleaved lanes). */
+  allowOverlap: boolean;
   /** Render quality tier (bloom levels / DPR budget). */
   quality: QualityTier;
 }

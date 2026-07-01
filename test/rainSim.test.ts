@@ -18,6 +18,7 @@ const CONTROLS: Controls = {
   mirror: true,
   scanlines: false,
   vignette: false,
+  allowOverlap: true,
   quality: "high",
 };
 
