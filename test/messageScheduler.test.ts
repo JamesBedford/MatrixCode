@@ -10,6 +10,7 @@ class FakeSim {
   rows: number;
   last: Map<number, number> | null = null;
   sets = 0;
+  updates = 0;
   cleared = 0;
   intensity = 1;
   scramble = 0;
@@ -20,6 +21,10 @@ class FakeSim {
   setMessageTargets(t: Map<number, number>): void {
     this.last = new Map(t);
     this.sets++;
+  }
+  updateMessageTargets(t: Map<number, number>): void {
+    this.last = new Map(t);
+    this.updates++;
   }
   clearMessageTargets(): void {
     this.last = null;
@@ -223,6 +228,62 @@ describe("MessageScheduler.update scheduling", () => {
     s.configure(doc({ frequencyMs: 100000 })); // would not fire for a long time
     s.previewOne(5, sim, doc({ messages: ["NEO"] }));
     expect(sim.last).not.toBeNull();
+  });
+});
+
+describe("MessageScheduler token resolution + live ticking", () => {
+  const schedWith = (resolveText: (raw: string) => string, seed = 1): MessageScheduler =>
+    new MessageScheduler({ glyphSet, rng: createRng(seed), resolveText });
+
+  it("resolves a message through resolveText before laying it out", () => {
+    const s = schedWith(() => "AB"); // whatever the raw pool holds, it renders "AB"
+    const sim = new FakeSim(20, 40);
+    s.previewOne(0, sim, doc({ messages: ["{whatever}"] }));
+    expect(sim.last).not.toBeNull();
+    const row = rowOf(sim.last!, 20);
+    expect(sim.last!.size).toBe(2); // width 2 → startCol 9
+    expect(sim.last!.get(row * 20 + 9)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(row * 20 + 10)).toBe(glyphSet.charToGlyphIndex("B"));
+  });
+
+  it("re-lays-out via updateMessageTargets when the resolved text ticks, without re-firing setMessageTargets", () => {
+    let n = 0;
+    const s = schedWith(() => `T${n}`);
+    const sim = new FakeSim(20, 40);
+    s.previewOne(0, sim, doc({ messages: ["m"], persistenceMs: 100000, appearMs: 0, disappearMs: 0 }));
+    expect(sim.sets).toBe(1);
+    expect(sim.updates).toBe(0);
+
+    s.update(1000, sim);
+    expect(sim.updates).toBe(0); // resolved text unchanged ("T0") → no re-layout
+
+    n = 1; // a placeholder ticked
+    s.update(2000, sim);
+    expect(sim.updates).toBe(1); // re-laid out in place
+    expect(sim.sets).toBe(1); // never re-set from scratch
+    const row = rowOf(sim.last!, 20);
+    expect(sim.last!.get(row * 20 + 9)).toBe(glyphSet.charToGlyphIndex("T"));
+    expect(sim.last!.get(row * 20 + 10)).toBe(glyphSet.charToGlyphIndex("1"));
+  });
+
+  it("keeps the row fixed across a re-layout so the message never jumps", () => {
+    let n = 0;
+    const s = schedWith(() => `T${n}`, 4);
+    const sim = new FakeSim(20, 40);
+    s.previewOne(0, sim, doc({ messages: ["m"], persistenceMs: 100000, appearMs: 0, disappearMs: 0 }));
+    const rowBefore = rowOf(sim.last!, 20);
+    n = 2;
+    s.update(1000, sim);
+    expect(rowOf(sim.last!, 20)).toBe(rowBefore);
+  });
+
+  it("with the default identity resolver, an active message never re-lays-out", () => {
+    const s = sched();
+    const sim = new FakeSim(20, 40);
+    s.previewOne(0, sim, doc({ messages: ["AB"], persistenceMs: 100000, appearMs: 0, disappearMs: 0 }));
+    for (let t = 100; t < 5000; t += 100) s.update(t, sim);
+    expect(sim.updates).toBe(0);
+    expect(sim.sets).toBe(1);
   });
 });
 

@@ -3,7 +3,8 @@ import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
 import { MessageScheduler } from "./sim/messageScheduler.ts";
 import { createRng } from "./util/rng.ts";
-import { MessageOverlay, resolveLines, resolveUserName } from "./sim/messageOverlay.ts";
+import { MessageOverlay, resolveUserName } from "./sim/messageOverlay.ts";
+import { resolveTokens } from "./sim/tokens.ts";
 import { densityRampFactor, loadRampMs, rampEase } from "./sim/introRain.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
@@ -18,6 +19,8 @@ import { IntroStore, sanitizeIntro, toTypeConfig, type IntroScript } from "./con
 import { IntroEditor } from "./ui/introEditor.ts";
 import { MessagesStore } from "./config/messagesStore.ts";
 import { MessagesEditor } from "./ui/messagesEditor.ts";
+import { CountdownStore } from "./config/countdownStore.ts";
+import { CountdownEditor } from "./ui/countdownEditor.ts";
 import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
 import { stepsToAdvance, extractSlice } from "./super/superGrid.ts";
 import {
@@ -250,16 +253,21 @@ export async function mountMatrixRain(
   // Panels are a pure backdrop — no intro, no controls UI.
   const introStore = panelConfig ? null : new IntroStore();
   const messagesStore = panelConfig ? null : new MessagesStore();
-  const messageScheduler = panelConfig ? null : new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED) });
-  if (messageScheduler && messagesStore) messageScheduler.configure(messagesStore.get());
+  const countdownStore = panelConfig ? null : new CountdownStore();
   const viewerName = resolveUserName();
-  const message = panelConfig ? null : new MessageOverlay(container);
+  // One pure resolver for every surface (intro + in-rain messages). Reads the clock and the countdown
+  // target live, so {time}/{countdown} tick each frame without any explicit reconfigure.
+  const resolveMessageText = (raw: string): string =>
+    resolveTokens(raw, { name: viewerName, nowMs: Date.now(), countdownTargetMs: countdownStore?.get().targetMs ?? null });
+  const messageScheduler = panelConfig ? null : new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED), resolveText: resolveMessageText });
+  if (messageScheduler && messagesStore) messageScheduler.configure(messagesStore.get());
+  const message = panelConfig ? null : new MessageOverlay(container, { resolveText: resolveMessageText });
 
-  // Reflect the stored script onto the live overlay (resolving {name}).
+  // Reflect the stored script onto the live overlay (raw lines; tokens resolve per-frame).
   const seedOverlay = (): void => {
     if (!message || !introStore) return;
     const s = introStore.get();
-    message.setScript(resolveLines(s.lines, viewerName), toTypeConfig(s));
+    message.setScript(s.lines, toTypeConfig(s));
   };
   seedOverlay();
 
@@ -277,7 +285,7 @@ export async function mountMatrixRain(
   // Used by first-visit autoplay, Replay, and Preview.
   const startIntroSequence = (script: IntroScript): void => {
     if (!message) return;
-    message.setScript(resolveLines(script.lines, viewerName), toTypeConfig(script));
+    message.setScript(script.lines, toTypeConfig(script));
     // Under reduced motion the loop isn't running; skip choreography so an after-mode
     // trigger can't leave a stuck black frame. Behaves like today (a visual no-op).
     if (!reduceMq.matches) {
@@ -363,6 +371,15 @@ export async function mountMatrixRain(
     });
   }
 
+  let countdownEditor: CountdownEditor | null = null;
+  if (!panelConfig && countdownStore) {
+    // No scheduler/overlay reconfigure needed — both surfaces read the store live via resolveMessageText.
+    countdownEditor = new CountdownEditor(container, countdownStore, {
+      onSave: (d) => countdownStore.set(d),
+      onCancel: () => {},
+    });
+  }
+
   const panel = panelConfig
     ? null
     : new ControlsPanel(container, controls, {
@@ -370,6 +387,7 @@ export async function mountMatrixRain(
         onReplayIntro: () => { if (introStore) startIntroSequence(introStore.get()); },
         onEditIntro: () => editor?.open(),
         onEditMessages: () => messagesEditor?.open(),
+        onEditCountdown: () => countdownEditor?.open(),
       });
 
   const reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -632,6 +650,7 @@ export async function mountMatrixRain(
     else if (e.key === "h" || e.key === "H") panel?.toggleVisible();
     else if (e.key === "i" || e.key === "I") editor?.open();
     else if (e.key === "m" || e.key === "M") messagesEditor?.open();
+    else if (e.key === "c" || e.key === "C") countdownEditor?.open();
     else if (e.key === "n" || e.key === "N") toggleMessages();
     else if (e.key === "-" || e.key === "_") nudgeDensity(1 / DENSITY_KEY_STEP);
     else if (e.key === "=" || e.key === "+") nudgeDensity(DENSITY_KEY_STEP);
@@ -799,6 +818,7 @@ export async function mountMatrixRain(
       unsubscribe();
       editor?.destroy();
       messagesEditor?.destroy();
+      countdownEditor?.destroy();
       panel?.destroy();
       message?.destroy();
       renderer.dispose();

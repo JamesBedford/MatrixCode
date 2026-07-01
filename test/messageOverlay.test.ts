@@ -3,12 +3,8 @@ import {
   computeTimeline,
   cursorVisible,
   totalDuration,
-  resolveLines,
-  buildScript,
   DEFAULT_SCRIPT,
   DEFAULT_TYPE_CONFIG,
-  DEFAULT_LINES,
-  DEFAULT_USER_NAME,
   type MessageLine,
   type TypeConfig,
 } from "../src/sim/messageOverlay.ts";
@@ -106,24 +102,6 @@ describe("totalDuration", () => {
 
   it("computes a positive total duration for the default script", () => {
     expect(totalDuration(DEFAULT_SCRIPT, DEFAULT_TYPE_CONFIG)).toBeGreaterThan(0);
-  });
-});
-
-describe("resolveLines", () => {
-  it("substitutes every {name} token", () => {
-    const out = resolveLines([{ text: "Hi {name}, {name}!", holdMs: 0, pauseMs: 0 }], "Trinity");
-    expect(out[0]!.text).toBe("Hi Trinity, Trinity!");
-  });
-
-  it("falls back to the default name for blank input", () => {
-    const out = resolveLines([{ text: "{name}", holdMs: 0, pauseMs: 0 }], "   ");
-    expect(out[0]!.text).toBe(DEFAULT_USER_NAME);
-  });
-
-  it("default lines carry a {name} token and buildScript resolves it", () => {
-    expect(DEFAULT_LINES.some((l) => l.text.includes("{name}"))).toBe(true);
-    expect(buildScript("Neo").some((l) => l.text.includes("Neo"))).toBe(true);
-    expect(buildScript("Neo").every((l) => !l.text.includes("{name}"))).toBe(true);
   });
 });
 

@@ -200,6 +200,30 @@ export class RainSim {
     this.messageScramble = 0;
   }
 
+  /**
+   * Swap the active message's target map in place, preserving the reveal (`claimed`) state of every
+   * cell whose target glyph is unchanged and clearing it only where the target changed, was added, or
+   * was removed. Used to live-update a ticking message (e.g. a countdown) without re-materialising the
+   * whole string each second — only the glyphs that actually changed re-reveal. The fade envelope
+   * (intensity/scramble) is left untouched, since the scheduler owns it and a mid-fade swap must not
+   * jump. Falls back to a from-scratch reveal when no message is currently active.
+   */
+  updateMessageTargets(targets: Map<number, number>): void {
+    if (this.messageTargets === null) {
+      this.setMessageTargets(targets);
+      return;
+    }
+    const cells = this.cols * this.rows;
+    const next = new Int16Array(cells).fill(-1);
+    for (const [idx, glyph] of targets) {
+      if (idx >= 0 && idx < cells) next[idx] = glyph;
+    }
+    for (let i = 0; i < cells; i++) {
+      if (next[i] !== this.messageTargets[i]) this.claimed[i] = 0; // changed/added/removed → re-reveal
+    }
+    this.messageTargets = next;
+  }
+
   /** Remove the active message so its revealed cells dissolve back into random rain. */
   clearMessageTargets(): void {
     // Hand each revealed cell off at exactly the brightness it was last displayed at

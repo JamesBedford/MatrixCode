@@ -60,7 +60,7 @@ export class IntroEditor extends ModalEditor {
 
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint";
-    hint.textContent = "Use {name} to insert the visitor's name.";
+    hint.textContent = "Use {name}, {time}, {time:%H:%M} or {countdown}.";
     this.dialog.appendChild(hint);
 
     this.linesEl = document.createElement("div");

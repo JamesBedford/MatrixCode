@@ -6,6 +6,7 @@ export interface PanelCallbacks {
   onReplayIntro: () => void;
   onEditIntro: () => void;
   onEditMessages: () => void;
+  onEditCountdown: () => void;
 }
 
 const HIDE_DELAY_MS = 2800;
@@ -93,6 +94,11 @@ export class ControlsPanel {
     editMsgs.style.marginTop = "6px";
     this.panel.appendChild(editMsgs);
 
+    const editCountdown = this.button("⏱ Edit countdown", () => this.cb.onEditCountdown());
+    editCountdown.title = "Edit countdown (C)";
+    editCountdown.style.marginTop = "6px";
+    this.panel.appendChild(editCountdown);
+
     // Resets the tunable controls only — the user's custom intro (mx-intro) and
     // messages (mx-messages) live in separate stores and are intentionally left
     // untouched; each has its own "Reset to default" button inside its edit modal.
@@ -105,7 +111,7 @@ export class ControlsPanel {
 
     const hint = document.createElement("p");
     hint.className = "mx-hint";
-    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>N</kbd> toggle msgs · <kbd>−</kbd>/<kbd>=</kbd> density";
+    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>N</kbd> toggle msgs · <kbd>C</kbd> countdown · <kbd>−</kbd>/<kbd>=</kbd> density";
     this.panel.appendChild(hint);
 
     this.el.appendChild(this.panel);

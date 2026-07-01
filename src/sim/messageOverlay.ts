@@ -2,6 +2,11 @@
 // rain. The TYPING TIMELINE is a pure function (unit-tested); the DOM renderer
 // is a thin wrapper that drives a <pre> element from it.
 
+import { DEFAULT_USER_NAME, NAME_TOKEN } from "./tokens.ts";
+
+// Re-exported so existing importers of the name constants keep a single import site.
+export { DEFAULT_USER_NAME, NAME_TOKEN };
+
 export interface MessageLine {
   text: string;
   /** Milliseconds to hold the fully-typed line before clearing. */
@@ -32,12 +37,6 @@ export interface TimelineState {
   done: boolean;
 }
 
-/** Name used when the user's own name can't be determined. */
-export const DEFAULT_USER_NAME = "Neo";
-
-/** Token in line text that is replaced with the resolved viewer name at play time. */
-export const NAME_TOKEN = "{name}";
-
 /** Default per-line timings. pauseMs is 0 so the default intro's lines run back-to-back. */
 export const DEFAULT_HOLD_MS = 2800;
 export const DEFAULT_PAUSE_MS = 0;
@@ -49,17 +48,6 @@ export const DEFAULT_LINES: MessageLine[] = [
   { text: "Follow the white rabbit.", holdMs: DEFAULT_HOLD_MS, pauseMs: DEFAULT_PAUSE_MS },
   { text: `Knock, knock, ${NAME_TOKEN}.`, holdMs: DEFAULT_HOLD_MS, pauseMs: DEFAULT_PAUSE_MS },
 ];
-
-/** Substitute the {name} token in every line with the given name (blank → default). */
-export function resolveLines(lines: MessageLine[], name: string = DEFAULT_USER_NAME): MessageLine[] {
-  const who = name.trim() || DEFAULT_USER_NAME;
-  return lines.map((l) => ({ ...l, text: l.text.split(NAME_TOKEN).join(who) }));
-}
-
-/** Build the default typed intro script, addressing the viewer by name. */
-export function buildScript(name: string = DEFAULT_USER_NAME): MessageLine[] {
-  return resolveLines(DEFAULT_LINES, name);
-}
 
 /**
  * Resolve the viewer's name from the runtime environment, falling back to
@@ -80,7 +68,8 @@ export function resolveUserName(): string {
   return DEFAULT_USER_NAME;
 }
 
-export const DEFAULT_SCRIPT: MessageLine[] = buildScript();
+// Raw default script (tokens intact); tokens are resolved per-frame by the overlay's resolveText.
+export const DEFAULT_SCRIPT: MessageLine[] = DEFAULT_LINES;
 
 export const DEFAULT_TYPE_CONFIG: TypeConfig = {
   charMs: 95,
@@ -144,6 +133,8 @@ export function totalDuration(lines: MessageLine[], cfg: TypeConfig): number {
 export interface MessageOverlayOptions {
   lines?: MessageLine[];
   config?: TypeConfig;
+  /** Resolve dynamic tokens ({name}/{time}/{countdown}) in each line, called per frame. */
+  resolveText?: (text: string) => string;
 }
 
 /** DOM renderer for the typed intro. Driven by the app loop via update(nowMs). */
@@ -153,6 +144,7 @@ export class MessageOverlay {
   private cursorEl: HTMLSpanElement;
   private lines: MessageLine[];
   private cfg: TypeConfig;
+  private resolveText: (text: string) => string;
   private startMs = 0;
   private playing = false;
   private onDoneCb: (() => void) | null = null;
@@ -160,6 +152,7 @@ export class MessageOverlay {
   constructor(parent: HTMLElement, opts: MessageOverlayOptions = {}) {
     this.lines = opts.lines ?? DEFAULT_SCRIPT;
     this.cfg = opts.config ?? DEFAULT_TYPE_CONFIG;
+    this.resolveText = opts.resolveText ?? ((t) => t);
 
     this.el = document.createElement("div");
     this.el.className = "mx-message";
@@ -205,7 +198,11 @@ export class MessageOverlay {
   update(nowMs: number): void {
     if (!this.playing) return;
     const elapsed = nowMs - this.startMs;
-    const state = computeTimeline(this.lines, this.cfg, elapsed);
+    // Resolve dynamic tokens just-in-time so {time}/{countdown} tick as the line types and holds.
+    // computeTimeline derives type-duration from the resolved length, so the typewriter types the
+    // resolved value and re-slices live as it changes.
+    const lines = this.lines.map((l) => ({ ...l, text: this.resolveText(l.text) }));
+    const state = computeTimeline(lines, this.cfg, elapsed);
     if (state.done) {
       this.finish();
       return;

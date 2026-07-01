@@ -83,7 +83,7 @@ export class MessagesEditor extends ModalEditor {
 
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint";
-    hint.textContent = "Messages appear scattered inside the rain. Raise Density to make them easier to read.";
+    hint.textContent = "Messages appear scattered inside the rain. Raise Density to make them easier to read. Use {name}, {time}, {time:%H:%M} or {countdown}.";
     this.dialog.appendChild(hint);
 
     this.listEl = document.createElement("div");

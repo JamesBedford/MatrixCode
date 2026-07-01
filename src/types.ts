@@ -79,6 +79,12 @@ export interface MessagesDoc {
   verticalJitter: number;
 }
 
+/** The `{countdown}` target, persisted to localStorage. null = unset (countdown shows 00:00). */
+export interface CountdownDoc {
+  /** Target instant as epoch ms, or null when no countdown is set. */
+  targetMs: number | null;
+}
+
 /** Empirical tuning constants for the rain simulation (not user-facing). */
 export interface SimConfig {
   /** Desired glyph cell size in CSS px — drives grid resolution. */

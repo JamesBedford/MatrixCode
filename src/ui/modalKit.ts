@@ -109,6 +109,32 @@ export abstract class ModalEditor {
     return field;
   }
 
+  /**
+   * A `<input type="datetime-local">` bound to an epoch-ms value (or null when empty). The input shows
+   * LOCAL time, so we format from the Date's local getters (not toISOString, which is UTC) and parse the
+   * bare datetime-local string back through `new Date(...)`, which the platform reads as local time.
+   */
+  protected dateTimeField(label: string, valueMs: number | null, onChange: (ms: number | null) => void): HTMLElement {
+    const field = document.createElement("label");
+    field.className = "mx-field";
+    const span = document.createElement("span");
+    span.textContent = label;
+    const input = document.createElement("input");
+    input.type = "datetime-local";
+    if (valueMs !== null && Number.isFinite(valueMs)) {
+      const d = new Date(valueMs);
+      const p = (n: number): string => String(n).padStart(2, "0");
+      input.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+    input.addEventListener("input", () => {
+      if (!input.value) return onChange(null);
+      const ms = new Date(input.value).getTime();
+      onChange(Number.isFinite(ms) ? ms : null);
+    });
+    field.append(span, input);
+    return field;
+  }
+
   protected secondsField(label: string, valueMs: number, onChangeMs: (ms: number) => void): HTMLElement {
     return this.numberField(label, valueMs / 1000, 0, 60, 0.1, (s) => onChangeMs(Math.round(s * 1000)));
   }
