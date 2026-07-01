@@ -5,7 +5,7 @@ import { PRESET_NAMES } from "./colorPresets.ts";
 export const DEFAULT_CONTROLS: Controls = {
   speed: 1,
   trailLength: 0.255,
-  density: 1,
+  density: 2,
   rampUpMs: 8000,
   glyphRate: 1,
   glyphScale: 1,

@@ -6,6 +6,9 @@ import { clamp } from "../util/math.ts";
 
 const TWO_PI = Math.PI * 2;
 const MIN_BRIGHT = 0.004; // below this a cell is considered dark
+// Density control is scaled down so the same slider value produces roughly half the
+// on-screen rain it used to — keeps the numeric range but halves the visual effect per unit.
+const DENSITY_SCALE = 0.5;
 
 /** One falling head within a column: its row position, fall speed, and white-lead flag. */
 interface Stream {
@@ -249,12 +252,13 @@ export class RainSim {
     // how often trail glyphs change, independent of fall speed (glyphRate 0 = trail cells never mutate).
     const sync = Math.max(0, 1 + cfg.globalSyncAmount * Math.sin(this.time * cfg.globalSyncHz * TWO_PI));
     const mutChance = 1 - Math.exp(-cfg.mutationRate * controls.glyphRate * sync * dt);
-    const respawnProb = 1 - Math.exp(-cfg.respawnChance * controls.density * dt);
+    const density = controls.density * DENSITY_SCALE;
+    const respawnProb = 1 - Math.exp(-cfg.respawnChance * density * dt);
     const speedMul = controls.speed;
     // Density controls how many streams a column sustains at once, and how
     // quickly it refills toward that count (the inter-stream gap shrinks).
-    const maxStreams = Math.max(1, Math.round(controls.density));
-    const gapScale = 1 / controls.density;
+    const maxStreams = Math.max(1, Math.round(density));
+    const gapScale = 1 / density;
     const floor = cfg.messageBrightFloor;
     const targets = this.messageTargets; // null when no message is active (zero-overhead fast path)
 

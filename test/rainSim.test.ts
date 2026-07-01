@@ -115,7 +115,7 @@ describe("RainSim", () => {
 describe("RainSim.reset", () => {
   it("empties the grid (every state byte 0)", () => {
     const sim = makeSim(20, 30);
-    sim.warmUp(CONTROLS, 2);
+    sim.warmUp(CONTROLS, 4);
     let litBefore = 0;
     for (let i = 0; i < sim.cols * sim.rows; i++) if (sim.state[i * 4 + 1]! > 0) litBefore++;
     expect(litBefore).toBeGreaterThan(0); // precondition: rain is present
@@ -134,9 +134,9 @@ describe("RainSim.reset", () => {
 
   it("resumes producing rain after reset", () => {
     const sim = makeSim(20, 30);
-    sim.warmUp(CONTROLS, 2);
+    sim.warmUp(CONTROLS, 4);
     sim.reset();
-    sim.warmUp(CONTROLS, 2);
+    sim.warmUp(CONTROLS, 4);
     let lit = 0;
     for (let i = 0; i < sim.cols * sim.rows; i++) if (sim.state[i * 4 + 1]! > 0) lit++;
     expect(lit).toBeGreaterThan(0);

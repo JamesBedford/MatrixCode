@@ -46,7 +46,7 @@ describe("RainSim golden output (locks byte-exact packing across perf refactors)
     const sim = makeSim(40, 60, 0xc0ffee);
     sim.warmUp(DENSE, 3);
     for (let i = 0; i < 300; i++) sim.update(1 / 60, DENSE);
-    expect(checksum(sim.state)).toBe(3658668035);
+    expect(checksum(sim.state)).toBe(3698235262);
   });
 
   it("active message with intensity fade and flicker scramble", () => {
@@ -61,6 +61,6 @@ describe("RainSim golden output (locks byte-exact packing across perf refactors)
       sim.setMessageScramble(0.3);
       sim.update(1 / 60, DENSE);
     }
-    expect(checksum(sim.state)).toBe(597106857);
+    expect(checksum(sim.state)).toBe(478879554);
   });
 });
