@@ -3,15 +3,16 @@
   <defs>
     <!-- Soft bloom on the bright leading heads, echoing the app's bloom post-process -->
     <filter id="head-glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="0.9" result="blur" />
+      <feGaussianBlur stdDeviation="1.1" result="blur" />
       <feMerge>
         <feMergeNode in="blur" />
         <feMergeNode in="SourceGraphic" />
       </feMerge>
     </filter>
   </defs>
-  <!-- Digital rain: three staggered columns of katakana, bright leading head fading up the trail.
-       Placeholder for the "classic" theme; src/ui/favicon.ts recolours this live to the active preset. -->
+  <!-- Digital rain: three staggered columns of katakana, bright leading head fading up the trail
+       to a deep near-tail shade. Placeholder for the "classic" theme; src/ui/favicon.ts recolours
+       this live to the active preset. -->
   <g font-family="'Hiragino Kaku Gothic Pro', 'MS Gothic', 'Noto Sans JP', 'Yu Gothic', monospace"
      font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="central">
     <!-- column 1 -->
@@ -20,6 +21,7 @@
     <text x="14" y="34.5" fill="#64FF8A">ﾘ</text>
     <text x="14" y="46.5" fill="#DEFFE4" filter="url(#head-glow)">ﾂ</text>
     <!-- column 2 -->
+    <text x="32" y="22.5" fill="#006509">ｸ</text>
     <text x="32" y="34.5" fill="#008F11">ｦ</text>
     <text x="32" y="46.5" fill="#00FF41">ﾐ</text>
     <text x="32" y="58.5" fill="#DEFFE4" filter="url(#head-glow)">ﾝ</text>

@@ -34,6 +34,18 @@ The native saver is expected to match the browser app's user-visible behavior:
 If exact parity is intentionally impossible because of platform constraints,
 document the difference here and cover the native behavior with tests.
 
+## App icon
+
+`scripts/generate_native_icons.py` (repo root) regenerates
+`Resources/Assets.xcassets/AppIcon.appiconset` and `Resources/MatrixCode.icns`.
+Small sizes (canvas ≤ 64 px) rasterize the web favicon model parsed from
+`public/favicon.svg`, so they stay identical to the browser favicon. Large
+sizes (≥ 128 px) are an intentional difference from the web favicon: a
+deterministic, seeded cinematic render (Big Sur-style inset rounded rect with
+drop shadow, three depth layers of rain, bloomed heads, vignette, scanlines)
+that the 64-unit favicon grid cannot express. Both size classes derive their
+palette from the classic preset in `src/config/colorPresets.ts`.
+
 ## Requirements
 
 - macOS 13 or later on Apple Silicon
