@@ -32,4 +32,121 @@
     XCTAssertEqualWithAccuracy(NSMaxY(upper), lower.origin.y, 0.001);
 }
 
+- (void)testDisplaySlicePreservesPartialCellAtMonitorBoundary {
+    NSInteger firstCell = -1;
+    CGFloat origin = [MatrixCodeSession localOriginForVirtualOffset:1920
+                                                           cellSize:18
+                                                          firstCell:&firstCell];
+    XCTAssertEqual(firstCell, 106);
+    XCTAssertEqualWithAccuracy(origin, -12, 0.001);
+
+    // The next cells remain on the same global lattice rather than restarting
+    // with a full glyph at the second display's left edge.
+    XCTAssertEqualWithAccuracy(origin + 18, 6, 0.001);
+}
+
+- (void)testAlignedDisplayBoundaryStartsAtZeroOrigin {
+    NSInteger firstCell = -1;
+    CGFloat origin = [MatrixCodeSession localOriginForVirtualOffset:1800
+                                                           cellSize:18
+                                                          firstCell:&firstCell];
+    XCTAssertEqual(firstCell, 100);
+    XCTAssertEqualWithAccuracy(origin, 0, 0.001);
+}
+
+- (void)testTShapedFourDisplayLayoutSharesCellsAcrossUpperCenterSeam {
+    // Regression geometry from the real arrangement:
+    //
+    //                upper 1920×1200 @ (-112, 1112)
+    //   left 1920×1200   centre 1710×1112   right 1920×1200
+    //      @ (-1920,-88)      @ (0,0)          @ (1710,-88)
+    //
+    // AppKit uses a bottom-left desktop origin. MatrixCode converts it to a
+    // top-left virtual canvas before placing cells.
+    const CGFloat desktopMaxY = 2312;
+    NSRect upper = [MatrixCodeSession topLeftRectForFrame:NSMakeRect(-112, 1112, 1920, 1200)
+                                              desktopMaxY:desktopMaxY];
+    NSRect center = [MatrixCodeSession topLeftRectForFrame:NSMakeRect(0, 0, 1710, 1112)
+                                               desktopMaxY:desktopMaxY];
+    NSRect left = [MatrixCodeSession topLeftRectForFrame:NSMakeRect(-1920, -88, 1920, 1200)
+                                             desktopMaxY:desktopMaxY];
+    NSRect right = [MatrixCodeSession topLeftRectForFrame:NSMakeRect(1710, -88, 1920, 1200)
+                                              desktopMaxY:desktopMaxY];
+
+    XCTAssertEqualWithAccuracy(NSMaxY(upper), NSMinY(center), 0.001);
+    XCTAssertEqualWithAccuracy(NSMinY(center), NSMinY(left), 0.001);
+    XCTAssertEqualWithAccuracy(NSMinY(center), NSMinY(right), 0.001);
+    XCTAssertGreaterThan(NSWidth(NSIntersectionRect(
+        NSMakeRect(NSMinX(upper), 0, NSWidth(upper), 1),
+        NSMakeRect(NSMinX(center), 0, NSWidth(center), 1)
+    )), 0);
+
+    const CGFloat virtualMinX = -1920;
+    const CGFloat cellSize = 18;
+    NSInteger upperFirstRow = -1;
+    NSInteger centerFirstRow = -1;
+    CGFloat upperOriginY = [MatrixCodeSession localOriginForVirtualOffset:NSMinY(upper)
+                                                                 cellSize:cellSize
+                                                                firstCell:&upperFirstRow];
+    CGFloat centerOriginY = [MatrixCodeSession localOriginForVirtualOffset:NSMinY(center)
+                                                                  cellSize:cellSize
+                                                                 firstCell:&centerFirstRow];
+    XCTAssertEqual(upperFirstRow, 0);
+    XCTAssertEqualWithAccuracy(upperOriginY, 0, 0.001);
+    XCTAssertEqual(centerFirstRow, 66);
+    XCTAssertEqualWithAccuracy(centerOriginY, -12, 0.001);
+
+    // Global row 66 spans virtual y=1188…1206. Its top 12 points are drawn
+    // at the bottom of the upper display and its remaining 6 points at the
+    // top of the centre display: one cell, clipped into two physical slices.
+    XCTAssertEqualWithAccuracy(66 * cellSize, NSMaxY(upper) - 12, 0.001);
+    XCTAssertEqualWithAccuracy(centerOriginY + cellSize, 6, 0.001);
+
+    // The shared x=0 desktop seam also resolves to the same global column on
+    // both screens even though the upper display begins 112 points left.
+    NSInteger upperFirstColumn = -1;
+    NSInteger centerFirstColumn = -1;
+    CGFloat upperOriginX = [MatrixCodeSession
+        localOriginForVirtualOffset:NSMinX(upper) - virtualMinX
+                           cellSize:cellSize
+                          firstCell:&upperFirstColumn];
+    CGFloat centerOriginX = [MatrixCodeSession
+        localOriginForVirtualOffset:NSMinX(center) - virtualMinX
+                           cellSize:cellSize
+                          firstCell:&centerFirstColumn];
+    XCTAssertEqual(upperFirstColumn, 100);
+    XCTAssertEqual(centerFirstColumn, 106);
+    XCTAssertEqualWithAccuracy(upperOriginX + (106 - upperFirstColumn) * cellSize, 100, 0.001);
+    XCTAssertEqualWithAccuracy(centerOriginX, -12, 0.001);
+}
+
+- (void)testNilWindowScreenResolvesToOnlyUnclaimedMatchingDisplay {
+    NSArray *descriptors = @[
+        @{@"id": @"screen-1", @"width": @1710, @"height": @1112},
+        @{@"id": @"screen-16", @"width": @1920, @"height": @1200},
+        @{@"id": @"screen-17", @"width": @1920, @"height": @1200},
+        @{@"id": @"screen-18", @"width": @1920, @"height": @1200},
+    ];
+    NSSet *claimed = [NSSet setWithArray:@[@"screen-1", @"screen-16", @"screen-18"]];
+    XCTAssertEqualObjects(
+        [MatrixCodeSession uniqueUnclaimedScreenIdentifierForSize:NSMakeSize(1920, 1200)
+                                                       descriptors:descriptors
+                                                           claimed:claimed],
+        @"screen-17"
+    );
+}
+
+- (void)testNilWindowScreenWaitsWhileMatchingDisplayIsAmbiguous {
+    NSArray *descriptors = @[
+        @{@"id": @"screen-16", @"width": @1920, @"height": @1200},
+        @{@"id": @"screen-17", @"width": @1920, @"height": @1200},
+        @{@"id": @"screen-18", @"width": @1920, @"height": @1200},
+    ];
+    XCTAssertNil(
+        [MatrixCodeSession uniqueUnclaimedScreenIdentifierForSize:NSMakeSize(1920, 1200)
+                                                       descriptors:descriptors
+                                                           claimed:[NSSet setWithObject:@"screen-16"]]
+    );
+}
+
 @end

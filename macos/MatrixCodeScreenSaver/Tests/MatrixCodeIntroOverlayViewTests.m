@@ -43,4 +43,22 @@
     XCTAssertFalse(view.hasIntro);
 }
 
+- (void)testSkipCompletesPlayingIntroImmediately {
+    NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    MatrixCodeTokenResolver *resolver =
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:@{} runStartDate:start];
+    __block BOOL completed = NO;
+    MatrixCodeIntroOverlayView *view =
+        [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSZeroRect
+                                            storedValues:@{}
+                                           tokenResolver:resolver
+                                              completion:^{ completed = YES; }];
+    [view startAtDate:start];
+    XCTAssertTrue(view.playing);
+    [view skip];
+    XCTAssertTrue(completed);
+    XCTAssertFalse(view.playing);
+    XCTAssertFalse(view.hasIntro);
+}
+
 @end

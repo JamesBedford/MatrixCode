@@ -10,7 +10,12 @@ SOURCE_SAVER="/private/tmp/MatrixCodeScreenSaverDerivedData/Build/Products/Relea
 rm -rf "${INSTALL_DIR}/MatrixCode.saver"
 ditto "${SOURCE_SAVER}" "${INSTALL_DIR}/MatrixCode.saver"
 xattr -cr "${INSTALL_DIR}/MatrixCode.saver"
+touch "${INSTALL_DIR}/MatrixCode.saver"
 codesign --force --sign - "${INSTALL_DIR}/MatrixCode.saver"
 codesign --verify --deep --strict "${INSTALL_DIR}/MatrixCode.saver"
+
+if /usr/bin/killall legacyScreenSaver 2>/dev/null; then
+  echo "Restarted macOS's cached legacy screen saver host."
+fi
 
 echo "Installed MatrixCode.saver. Select it in System Settings → Screen Saver."

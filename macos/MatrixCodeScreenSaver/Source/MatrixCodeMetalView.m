@@ -3,6 +3,8 @@
 #import <CoreText/CoreText.h>
 #import <simd/simd.h>
 
+#import "MatrixCodeSession.h"
+#import "MatrixCodeRainLifecycle.h"
 #import "MatrixCodeTokenResolver.h"
 
 typedef struct {
@@ -14,6 +16,7 @@ typedef struct {
     float crossfade;
     float brightness;
     float isHead;
+    float whiteHead;
 } MatrixCodeGlyphInstance;
 
 typedef struct {
@@ -30,6 +33,8 @@ typedef struct {
     float vignette;
     float scanlines;
     float glowRadius;
+    float leadBrightness;
+    vector_float3 padding4;
 } MatrixCodeUniforms;
 
 static uint32_t MatrixCodeHash(uint32_t value) {
@@ -57,8 +62,26 @@ static float MatrixCodeVanDerCorput(NSUInteger value) {
 
 static float MatrixCodeNumber(NSDictionary *dictionary, NSString *key, float fallback, float minimum, float maximum) {
     id value = dictionary[key];
-    if (![value isKindOfClass:NSNumber.class]) return fallback;
+    if (![value isKindOfClass:NSNumber.class] ||
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() ||
+        !isfinite([value doubleValue])) return fallback;
     return fminf(maximum, fmaxf(minimum, [value floatValue]));
+}
+
+static BOOL MatrixCodeBool(NSDictionary *dictionary, NSString *key, BOOL fallback) {
+    id value = dictionary[key];
+    return [value isKindOfClass:NSNumber.class] &&
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()
+        ? [value boolValue] : fallback;
+}
+
+static float MatrixCodeVignette(NSDictionary *dictionary) {
+    id value = dictionary[@"vignette"];
+    if ([value isKindOfClass:NSNumber.class] &&
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) {
+        return [value boolValue] ? 0.42f : 0;
+    }
+    return MatrixCodeNumber(dictionary, @"vignette", 0, 0, 1);
 }
 
 static vector_float3 MatrixCodeRGB(uint32_t rgb) {
@@ -95,14 +118,20 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
 @property(nonatomic) float virtualWidth;
 @property(nonatomic) float virtualHeight;
 @property(nonatomic) float densityScale;
+@property(nonatomic) NSTimeInterval rainElapsed;
+@property(nonatomic) BOOL usesExternalRainTimeline;
 @property(nonatomic, copy) NSDictionary<NSString *, id> *messages;
 @property(nonatomic, strong) MatrixCodeTokenResolver *tokenResolver;
 @property(nonatomic) NSTimeInterval nextMessageFire;
 @property(nonatomic) NSTimeInterval activeMessageStart;
 @property(nonatomic) NSTimeInterval activeMessageEnd;
 @property(nonatomic, copy, nullable) NSString *activeMessageTemplate;
+@property(nonatomic, copy, nullable) NSString *activeMessageDisplay;
 @property(nonatomic) NSInteger activeMessageRow;
 @property(nonatomic) NSInteger activeMessageStartColumn;
+@property(nonatomic) NSInteger activeMessagePlacementColumns;
+@property(nonatomic, strong) NSMutableSet<NSNumber *> *claimedMessageCells;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *messageTargetGlyphs;
 @end
 
 @implementation MatrixCodeMetalView
@@ -123,6 +152,8 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     self.delegate = self;
     self.animationActive = NO;
     self.densityScale = 1;
+    self.claimedMessageCells = [NSMutableSet set];
+    self.messageTargetGlyphs = [NSMutableDictionary dictionary];
     self.session = session ?: @{};
     self.seed = [session[@"seed"] respondsToSelector:@selector(unsignedIntValue)]
         ? [session[@"seed"] unsignedIntValue]
@@ -147,7 +178,14 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     _densityScale = fminf(1, fmaxf(0, densityScale));
 }
 
+- (void)setDensityScale:(float)densityScale rainElapsed:(NSTimeInterval)rainElapsed {
+    [self setDensityScale:densityScale];
+    self.rainElapsed = rainElapsed;
+    self.usesExternalRainTimeline = YES;
+}
+
 - (void)reloadStoredValues:(NSDictionary<NSString *,NSString *> *)storedValues {
+    BOOL previousMirror = MatrixCodeBool(self.controls, @"mirror", YES);
     NSDictionary *controls = nil;
     NSString *raw = storedValues[@"mx-controls"];
     if ([raw isKindOfClass:NSString.class]) {
@@ -178,12 +216,21 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
                                                                   runStartDate:[NSDate dateWithTimeIntervalSince1970:self.epochSeconds]];
     self.activeMessageTemplate = nil;
+    self.activeMessageDisplay = nil;
+    [self.claimedMessageCells removeAllObjects];
+    [self.messageTargetGlyphs removeAllObjects];
     self.activeMessageStart = 0;
     self.activeMessageEnd = 0;
     float frequency = MatrixCodeNumber(self.messages, @"frequencyMs", 8000, 500, 600000) / 1000.0f;
-    self.nextMessageFire = self.epochSeconds + frequency *
+    NSTimeInterval scheduleBase = self.animationActive
+        ? NSDate.date.timeIntervalSince1970 : self.epochSeconds;
+    self.nextMessageFire = scheduleBase + frequency *
         (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ 0xa511e9b3U));
     [self updatePalette];
+    BOOL nextMirror = MatrixCodeBool(self.controls, @"mirror", YES);
+    if (self.atlas && previousMirror != nextMirror) {
+        [self buildAtlas];
+    }
 }
 
 - (void)resolveDesktopGeometry {
@@ -288,7 +335,7 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
         (id)kCTFontAttributeName: (__bridge id)font,
         (id)kCTForegroundColorAttributeName: (__bridge id)NSColor.whiteColor.CGColor,
     };
-    BOOL mirror = ![self.controls[@"mirror"] isKindOfClass:NSNumber.class] || [self.controls[@"mirror"] boolValue];
+    BOOL mirror = MatrixCodeBool(self.controls, @"mirror", YES);
     [glyphs enumerateObjectsUsingBlock:^(NSString *glyph, NSUInteger index, BOOL *stop) {
         NSInteger column = index % self.atlasColumns;
         NSInteger row = index / self.atlasColumns;
@@ -337,23 +384,33 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                         globalRows:(NSInteger)globalRows
                          localCols:(NSInteger)localCols
                          localRows:(NSInteger)localRows {
-    BOOL enabled = [self.messages[@"enabled"] isKindOfClass:NSNumber.class] &&
-        [self.messages[@"enabled"] boolValue];
+    BOOL enabled = MatrixCodeBool(self.messages, @"enabled", NO);
     NSArray *configured = [self.messages[@"messages"] isKindOfClass:NSArray.class]
         ? self.messages[@"messages"]
         : @[];
     NSMutableArray<NSString *> *candidates = [NSMutableArray array];
-    for (id item in configured) {
+    for (NSUInteger index = 0; index < MIN((NSUInteger)12, configured.count); index++) {
+        id item = configured[index];
         if (![item isKindOfClass:NSString.class]) continue;
-        NSString *text = [item stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (text.length) [candidates addObject:text];
+        NSString *text = item;
+        text = [text substringToIndex:MIN((NSUInteger)120, text.length)];
+        if ([text stringByTrimmingCharactersInSet:
+             NSCharacterSet.whitespaceAndNewlineCharacterSet].length) {
+            [candidates addObject:text];
+        }
     }
     if (!enabled || !candidates.count) {
         self.activeMessageTemplate = nil;
+        self.activeMessageDisplay = nil;
+        [self.claimedMessageCells removeAllObjects];
+        [self.messageTargetGlyphs removeAllObjects];
         return;
     }
     if (self.activeMessageTemplate && now >= self.activeMessageEnd) {
         self.activeMessageTemplate = nil;
+        self.activeMessageDisplay = nil;
+        [self.claimedMessageCells removeAllObjects];
+        [self.messageTargetGlyphs removeAllObjects];
         float frequency = MatrixCodeNumber(self.messages, @"frequencyMs", 8000, 500, 600000) / 1000.0f;
         uint32_t cycle = (uint32_t)floor(now - self.epochSeconds);
         self.nextMessageFire = now + frequency *
@@ -362,16 +419,38 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     if (!self.activeMessageTemplate && now >= self.nextMessageFire) {
         uint32_t activation = (uint32_t)floor((now - self.epochSeconds) * 10);
         NSUInteger selected = MatrixCodeHash(self.seed ^ activation ^ 0x63d83595U) % candidates.count;
-        self.activeMessageTemplate = candidates[selected];
+        float vignette = MatrixCodeVignette(self.controls);
+        NSInteger placementRows = vignette > 0 ? localRows : globalRows;
+        NSInteger placementCols = vignette > 0 ? localCols : globalCols;
+        NSString *template = candidates[selected];
+        NSString *display = [self.tokenResolver resolveText:template
+                                                    atDate:[NSDate dateWithTimeIntervalSince1970:now]
+                                           framesPerSecond:self.preferredFramesPerSecond];
+        BOOL renderable = NO;
+        for (NSUInteger index = 0; index < display.length; index++) {
+            if (self.messageGlyphs[[display substringWithRange:NSMakeRange(index, 1)]]) {
+                renderable = YES;
+                break;
+            }
+        }
+        if (!renderable || display.length > placementCols) {
+            float frequency = MatrixCodeNumber(self.messages, @"frequencyMs", 8000, 500, 600000) / 1000.0f;
+            self.nextMessageFire = now + frequency *
+                (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ activation ^ 0xa511e9b3U));
+            return;
+        }
+
+        self.activeMessageTemplate = template;
+        self.activeMessageDisplay = display;
+        self.activeMessagePlacementColumns = placementCols;
+        [self.claimedMessageCells removeAllObjects];
+        [self.messageTargetGlyphs removeAllObjects];
         self.activeMessageStart = now;
         float appear = MatrixCodeNumber(self.messages, @"appearMs", 4000, 0, 600000) / 1000.0f;
         float hold = MatrixCodeNumber(self.messages, @"persistenceMs", 10000, 500, 600000) / 1000.0f;
         float disappear = MatrixCodeNumber(self.messages, @"disappearMs", 4000, 0, 600000) / 1000.0f;
         self.activeMessageEnd = now + appear + hold + disappear;
 
-        float vignette = MatrixCodeNumber(self.controls, @"vignette", 0, 0, 1);
-        NSInteger placementRows = vignette > 0 ? localRows : globalRows;
-        NSInteger placementCols = vignette > 0 ? localCols : globalCols;
         float position = MatrixCodeNumber(self.messages, @"verticalPosition", 0.475, 0, 1);
         float jitter = MatrixCodeNumber(self.messages, @"verticalJitter", 0.25, 0, 1);
         NSInteger anchor = lroundf(position * MAX(0, placementRows - 1));
@@ -380,9 +459,6 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
         NSInteger high = MIN(placementRows - 1, anchor + halfSpan);
         self.activeMessageRow = low + (NSInteger)(MatrixCodeHash(self.seed ^ activation ^ 0x9e3779b9U) %
             (uint32_t)MAX(1, high - low + 1));
-        NSString *display = [self.tokenResolver resolveText:self.activeMessageTemplate
-                                                    atDate:[NSDate dateWithTimeIntervalSince1970:now]
-                                           framesPerSecond:self.preferredFramesPerSecond];
         self.activeMessageStartColumn = MAX(0, (placementCols - (NSInteger)display.length) / 2);
     }
 }
@@ -395,10 +471,23 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                               intensity:(float *)intensity
                                scramble:(float *)scramble {
     if (!self.activeMessageTemplate) return NSNotFound;
-    NSString *display = [self.tokenResolver resolveText:self.activeMessageTemplate
-                                                 atDate:[NSDate dateWithTimeIntervalSince1970:now]
-                                        framesPerSecond:self.preferredFramesPerSecond];
-    float vignette = MatrixCodeNumber(self.controls, @"vignette", 0, 0, 1);
+    NSString *resolved = [self.tokenResolver resolveText:self.activeMessageTemplate
+                                                  atDate:[NSDate dateWithTimeIntervalSince1970:now]
+                                         framesPerSecond:self.preferredFramesPerSecond];
+    BOOL renderable = NO;
+    for (NSUInteger index = 0; index < resolved.length; index++) {
+        if (self.messageGlyphs[[resolved substringWithRange:NSMakeRange(index, 1)]]) {
+            renderable = YES;
+            break;
+        }
+    }
+    if (renderable && resolved.length <= self.activeMessagePlacementColumns) {
+        self.activeMessageDisplay = resolved;
+        self.activeMessageStartColumn =
+            MAX(0, (self.activeMessagePlacementColumns - (NSInteger)resolved.length) / 2);
+    }
+    NSString *display = self.activeMessageDisplay ?: @"";
+    float vignette = MatrixCodeVignette(self.controls);
     NSInteger row = vignette > 0 ? localRow : globalRow;
     NSInteger column = vignette > 0 ? localColumn : globalColumn;
     NSInteger offset = column - self.activeMessageStartColumn;
@@ -420,8 +509,8 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
         fade = fmaxf(0, remaining / disappear);
         flicker = 1 - fade;
     }
-    *intensity = [self.messages[@"brightnessFade"] boolValue] ? fade : 1;
-    *scramble = [self.messages[@"flickerOut"] boolValue] ? flicker : 0;
+    *intensity = MatrixCodeBool(self.messages, @"brightnessFade", NO) ? fade : 1;
+    *scramble = MatrixCodeBool(self.messages, @"flickerOut", YES) ? flicker : 0;
     return glyph.integerValue;
 }
 
@@ -451,8 +540,9 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     uniforms.brightColor = MatrixCodeRGB(palette[3].unsignedIntValue);
     uniforms.headColor = MatrixCodeRGB(palette[4].unsignedIntValue);
     uniforms.glow = MatrixCodeNumber(self.controls, @"glow", 0.9, 0, 2.5);
-    uniforms.vignette = MatrixCodeNumber(self.controls, @"vignette", 0, 0, 1);
-    uniforms.scanlines = [self.controls[@"scanlines"] boolValue] ? 1 : 0;
+    uniforms.vignette = MatrixCodeVignette(self.controls);
+    uniforms.scanlines = MatrixCodeBool(self.controls, @"scanlines", NO) ? 1 : 0;
+    uniforms.leadBrightness = MatrixCodeNumber(self.controls, @"leadBrightness", 1.6, 0, 3);
     NSString *quality = [self.controls[@"quality"] isKindOfClass:NSString.class]
         ? self.controls[@"quality"] : @"high";
     uniforms.glowRadius = [quality isEqualToString:@"low"] ? 1 :
@@ -476,8 +566,7 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     NSInteger rows = MAX(1, (NSInteger)ceil(drawableSize.height / cellPixels) + 1);
 
     float configuredDensity = MatrixCodeNumber(self.controls, @"density", 2, 0.1, 100);
-    BOOL allowOverlap = ![self.controls[@"allowOverlap"] isKindOfClass:NSNumber.class] ||
-        [self.controls[@"allowOverlap"] boolValue];
+    BOOL allowOverlap = MatrixCodeBool(self.controls, @"allowOverlap", YES);
     NSString *quality = [self.controls[@"quality"] isKindOfClass:NSString.class]
         ? self.controls[@"quality"] : @"high";
     NSInteger laneCap = [quality isEqualToString:@"low"] ? 2 :
@@ -499,12 +588,27 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
 
     float speedControl = MatrixCodeNumber(self.controls, @"speed", 1, 0.1, 3);
     float trail = MatrixCodeNumber(self.controls, @"trailLength", 0.255, 0.01, 0.5);
-    float lead = MatrixCodeNumber(self.controls, @"leadBrightness", 1.6, 0, 3);
     float glyphRate = MatrixCodeNumber(self.controls, @"glyphRate", 1, 0, 5);
+    NSArray *sessionScreens = [self.session[@"screens"] isKindOfClass:NSArray.class]
+        ? self.session[@"screens"] : @[];
+    float rampDuration = sessionScreens.count > 1 ? 0 :
+        MatrixCodeNumber(self.controls, @"rampUpMs", 8000, 0, 60000) / 1000.0f;
     NSTimeInterval now = self.animationActive ? NSDate.date.timeIntervalSince1970 : self.epochSeconds + 2.5;
     float elapsed = (float)(now - self.epochSeconds);
-    float globalColumnOffset = (self.screenLeft - self.virtualLeft) / cellPoints;
-    float globalRowOffset = (self.screenTop - self.virtualTop) / cellPoints;
+    float rainElapsed = sessionScreens.count > 1 ? elapsed :
+        (self.usesExternalRainTimeline ? (float)self.rainElapsed : elapsed);
+    NSInteger firstGlobalColumn = 0;
+    NSInteger firstGlobalRow = 0;
+    float localOriginXPoints = [MatrixCodeSession
+        localOriginForVirtualOffset:self.screenLeft - self.virtualLeft
+                           cellSize:cellPoints
+                          firstCell:&firstGlobalColumn];
+    float localOriginYPoints = [MatrixCodeSession
+        localOriginForVirtualOffset:self.screenTop - self.virtualTop
+                           cellSize:cellPoints
+                          firstCell:&firstGlobalRow];
+    float localOriginXPixels = localOriginXPoints * scale;
+    float localOriginYPixels = localOriginYPoints * scale;
     float virtualRows = ceilf(self.virtualHeight / cellPoints);
     float virtualColumns = ceilf(self.virtualWidth / cellPoints);
     [self updateMessageScheduleAtTime:now
@@ -512,48 +616,53 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                           globalRows:(NSInteger)virtualRows
                            localCols:columns
                            localRows:rows];
-    float cycleRows = virtualRows + 60;
     MatrixCodeGlyphInstance *instances = self.instanceBuffer.contents;
     NSUInteger count = 0;
+    NSMutableSet<NSNumber *> *currentMessageTargets =
+        self.activeMessageTemplate ? [NSMutableSet set] : nil;
 
     for (NSInteger lane = 0; lane < laneCount; lane++) {
-        float laneDensity = (laneCount > 1 ? 20 : configuredDensity) * 0.5f *
-            laneWeights[lane] * self.densityScale;
-        NSInteger streamCount = MAX(1, MIN(8, (NSInteger)ceil(laneDensity)));
-        float streamFraction = fminf(1, laneDensity / streamCount);
+        // RainSim applies its 0.5 density scale before rounding the number of
+        // streams. Lane weight gates columns independently; it must not also
+        // reduce stream count or density gets attenuated twice.
+        float laneDensity = (laneCount > 1 ? 20 : configuredDensity) * 0.5f;
+        NSInteger streamCount = MAX(1, (NSInteger)lroundf(laneDensity));
+        float streamFraction = laneWeights[lane];
         uint32_t laneSeed = self.seed ^ (uint32_t)(lane * 0x9e3779b9U);
         for (NSInteger column = 0; column < columns; column++) {
-            int globalColumn = (int)floorf(globalColumnOffset + column);
+            int globalColumn = (int)(firstGlobalColumn + column);
             for (NSInteger row = 0; row < rows; row++) {
-                int globalRow = (int)floorf(globalRowOffset + row);
+                int globalRow = (int)(firstGlobalRow + row);
                 float brightness = 0;
                 BOOL head = NO;
+                BOOL whiteHead = NO;
                 for (NSInteger stream = 0; stream < streamCount; stream++) {
                     uint32_t key = laneSeed ^ (uint32_t)(globalColumn * 0x9e3779b9U) ^
                         (uint32_t)(stream * 0x85ebca6bU);
-                    if (MatrixCodeUnit(key ^ 0x51ed270bU) > streamFraction) continue;
-                    float streamSpeed = (3.5f + MatrixCodeUnit(key ^ 0x27d4eb2dU) * 8.0f) * speedControl;
-                    float start = MatrixCodeUnit(key ^ 0x165667b1U) * cycleRows;
-                    float headRow = fmodf(start + elapsed * streamSpeed, cycleRows) - 24;
-                    float distance = headRow - globalRow;
-                    if (distance < 0 || distance > 48) continue;
-                    float age = distance / fmaxf(streamSpeed, 0.1f);
+                    MatrixCodeRainStreamSample streamSample = MatrixCodeRainSampleStream(
+                        key, rainElapsed, self.densityScale, rampDuration, virtualRows,
+                        speedControl, fmaxf(laneDensity, 0.1f), streamFraction);
+                    if (!streamSample.active) continue;
+                    float distance = streamSample.headRow - globalRow;
+                    if (distance < 0) continue;
+                    float age = distance / fmaxf(streamSample.speed, 0.1f);
                     float value = powf(trail, age / 1.2f);
+                    if (value < 0.004f) continue;
                     if (distance < 1.05f) {
-                        value = lead;
-                        head = MatrixCodeUnit(key ^ 0xd3a2646cU) < 0.2f;
+                        value = 1;
+                        head = YES;
+                        whiteHead = whiteHead || streamSample.whiteHead;
                     }
                     brightness = fmaxf(brightness, value);
                 }
-                if (brightness < 0.004f) continue;
                 float mutationClock = elapsed * glyphRate * 1.6f;
                 uint32_t mutationTick = (uint32_t)floorf(mutationClock);
                 uint32_t glyphBaseKey = laneSeed ^ (uint32_t)(globalColumn * 73856093) ^
                     (uint32_t)(globalRow * 19349663);
                 uint32_t glyphKey = glyphBaseKey ^ mutationTick;
-                NSInteger glyph = MatrixCodeHash(glyphKey) % self.rainGlyphCount;
+                NSInteger glyph = MatrixCodeRainGlyphIndex(glyphKey);
                 NSInteger oldGlyph = glyphRate > 0
-                    ? MatrixCodeHash(glyphBaseKey ^ (mutationTick - 1)) % self.rainGlyphCount
+                    ? MatrixCodeRainGlyphIndex(glyphBaseKey ^ (mutationTick - 1))
                     : glyph;
                 float crossfade = glyphRate > 0
                     ? fminf(1, (mutationClock - floorf(mutationClock)) /
@@ -570,23 +679,40 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                                                                     intensity:&messageIntensity
                                                                      scramble:&messageScramble];
                     if (messageGlyph != NSNotFound) {
-                        uint32_t scrambleKey = MatrixCodeHash(glyphKey ^ (uint32_t)floor(now * 24));
-                        if (MatrixCodeUnit(scrambleKey) < messageScramble) {
-                            glyph = scrambleKey % self.rainGlyphCount;
-                        } else {
-                            glyph = messageGlyph;
+                        uint64_t packedCell = ((uint64_t)(uint32_t)globalRow << 32) |
+                            (uint32_t)globalColumn;
+                        NSNumber *cellKey = @(packedCell);
+                        [currentMessageTargets addObject:cellKey];
+                        NSNumber *target = @(messageGlyph);
+                        NSNumber *previousTarget = self.messageTargetGlyphs[cellKey];
+                        if (previousTarget && ![previousTarget isEqualToNumber:target]) {
+                            [self.claimedMessageCells removeObject:cellKey];
                         }
-                        oldGlyph = glyph;
-                        crossfade = 1;
-                        brightness = fmaxf(brightness, 0.45f * messageIntensity);
+                        self.messageTargetGlyphs[cellKey] = target;
+                        if (brightness > 0.05f) [self.claimedMessageCells addObject:cellKey];
+                        if ([self.claimedMessageCells containsObject:cellKey]) {
+                            uint32_t scrambleKey = MatrixCodeHash(glyphKey ^ (uint32_t)floor(now * 24));
+                            if (MatrixCodeUnit(scrambleKey) < messageScramble) {
+                                glyph = MatrixCodeRainGlyphIndex(scrambleKey);
+                            } else {
+                                glyph = messageGlyph;
+                            }
+                            oldGlyph = glyph;
+                            crossfade = 1;
+                            brightness = fmaxf(brightness, 0.45f) * messageIntensity;
+                        }
                     }
                 }
+                if (brightness < 0.004f) continue;
                 NSInteger atlasColumn = glyph % self.atlasColumns;
                 NSInteger atlasRow = glyph / self.atlasColumns;
                 NSInteger oldAtlasColumn = oldGlyph % self.atlasColumns;
                 NSInteger oldAtlasRow = oldGlyph / self.atlasColumns;
                 instances[count++] = (MatrixCodeGlyphInstance){
-                    .origin = {(column + laneOffsets[lane]) * cellPixels, (float)row * cellPixels},
+                    .origin = {
+                        localOriginXPixels + (column + laneOffsets[lane]) * cellPixels,
+                        localOriginYPixels + row * cellPixels,
+                    },
                     .size = {cellPixels, cellPixels},
                     .atlasOrigin = {
                         (float)atlasColumn / self.atlasColumns,
@@ -602,7 +728,16 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                     .crossfade = crossfade,
                     .brightness = brightness,
                     .isHead = head ? 1 : 0,
+                    .whiteHead = whiteHead ? 1 : 0,
                 };
+            }
+        }
+    }
+    if (currentMessageTargets) {
+        for (NSNumber *cellKey in self.messageTargetGlyphs.allKeys.copy) {
+            if (![currentMessageTargets containsObject:cellKey]) {
+                [self.messageTargetGlyphs removeObjectForKey:cellKey];
+                [self.claimedMessageCells removeObject:cellKey];
             }
         }
     }

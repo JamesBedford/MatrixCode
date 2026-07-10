@@ -18,6 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
                    completion:(dispatch_block_t)completion;
 - (void)startAtDate:(NSDate *)date;
 - (void)updateAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond;
+- (void)skip;
 
 @end
 

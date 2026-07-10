@@ -61,6 +61,7 @@ targets:
       - path: Source/MatrixCodeIntroOverlayView.m
       - path: Source/MatrixCodeMetalView.m
       - path: Source/MatrixCodePreferences.m
+      - path: Source/MatrixCodeRainLifecycle.m
       - path: Source/MatrixCodeSession.m
       - path: Source/MatrixCodeTokenResolver.m
       - path: Resources/MatrixCodeShaders.msl

@@ -53,4 +53,37 @@
     XCTAssertGreaterThan(greenPixels, (NSUInteger)100);
 }
 
+- (void)testTShapedMultiMonitorWarmStartRendersLeftDisplay {
+    NSArray *screens = @[
+        @{@"id": @"screen-1", @"left": @0, @"top": @1200,
+          @"width": @1710, @"height": @1112},
+        @{@"id": @"screen-16", @"left": @-1920, @"top": @1200,
+          @"width": @1920, @"height": @1200},
+        @{@"id": @"screen-17", @"left": @-112, @"top": @0,
+          @"width": @1920, @"height": @1200},
+        @{@"id": @"screen-18", @"left": @1710, @"top": @1200,
+          @"width": @1920, @"height": @1200},
+    ];
+    NSDictionary *session = @{
+        @"seed": @12345,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"screen-16",
+        @"screens": screens,
+    };
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 1920, 1200)
+                                           session:session storedValues:@{}];
+    [view setDensityScale:1 rainElapsed:0];
+    NSData *frame = [view diagnosticBGRAFrameWithWidth:1920 height:1200];
+    XCTAssertNotNil(frame);
+    const uint8_t *pixels = frame.bytes;
+    NSUInteger greenPixels = 0;
+    for (NSUInteger index = 0; index + 3 < frame.length; index += 4) {
+        uint8_t blue = pixels[index], green = pixels[index + 1], red = pixels[index + 2];
+        if (green > 18 && green > red * 2 && green > blue * 2) greenPixels++;
+    }
+    XCTAssertGreaterThan(greenPixels, (NSUInteger)100,
+                         @"The left display must not start as an empty virtual-grid slice");
+}
+
 @end

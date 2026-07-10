@@ -1,5 +1,116 @@
 #import "MatrixCodeTokenResolver.h"
 
+typedef struct {
+    double newCoefficient;
+    double fullCoefficient;
+    NSInteger ePower;
+    NSInteger moonAnomaly;
+    NSInteger sunAnomaly;
+    NSInteger latitude;
+    NSInteger node;
+} MatrixCodePhaseTerm;
+
+static const MatrixCodePhaseTerm MatrixCodePhaseTerms[] = {
+    {-0.40720,-0.40614,0,1,0,0,0}, {0.17241,0.17302,1,0,1,0,0},
+    {0.01608,0.01614,0,2,0,0,0}, {0.01039,0.01043,0,0,0,2,0},
+    {0.00739,0.00734,1,1,-1,0,0}, {-0.00514,-0.00515,1,1,1,0,0},
+    {0.00208,0.00209,2,0,2,0,0}, {-0.00111,-0.00111,0,1,0,-2,0},
+    {-0.00057,-0.00057,0,1,0,2,0}, {0.00056,0.00056,1,2,1,0,0},
+    {-0.00042,-0.00042,0,3,0,0,0}, {0.00042,0.00042,1,0,1,2,0},
+    {0.00038,0.00038,1,0,1,-2,0}, {-0.00024,-0.00024,1,2,-1,0,0},
+    {-0.00017,-0.00017,0,0,0,0,1}, {-0.00007,-0.00007,0,1,2,0,0},
+    {0.00004,0.00004,0,2,0,-2,0}, {0.00004,0.00004,0,0,3,0,0},
+    {0.00003,0.00003,0,1,1,-2,0}, {0.00003,0.00003,0,2,0,2,0},
+    {-0.00003,-0.00003,0,1,1,2,0}, {0.00003,0.00003,0,1,-1,2,0},
+    {-0.00002,-0.00002,0,1,-1,-2,0}, {-0.00002,-0.00002,0,3,1,0,0},
+    {0.00002,0.00002,0,4,0,0,0},
+};
+
+static double MatrixCodePhaseJDE(double k, BOOL full) {
+    double T = k / 1236.85, T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+    double jde = 2451550.09766 + 29.530588861 * k + 0.00015437 * T2 -
+        0.000000150 * T3 + 0.00000000073 * T4;
+    double E = 1 - 0.002516 * T - 0.0000074 * T2;
+    double radians = M_PI / 180.0;
+    double M = (2.5534 + 29.10535670 * k - 0.0000014 * T2 - 0.00000011 * T3) * radians;
+    double Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T2 +
+        0.00001238 * T3 - 0.000000058 * T4) * radians;
+    double F = (160.7108 + 390.67050284 * k - 0.0016118 * T2 -
+        0.00000227 * T3 + 0.000000011 * T4) * radians;
+    double node = (124.7746 - 1.56375588 * k + 0.0020672 * T2 +
+        0.00000215 * T3) * radians;
+    double correction = 0;
+    for (NSUInteger index = 0;
+         index < sizeof(MatrixCodePhaseTerms) / sizeof(MatrixCodePhaseTerms[0]); index++) {
+        MatrixCodePhaseTerm term = MatrixCodePhaseTerms[index];
+        correction += (full ? term.fullCoefficient : term.newCoefficient) *
+            pow(E, term.ePower) * sin(term.moonAnomaly * Mp + term.sunAnomaly * M +
+                                     term.latitude * F + term.node * node);
+    }
+    return jde + correction;
+}
+
+static double MatrixCodeNewMoonJDE(NSInteger k) {
+    return MatrixCodePhaseJDE(k, NO);
+}
+
+static double MatrixCodeFullMoonJDE(NSInteger k) {
+    return MatrixCodePhaseJDE(k + 0.5, YES);
+}
+
+static double MatrixCodeSunLongitude(double jde) {
+    double T = (jde - 2451545) / 36525;
+    double radians = M_PI / 180.0;
+    double longitude = 280.46646 + 36000.76983 * T + 0.0003032 * T * T;
+    double anomaly = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) * radians;
+    double correction = (1.914602 - 0.004817 * T - 0.000014 * T * T) * sin(anomaly) +
+        (0.019993 - 0.000101 * T) * sin(2 * anomaly) + 0.000289 * sin(3 * anomaly);
+    return fmod(fmod(longitude + correction, 360) + 360, 360);
+}
+
+static NSDate *MatrixCodeNextPhase(NSDate *date, BOOL full) {
+    double jdNow = date.timeIntervalSince1970 / 86400.0 + 2440587.5;
+    double offset = full ? 0.5 : 0;
+    NSInteger k = (NSInteger)floor((jdNow - 2451550.09766) / 29.530588861 - offset) - 1;
+    for (NSInteger guard = 0; guard < 6; guard++, k++) {
+        double jde = full ? MatrixCodeFullMoonJDE(k) : MatrixCodeNewMoonJDE(k);
+        NSDate *phase = [NSDate dateWithTimeIntervalSince1970:(jde - 2440587.5) * 86400.0];
+        if ([phase compare:date] == NSOrderedDescending) return phase;
+    }
+    double jde = full ? MatrixCodeFullMoonJDE(k) : MatrixCodeNewMoonJDE(k);
+    return [NSDate dateWithTimeIntervalSince1970:(jde - 2440587.5) * 86400.0];
+}
+
+static NSArray<NSNumber *> *MatrixCodeComputedDiwali(NSInteger year) {
+    NSInteger estimated = (NSInteger)llround((year - 2000 + 0.83) * 12.3685);
+    double ayanamsa = 24.1 + (year - 2024) * 0.0139;
+    double jde = 0;
+    for (NSInteger k = estimated - 2; k <= estimated + 2; k++) {
+        double candidate = MatrixCodeNewMoonJDE(k);
+        double siderealSun = fmod(fmod(MatrixCodeSunLongitude(candidate) - ayanamsa, 360) + 360, 360);
+        if (siderealSun >= 180 && siderealSun < 210) {
+            jde = candidate;
+            break;
+        }
+    }
+    if (jde == 0) jde = MatrixCodeNewMoonJDE(estimated);
+    // Shift to IST, then select the preceding civil day exactly as the web implementation does.
+    NSDate *diwaliIST = [NSDate dateWithTimeIntervalSince1970:
+        (jde - 2440587.5) * 86400.0 + 5.5 * 3600.0 - 86400.0];
+    NSCalendar *utc = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+    utc.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+    NSDateComponents *parts = [utc components:NSCalendarUnitMonth | NSCalendarUnitDay
+                                      fromDate:diwaliIST];
+    return @[@(parts.month), @(parts.day)];
+}
+
+static NSNumber *MatrixCodeSanitizedTarget(id value) {
+    if (![value isKindOfClass:NSNumber.class] ||
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() ||
+        !isfinite([value doubleValue])) return nil;
+    return @(fmin(8.64e15, fmax(0, [value doubleValue])));
+}
+
 @interface MatrixCodeTokenResolver ()
 @property(nonatomic, copy) NSString *viewerName;
 @property(nonatomic, strong, nullable) NSDate *defaultTarget;
@@ -19,17 +130,24 @@
     _viewerName = name.length ? name : @"Neo";
     _runStartDate = runStartDate;
     NSDictionary *countdown = [self.class dictionaryFromJSONString:storedValues[@"mx-countdown"]];
-    NSNumber *target = [countdown[@"targetMs"] isKindOfClass:NSNumber.class] ? countdown[@"targetMs"] : nil;
+    NSNumber *target = MatrixCodeSanitizedTarget(countdown[@"targetMs"]);
     _defaultTarget = target != nil
         ? [NSDate dateWithTimeIntervalSince1970:target.doubleValue / 1000.0]
         : nil;
     NSMutableDictionary *moments = [NSMutableDictionary dictionary];
     NSArray *rawMoments = [countdown[@"moments"] isKindOfClass:NSArray.class] ? countdown[@"moments"] : @[];
-    for (NSDictionary *moment in rawMoments) {
+    for (NSUInteger index = 0; index < MIN((NSUInteger)12, rawMoments.count); index++) {
+        NSDictionary *moment = rawMoments[index];
         if (![moment isKindOfClass:NSDictionary.class]) continue;
         NSString *momentName = [moment[@"name"] isKindOfClass:NSString.class] ? moment[@"name"] : nil;
+        momentName = [momentName substringToIndex:MIN((NSUInteger)40, momentName.length)];
+        momentName = [[momentName componentsSeparatedByCharactersInSet:
+            [NSCharacterSet characterSetWithCharactersInString:@":{}"]]
+            componentsJoinedByString:@""];
+        momentName = [momentName stringByTrimmingCharactersInSet:
+            NSCharacterSet.whitespaceAndNewlineCharacterSet];
         if (!momentName.length || moments[momentName]) continue;
-        NSNumber *momentTarget = [moment[@"targetMs"] isKindOfClass:NSNumber.class] ? moment[@"targetMs"] : nil;
+        NSNumber *momentTarget = MatrixCodeSanitizedTarget(moment[@"targetMs"]);
         moments[momentName] = momentTarget ?: NSNull.null;
     }
     _moments = moments;
@@ -95,7 +213,10 @@
         formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
         formatter.dateFormat = dateFormat;
         NSString *value = [formatter stringFromDate:date];
-        if ([key isEqualToString:@"e"]) value = [value stringByPaddingToLength:2 withString:@" " startingAtIndex:0];
+        if ([key isEqualToString:@"e"]) {
+            NSInteger day = [NSCalendar.currentCalendar component:NSCalendarUnitDay fromDate:date];
+            value = [NSString stringWithFormat:@"%2ld", (long)day];
+        }
         [result appendString:value];
     }
     return result;
@@ -227,15 +348,10 @@
                 @2040: @[@11,@4],
             };
             NSArray *dateParts = dates[@(eventYear)];
-            if (!dateParts) return nil;
+            if (!dateParts) dateParts = MatrixCodeComputedDiwali(eventYear);
             month = [dateParts[0] integerValue]; day = [dateParts[1] integerValue];
         } else if ([key isEqualToString:@"newmoon"] || [key isEqualToString:@"fullmoon"]) {
-            // Mean synodic-month approximation is sufficient for an ambient display token.
-            NSTimeInterval synodic = 29.530588861 * 86400.0;
-            NSTimeInterval reference = 947182440.0; // 2000-01-06 18:14 UTC new moon
-            if ([key isEqualToString:@"fullmoon"]) reference += synodic / 2.0;
-            double cycles = floor((date.timeIntervalSince1970 - reference) / synodic) + 1;
-            return [NSDate dateWithTimeIntervalSince1970:reference + cycles * synodic];
+            return MatrixCodeNextPhase(date, [key isEqualToString:@"fullmoon"]);
         } else {
             return nil;
         }

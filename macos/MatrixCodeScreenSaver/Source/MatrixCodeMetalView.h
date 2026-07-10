@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
                 storedValues:(NSDictionary<NSString *, NSString *> *)storedValues;
 - (void)setAnimationActive:(BOOL)active;
 - (void)setDensityScale:(float)densityScale;
+- (void)setDensityScale:(float)densityScale rainElapsed:(NSTimeInterval)rainElapsed;
 - (void)reloadStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues;
 #if DEBUG
 - (nullable NSData *)diagnosticBGRAFrameWithWidth:(NSUInteger)width height:(NSUInteger)height;

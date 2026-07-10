@@ -20,6 +20,39 @@ static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
     return NSMakeRect(frame.origin.x, desktopMaxY - NSMaxY(frame), frame.size.width, frame.size.height);
 }
 
++ (CGFloat)localOriginForVirtualOffset:(CGFloat)virtualOffset
+                              cellSize:(CGFloat)cellSize
+                             firstCell:(NSInteger *)firstCell {
+    if (cellSize <= 0) {
+        if (firstCell) *firstCell = 0;
+        return 0;
+    }
+    CGFloat cells = virtualOffset / cellSize;
+    NSInteger first = (NSInteger)floor(cells);
+    if (firstCell) *firstCell = first;
+    return (first - cells) * cellSize;
+}
+
++ (NSString *)uniqueUnclaimedScreenIdentifierForSize:(NSSize)size
+                                          descriptors:(NSArray<NSDictionary<NSString *,id> *> *)descriptors
+                                              claimed:(NSSet<NSString *> *)claimed {
+    NSString *match = nil;
+    for (NSDictionary<NSString *, id> *descriptor in descriptors) {
+        NSString *identifier = [descriptor[@"id"] isKindOfClass:NSString.class]
+            ? descriptor[@"id"] : nil;
+        NSNumber *width = [descriptor[@"width"] isKindOfClass:NSNumber.class]
+            ? descriptor[@"width"] : nil;
+        NSNumber *height = [descriptor[@"height"] isKindOfClass:NSNumber.class]
+            ? descriptor[@"height"] : nil;
+        if (!identifier || !width || !height || [claimed containsObject:identifier]) continue;
+        if (fabs(width.doubleValue - size.width) > 1 ||
+            fabs(height.doubleValue - size.height) > 1) continue;
+        if (match) return nil; // Ambiguous until more known screens are claimed.
+        match = identifier;
+    }
+    return match;
+}
+
 + (NSDictionary<NSString *, id> *)descriptorForScreen:(NSScreen *)screen desktopMaxY:(CGFloat)desktopMaxY {
     NSRect rect = [self topLeftRectForFrame:screen.frame desktopMaxY:desktopMaxY];
     return @{

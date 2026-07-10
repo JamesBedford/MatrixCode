@@ -5,7 +5,9 @@
 static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
                                       double fallback, double minimum, double maximum) {
     id value = dictionary[key];
-    if (![value isKindOfClass:NSNumber.class]) return fallback;
+    if (![value isKindOfClass:NSNumber.class] ||
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() ||
+        !isfinite([value doubleValue])) return fallback;
     return fmin(maximum, fmax(minimum, [value doubleValue]));
 }
 
@@ -66,8 +68,10 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     _characterDuration = MatrixCodeClampedNumber(intro, @"charMs", 95, 10, 500) / 1000.0;
     _startDelay = MatrixCodeClampedNumber(intro, @"startDelayMs", 600, 0, 10000) / 1000.0;
     _fadeDuration = MatrixCodeClampedNumber(intro, @"fadeOutMs", 900, 0, 10000) / 1000.0;
-    _rainDuringIntro = [intro[@"rainDuringIntro"] isKindOfClass:NSNumber.class]
-        ? [intro[@"rainDuringIntro"] boolValue] : YES;
+    id rainDuringIntro = intro[@"rainDuringIntro"];
+    _rainDuringIntro = [rainDuringIntro isKindOfClass:NSNumber.class] &&
+        CFGetTypeID((__bridge CFTypeRef)rainDuringIntro) == CFBooleanGetTypeID()
+        ? [rainDuringIntro boolValue] : YES;
     _postIntroDelay = MatrixCodeClampedNumber(intro, @"postIntroDelayMs", 0, 0, 10000) / 1000.0;
     _totalDuration = _startDelay + _fadeDuration;
     for (NSUInteger index = 0; index < _lines.count; index++) {
@@ -107,6 +111,10 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     self.hasIntro = NO;
     self.hidden = YES;
     self.completion();
+}
+
+- (void)skip {
+    [self finish];
 }
 
 - (void)updateAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond {

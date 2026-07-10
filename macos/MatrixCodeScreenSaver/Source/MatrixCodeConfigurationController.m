@@ -5,6 +5,10 @@
 #import "MatrixCodePreferences.h"
 #import "MatrixCodeTokenResolver.h"
 
+NSNotificationName const MatrixCodePreviewValuesDidChangeNotification =
+    @"MatrixCodePreviewValuesDidChangeNotification";
+NSString * const MatrixCodePreviewValuesKey = @"values";
+
 static NSDictionary *MatrixCodeJSONObject(NSString *raw, Class expectedClass) {
     if (![raw isKindOfClass:NSString.class]) return nil;
     NSData *data = [raw dataUsingEncoding:NSUTF8StringEncoding];
@@ -17,22 +21,53 @@ static NSString *MatrixCodeJSONString(id object) {
     return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
 }
 
-static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDictionary *stored) {
-    NSMutableDictionary *result = [defaults mutableCopy];
-    [result addEntriesFromDictionary:stored ?: @{}];
-    return result;
+static double MatrixCodeSettingNumber(NSDictionary *dictionary, NSString *key,
+                                      double fallback, double minimum, double maximum) {
+    id value = dictionary[key];
+    if (![value isKindOfClass:NSNumber.class] ||
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() ||
+        !isfinite([value doubleValue])) return fallback;
+    return fmin(maximum, fmax(minimum, [value doubleValue]));
 }
+
+static BOOL MatrixCodeSettingBool(NSDictionary *dictionary, NSString *key, BOOL fallback) {
+    id value = dictionary[key];
+    return [value isKindOfClass:NSNumber.class] &&
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()
+        ? [value boolValue] : fallback;
+}
+
+static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
+    if (![value isKindOfClass:NSString.class]) return @"";
+    NSString *text = value;
+    return [text substringToIndex:MIN(maximumLength, text.length)];
+}
+
+@interface MatrixCodeFlippedDocumentView : NSView
+@end
+
+@implementation MatrixCodeFlippedDocumentView
+
+- (BOOL)isFlipped {
+    return YES;
+}
+
+@end
 
 @interface MatrixCodeNativePreviewController : NSWindowController <NSWindowDelegate>
 @property(nonatomic, strong) MatrixCodeMetalView *metalView;
 @property(nonatomic, strong) MatrixCodeIntroOverlayView *introView;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, strong) NSDate *startDate;
+@property(nonatomic) BOOL showsIntro;
+@property(nonatomic) BOOL showsMessage;
 @end
 
 @implementation MatrixCodeNativePreviewController
 
-- (instancetype)initWithStoredValues:(NSDictionary<NSString *, NSString *> *)values showIntro:(BOOL)showIntro {
+- (instancetype)initWithStoredValues:(NSDictionary<NSString *, NSString *> *)values
+                           showIntro:(BOOL)showIntro
+                         showMessage:(BOOL)showMessage {
     NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 500)
                                                   styleMask:NSWindowStyleMaskTitled |
                                                             NSWindowStyleMaskClosable |
@@ -43,9 +78,10 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
     self = [super initWithWindow:window];
     if (!self) return nil;
     window.delegate = self;
+    _showsIntro = showIntro;
+    _showsMessage = showMessage;
     _startDate = NSDate.date;
-    NSMutableDictionary *previewValues = [values mutableCopy];
-    if (showIntro) [previewValues removeObjectForKey:@"mx-intro-seen"];
+    NSDictionary *previewValues = [self previewValuesFromValues:values];
     _metalView = [[MatrixCodeMetalView alloc] initWithFrame:window.contentView.bounds
                                                     session:nil
                                                storedValues:previewValues];
@@ -68,6 +104,41 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
     }];
     [window center];
     return self;
+}
+
+- (NSDictionary<NSString *, NSString *> *)previewValuesFromValues:
+    (NSDictionary<NSString *, NSString *> *)values {
+    NSMutableDictionary *previewValues = [values mutableCopy];
+    if (self.showsIntro) [previewValues removeObjectForKey:@"mx-intro-seen"];
+    if (self.showsMessage) {
+        NSMutableDictionary *messages =
+            [MatrixCodeJSONObject(previewValues[@"mx-messages"], NSDictionary.class) mutableCopy];
+        if (!messages) messages = [NSMutableDictionary dictionary];
+        messages[@"enabled"] = @YES;
+        messages[@"frequencyMs"] = @500;
+        previewValues[@"mx-messages"] = MatrixCodeJSONString(messages);
+    }
+    return previewValues;
+}
+
+- (void)reloadStoredValues:(NSDictionary<NSString *, NSString *> *)values {
+    NSDictionary *previewValues = [self previewValuesFromValues:values];
+    [self.metalView reloadStoredValues:previewValues];
+    if (!self.showsIntro) return;
+
+    [self.introView removeFromSuperview];
+    MatrixCodeTokenResolver *resolver =
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:previewValues
+                                                 runStartDate:self.startDate];
+    self.introView = [[MatrixCodeIntroOverlayView alloc]
+        initWithFrame:self.window.contentView.bounds
+         storedValues:previewValues
+        tokenResolver:resolver
+           completion:^{}];
+    [self.window.contentView addSubview:self.introView
+                              positioned:NSWindowAbove
+                              relativeTo:self.metalView];
+    [self.introView startAtDate:NSDate.date];
 }
 
 - (void)windowWillClose:(NSNotification *)notification {
@@ -96,6 +167,9 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
 @property(nonatomic, strong) NSStackView *messageLinesStack;
 @property(nonatomic, strong) NSStackView *momentsStack;
 @property(nonatomic, strong) MatrixCodeNativePreviewController *previewController;
+@property(nonatomic, copy) NSDictionary<NSString *, NSString *> *originalValues;
+@property(nonatomic, strong) NSTextField *postIntroDelayField;
+@property(nonatomic, strong) NSDatePicker *defaultCountdownDatePicker;
 @end
 
 @implementation MatrixCodeConfigurationController
@@ -110,28 +184,73 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
     if (!self) return nil;
     _preferences = [[MatrixCodePreferences alloc] init];
     _stagedValues = [[_preferences storedValues] mutableCopy];
+    _originalValues = [_stagedValues copy];
     _closeHandler = [closeHandler copy];
     [self loadModels];
     [self buildInterface];
     return self;
 }
 
+- (void)publishPreviewValues:(NSDictionary<NSString *, NSString *> *)values {
+    [self.previewController reloadStoredValues:values];
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:MatrixCodePreviewValuesDidChangeNotification
+                      object:self
+                    userInfo:@{MatrixCodePreviewValuesKey: values}];
+}
+
+- (void)draftDidChange {
+    [self publishPreviewValues:[self serializedValues]];
+}
+
 - (void)loadModels {
-    NSDictionary *controlDefaults = @{
+    NSDictionary *storedControls =
+        MatrixCodeJSONObject(self.stagedValues[@"mx-controls"], NSDictionary.class) ?: @{};
+    NSMutableDictionary *controls = [@{
         @"speed": @1, @"trailLength": @0.255, @"density": @2, @"rampUpMs": @8000,
         @"glyphRate": @1, @"glyphScale": @1, @"glow": @0.9, @"leadBrightness": @1.6,
         @"preset": @"classic", @"mirror": @YES, @"scanlines": @NO, @"vignette": @0,
         @"allowOverlap": @YES, @"quality": @"high",
-    };
-    self.controls = MatrixCodeDefaults(controlDefaults,
-        MatrixCodeJSONObject(self.stagedValues[@"mx-controls"], NSDictionary.class));
-    NSDictionary *introDefaults = @{
-        @"charMs": @95, @"startDelayMs": @600, @"fadeOutMs": @900,
-        @"rainDuringIntro": @YES, @"postIntroDelayMs": @0,
-    };
-    self.intro = MatrixCodeDefaults(introDefaults,
-        MatrixCodeJSONObject(self.stagedValues[@"mx-intro"], NSDictionary.class));
-    NSArray *storedIntroLines = [self.intro[@"lines"] isKindOfClass:NSArray.class] ? self.intro[@"lines"] : nil;
+    } mutableCopy];
+    NSArray *controlNumbers = @[
+        @[@"speed", @0.1, @3], @[@"trailLength", @0.01, @0.5],
+        @[@"density", @0.1, @100], @[@"rampUpMs", @0, @60000],
+        @[@"glyphRate", @0, @5], @[@"glyphScale", @0.5, @10],
+        @[@"glow", @0, @2.5], @[@"leadBrightness", @0, @3],
+        @[@"vignette", @0, @1],
+    ];
+    for (NSArray *spec in controlNumbers) {
+        NSString *key = spec[0];
+        controls[key] = @(MatrixCodeSettingNumber(storedControls, key,
+            [controls[key] doubleValue], [spec[1] doubleValue], [spec[2] doubleValue]));
+    }
+    id storedVignette = storedControls[@"vignette"];
+    if ([storedVignette isKindOfClass:NSNumber.class] &&
+        CFGetTypeID((__bridge CFTypeRef)storedVignette) == CFBooleanGetTypeID()) {
+        controls[@"vignette"] = @([storedVignette boolValue] ? 0.42 : 0);
+    }
+    for (NSString *key in @[@"mirror", @"scanlines", @"allowOverlap"]) {
+        controls[key] = @(MatrixCodeSettingBool(storedControls, key, [controls[key] boolValue]));
+    }
+    NSArray *presets = @[@"classic", @"amber", @"gold", @"red", @"pink", @"purple", @"blue", @"white"];
+    if ([storedControls[@"preset"] isKindOfClass:NSString.class] &&
+        [presets containsObject:storedControls[@"preset"]]) controls[@"preset"] = storedControls[@"preset"];
+    NSArray *qualities = @[@"low", @"med", @"high"];
+    if ([storedControls[@"quality"] isKindOfClass:NSString.class] &&
+        [qualities containsObject:storedControls[@"quality"]]) controls[@"quality"] = storedControls[@"quality"];
+    self.controls = controls;
+
+    NSDictionary *storedIntro =
+        MatrixCodeJSONObject(self.stagedValues[@"mx-intro"], NSDictionary.class) ?: @{};
+    self.intro = [@{
+        @"charMs": @(MatrixCodeSettingNumber(storedIntro, @"charMs", 95, 10, 500)),
+        @"startDelayMs": @(MatrixCodeSettingNumber(storedIntro, @"startDelayMs", 600, 0, 10000)),
+        @"fadeOutMs": @(MatrixCodeSettingNumber(storedIntro, @"fadeOutMs", 900, 0, 10000)),
+        @"rainDuringIntro": @(MatrixCodeSettingBool(storedIntro, @"rainDuringIntro", YES)),
+        @"postIntroDelayMs": @(MatrixCodeSettingNumber(storedIntro, @"postIntroDelayMs", 0, 0, 10000)),
+    } mutableCopy];
+    NSArray *storedIntroLines = [storedIntro[@"lines"] isKindOfClass:NSArray.class]
+        ? storedIntro[@"lines"] : nil;
     NSArray *defaultIntroLines = @[
         @{@"text": @"Wake up, {name}...", @"holdMs": @2800, @"pauseMs": @0},
         @{@"text": @"The Matrix has you...", @"holdMs": @2800, @"pauseMs": @0},
@@ -139,28 +258,79 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
         @{@"text": @"Knock, knock, {name}.", @"holdMs": @2800, @"pauseMs": @0},
     ];
     self.introLines = [NSMutableArray array];
-    for (NSDictionary *line in storedIntroLines.count ? storedIntroLines : defaultIntroLines) {
-        if ([line isKindOfClass:NSDictionary.class]) [self.introLines addObject:[line mutableCopy]];
+    NSArray *introSource = storedIntroLines.count ? storedIntroLines : defaultIntroLines;
+    for (NSUInteger index = 0; index < MIN((NSUInteger)12, introSource.count); index++) {
+        NSDictionary *line = introSource[index];
+        if (![line isKindOfClass:NSDictionary.class] ||
+            ![line[@"text"] isKindOfClass:NSString.class]) continue;
+        [self.introLines addObject:[@{
+            @"text": MatrixCodeSettingText(line[@"text"], 120),
+            @"holdMs": @(MatrixCodeSettingNumber(line, @"holdMs", 2800, 0, 20000)),
+            @"pauseMs": @(MatrixCodeSettingNumber(line, @"pauseMs", 0, 0, 20000)),
+        } mutableCopy]];
+    }
+    if (!self.introLines.count) {
+        for (NSDictionary *line in defaultIntroLines) [self.introLines addObject:[line mutableCopy]];
     }
 
-    NSDictionary *messageDefaults = @{
-        @"enabled": @NO, @"frequencyMs": @8000, @"persistenceMs": @10000,
-        @"appearMs": @4000, @"disappearMs": @4000, @"flickerOut": @YES,
-        @"brightnessFade": @NO, @"verticalPosition": @0.475, @"verticalJitter": @0.25,
-    };
-    self.messages = MatrixCodeDefaults(messageDefaults,
-        MatrixCodeJSONObject(self.stagedValues[@"mx-messages"], NSDictionary.class));
-    NSArray *storedMessages = [self.messages[@"messages"] isKindOfClass:NSArray.class]
-        ? self.messages[@"messages"] : @[@"WAKE UP", @"THE MATRIX HAS YOU",
-                                         @"FOLLOW THE WHITE RABBIT", @"{countup}"];
-    self.messageLines = [storedMessages mutableCopy];
+    NSDictionary *parsedMessageDoc =
+        MatrixCodeJSONObject(self.stagedValues[@"mx-messages"], NSDictionary.class);
+    NSDictionary *storedMessageDoc = parsedMessageDoc ?: @{};
+    self.messages = [@{
+        @"enabled": @(MatrixCodeSettingBool(storedMessageDoc, @"enabled", NO)),
+        @"frequencyMs": @(MatrixCodeSettingNumber(storedMessageDoc, @"frequencyMs", 8000, 500, 600000)),
+        @"persistenceMs": @(MatrixCodeSettingNumber(storedMessageDoc, @"persistenceMs", 10000, 500, 600000)),
+        @"appearMs": @(MatrixCodeSettingNumber(storedMessageDoc, @"appearMs", 4000, 0, 600000)),
+        @"disappearMs": @(MatrixCodeSettingNumber(storedMessageDoc, @"disappearMs", 4000, 0, 600000)),
+        @"flickerOut": @(MatrixCodeSettingBool(storedMessageDoc, @"flickerOut", YES)),
+        @"brightnessFade": @(MatrixCodeSettingBool(storedMessageDoc, @"brightnessFade", NO)),
+        @"verticalPosition": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalPosition", 0.475, 0, 1)),
+        @"verticalJitter": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalJitter", 0.25, 0, 1)),
+    } mutableCopy];
+    NSArray *storedMessages = [storedMessageDoc[@"messages"] isKindOfClass:NSArray.class]
+        ? storedMessageDoc[@"messages"]
+        : (parsedMessageDoc ? @[] : @[@"WAKE UP", @"THE MATRIX HAS YOU",
+                                      @"FOLLOW THE WHITE RABBIT", @"{countup}"]);
+    self.messageLines = [NSMutableArray array];
+    for (NSUInteger index = 0; index < MIN((NSUInteger)12, storedMessages.count); index++) {
+        NSString *message = MatrixCodeSettingText(storedMessages[index], 120);
+        if ([message stringByTrimmingCharactersInSet:
+             NSCharacterSet.whitespaceAndNewlineCharacterSet].length) {
+            [self.messageLines addObject:message];
+        }
+    }
 
-    self.countdown = MatrixCodeDefaults(@{@"targetMs": NSNull.null, @"moments": @[]},
-        MatrixCodeJSONObject(self.stagedValues[@"mx-countdown"], NSDictionary.class));
+    NSDictionary *storedCountdown =
+        MatrixCodeJSONObject(self.stagedValues[@"mx-countdown"], NSDictionary.class) ?: @{};
+    NSNumber *target = [storedCountdown[@"targetMs"] isKindOfClass:NSNumber.class] &&
+        CFGetTypeID((__bridge CFTypeRef)storedCountdown[@"targetMs"]) != CFBooleanGetTypeID() &&
+        isfinite([storedCountdown[@"targetMs"] doubleValue])
+        ? @(fmin(8.64e15, fmax(0, [storedCountdown[@"targetMs"] doubleValue])))
+        : nil;
+    self.countdown = [@{@"targetMs": target ?: NSNull.null, @"moments": @[]} mutableCopy];
     self.moments = [NSMutableArray array];
-    for (NSDictionary *moment in [self.countdown[@"moments"] isKindOfClass:NSArray.class]
-         ? self.countdown[@"moments"] : @[]) {
-        if ([moment isKindOfClass:NSDictionary.class]) [self.moments addObject:[moment mutableCopy]];
+    NSMutableSet<NSString *> *momentNames = [NSMutableSet set];
+    NSArray *storedMoments = [storedCountdown[@"moments"] isKindOfClass:NSArray.class]
+        ? storedCountdown[@"moments"] : @[];
+    for (NSUInteger index = 0; index < MIN((NSUInteger)12, storedMoments.count); index++) {
+        NSDictionary *moment = storedMoments[index];
+        if (![moment isKindOfClass:NSDictionary.class]) continue;
+        NSString *name = MatrixCodeSettingText(moment[@"name"], 40);
+        name = [[name componentsSeparatedByCharactersInSet:
+            [NSCharacterSet characterSetWithCharactersInString:@":{}"]]
+            componentsJoinedByString:@""];
+        name = [name stringByTrimmingCharactersInSet:
+            NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (!name.length || [momentNames containsObject:name]) continue;
+        [momentNames addObject:name];
+        NSNumber *momentTarget = [moment[@"targetMs"] isKindOfClass:NSNumber.class] &&
+            CFGetTypeID((__bridge CFTypeRef)moment[@"targetMs"]) != CFBooleanGetTypeID() &&
+            isfinite([moment[@"targetMs"] doubleValue])
+            ? @(fmin(8.64e15, fmax(0, [moment[@"targetMs"] doubleValue])))
+            : nil;
+        [self.moments addObject:[@{
+            @"name": name, @"targetMs": momentTarget ?: NSNull.null,
+        } mutableCopy]];
     }
 }
 
@@ -171,7 +341,11 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
     stack.spacing = 12;
     stack.edgeInsets = NSEdgeInsetsMake(20, 20, 20, 20);
     stack.translatesAutoresizingMaskIntoConstraints = NO;
-    NSView *document = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 780, 700)];
+    // Scroll views initially expose y=0. A normal AppKit view places that at
+    // its bottom edge, which made every settings tab open at the end of its
+    // form. Use a top-origin document so y=0 is the first control.
+    NSView *document = [[MatrixCodeFlippedDocumentView alloc]
+        initWithFrame:NSMakeRect(0, 0, 780, 700)];
     [document addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
         [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor],
@@ -246,13 +420,45 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
     return row;
 }
 
-- (NSSlider *)slider:(NSString *)key min:(double)minimum max:(double)maximum {
+- (NSString *)displayValueForSlider:(NSSlider *)slider {
+    if ([slider.identifier isEqualToString:@"rampUpMs"]) {
+        return [NSString stringWithFormat:@"%.0f", slider.doubleValue];
+    }
+    if ([slider.identifier isEqualToString:@"trailLength"]) {
+        return [NSString stringWithFormat:@"%.3f", slider.doubleValue];
+    }
+    return [NSString stringWithFormat:@"%.2f", slider.doubleValue];
+}
+
+- (void)updateReadoutForSlider:(NSSlider *)slider {
+    NSString *identifier = [slider.identifier stringByAppendingString:@"-value"];
+    for (NSView *view in slider.superview.subviews) {
+        if ([view.identifier isEqualToString:identifier] &&
+            [view isKindOfClass:NSTextField.class]) {
+            ((NSTextField *)view).stringValue = [self displayValueForSlider:slider];
+            break;
+        }
+    }
+}
+
+- (NSView *)slider:(NSString *)key min:(double)minimum max:(double)maximum {
     NSSlider *slider = [NSSlider sliderWithValue:[self.controls[key] doubleValue]
                                        minValue:minimum maxValue:maximum
                                          target:self action:@selector(controlChanged:)];
     slider.identifier = key;
+    slider.continuous = YES;
     [slider.widthAnchor constraintEqualToConstant:380].active = YES;
-    return slider;
+    NSTextField *readout = [NSTextField labelWithString:[self displayValueForSlider:slider]];
+    readout.identifier = [key stringByAppendingString:@"-value"];
+    readout.alignment = NSTextAlignmentRight;
+    readout.font = [NSFont monospacedDigitSystemFontOfSize:NSFont.systemFontSize
+                                                   weight:NSFontWeightRegular];
+    [readout.widthAnchor constraintEqualToConstant:64].active = YES;
+    NSStackView *control = [NSStackView stackViewWithViews:@[slider, readout]];
+    control.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    control.alignment = NSLayoutAttributeCenterY;
+    control.spacing = 10;
+    return control;
 }
 
 - (NSView *)rainTab {
@@ -304,15 +510,20 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
 
 - (void)controlChanged:(id)sender {
     NSString *key = [sender identifier];
-    if ([sender isKindOfClass:NSSlider.class]) self.controls[key] = @([sender doubleValue]);
+    if ([sender isKindOfClass:NSSlider.class]) {
+        self.controls[key] = @([sender doubleValue]);
+        [self updateReadoutForSlider:sender];
+    }
     else if ([sender isKindOfClass:NSButton.class]) self.controls[key] = @([sender state] == NSControlStateValueOn);
     else if ([sender isKindOfClass:NSPopUpButton.class]) self.controls[key] = [sender titleOfSelectedItem];
+    [self draftDidChange];
 }
 
 - (void)nameChanged:(NSTextField *)sender {
     NSString *name = [sender.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (name.length) self.stagedValues[@"mx-user-name"] = name;
     else [self.stagedValues removeObjectForKey:@"mx-user-name"];
+    [self draftDidChange];
 }
 
 - (NSTextField *)numberField:(double)value identifier:(NSString *)identifier action:(SEL)action {
@@ -344,10 +555,16 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
                               @[@"Start delay (ms)", @"startDelayMs"],
                               @[@"Fade out (ms)", @"fadeOutMs"],
                               @[@"Delay after intro (ms)", @"postIntroDelayMs"]]) {
+        NSTextField *number = [self numberField:[self.intro[field[1]] doubleValue]
+                                     identifier:field[1]
+                                         action:@selector(introTimingChanged:)];
+        if ([field[1] isEqualToString:@"postIntroDelayMs"]) {
+            self.postIntroDelayField = number;
+        }
         [stack addArrangedSubview:[self rowWithLabel:field[0]
-                                            control:[self numberField:[self.intro[field[1]] doubleValue]
-                                                           identifier:field[1] action:@selector(introTimingChanged:)]]];
+                                            control:number]];
     }
+    self.postIntroDelayField.enabled = ![self.intro[@"rainDuringIntro"] boolValue];
     NSButton *rain = [NSButton checkboxWithTitle:@"Rain during intro" target:self action:@selector(introRainChanged:)];
     rain.state = [self.intro[@"rainDuringIntro"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
     [stack addArrangedSubview:rain];
@@ -392,27 +609,45 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
 - (void)introLineChanged:(NSTextField *)sender {
     if (sender.tag >= self.introLines.count) return;
     self.introLines[sender.tag][sender.identifier] =
-        [sender.identifier isEqualToString:@"text"] ? sender.stringValue : @(MAX(0, sender.doubleValue));
+        [sender.identifier isEqualToString:@"text"]
+            ? MatrixCodeSettingText(sender.stringValue, 120)
+            : @(MIN(20000, MAX(0, sender.doubleValue)));
+    [self draftDidChange];
 }
 - (void)addIntroLine:(id)sender {
     if (self.introLines.count < 12) [self.introLines addObject:
         [@{@"text": @"", @"holdMs": @2800, @"pauseMs": @0} mutableCopy]];
     [self rebuildIntroLines];
+    [self draftDidChange];
 }
 - (void)removeIntroLine:(NSButton *)sender {
     if (self.introLines.count > 1 && sender.tag < self.introLines.count)
         [self.introLines removeObjectAtIndex:sender.tag];
     [self rebuildIntroLines];
+    [self draftDidChange];
 }
 - (void)moveIntroLine:(NSButton *)sender {
     NSInteger destination = sender.tag + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
     if (destination >= 0 && destination < self.introLines.count)
         [self.introLines exchangeObjectAtIndex:sender.tag withObjectAtIndex:destination];
     [self rebuildIntroLines];
+    [self draftDidChange];
 }
-- (void)introTimingChanged:(NSTextField *)sender { self.intro[sender.identifier] = @(MAX(0, sender.doubleValue)); }
-- (void)introRainChanged:(NSButton *)sender { self.intro[@"rainDuringIntro"] = @(sender.state == NSControlStateValueOn); }
-- (void)replayIntroNextRun:(id)sender { [self.stagedValues removeObjectForKey:@"mx-intro-seen"]; }
+- (void)introTimingChanged:(NSTextField *)sender {
+    BOOL characterTiming = [sender.identifier isEqualToString:@"charMs"];
+    self.intro[sender.identifier] = @(MIN(characterTiming ? 500 : 10000,
+        MAX(characterTiming ? 10 : 0, sender.doubleValue)));
+    [self draftDidChange];
+}
+- (void)introRainChanged:(NSButton *)sender {
+    self.intro[@"rainDuringIntro"] = @(sender.state == NSControlStateValueOn);
+    self.postIntroDelayField.enabled = sender.state != NSControlStateValueOn;
+    [self draftDidChange];
+}
+- (void)replayIntroNextRun:(id)sender {
+    [self.stagedValues removeObjectForKey:@"mx-intro-seen"];
+    [self draftDidChange];
+}
 
 - (NSView *)messagesTab {
     NSStackView *stack;
@@ -469,30 +704,41 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
     }];
 }
 - (void)messageLineChanged:(NSTextField *)sender {
-    if (sender.tag < self.messageLines.count) self.messageLines[sender.tag] = sender.stringValue;
+    if (sender.tag < self.messageLines.count)
+        self.messageLines[sender.tag] = MatrixCodeSettingText(sender.stringValue, 120);
+    [self draftDidChange];
 }
 - (void)addMessage:(id)sender {
     if (self.messageLines.count < 12) [self.messageLines addObject:@""];
     [self rebuildMessageLines];
+    [self draftDidChange];
 }
 - (void)removeMessage:(NSButton *)sender {
     if (sender.tag < self.messageLines.count) [self.messageLines removeObjectAtIndex:sender.tag];
     [self rebuildMessageLines];
+    [self draftDidChange];
 }
 - (void)moveMessage:(NSButton *)sender {
     NSInteger destination = sender.tag + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
     if (destination >= 0 && destination < self.messageLines.count)
         [self.messageLines exchangeObjectAtIndex:sender.tag withObjectAtIndex:destination];
     [self rebuildMessageLines];
+    [self draftDidChange];
 }
 - (void)messageNumberChanged:(NSTextField *)sender {
     double value = sender.doubleValue;
     if ([sender.identifier hasPrefix:@"vertical"]) value = MIN(1, MAX(0, value));
-    else value = MAX(0, value);
+    else {
+        BOOL minimumGap = [sender.identifier isEqualToString:@"frequencyMs"] ||
+            [sender.identifier isEqualToString:@"persistenceMs"];
+        value = MIN(600000, MAX(minimumGap ? 500 : 0, value));
+    }
     self.messages[sender.identifier] = @(value);
+    [self draftDidChange];
 }
 - (void)messageToggleChanged:(NSButton *)sender {
     self.messages[sender.identifier] = @(sender.state == NSControlStateValueOn);
+    [self draftDidChange];
 }
 
 - (NSView *)countdownTab {
@@ -511,9 +757,11 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
         NSDatePickerElementFlagHourMinuteSecond;
     defaultDate.dateValue = [self.countdown[@"targetMs"] isKindOfClass:NSNumber.class]
         ? [NSDate dateWithTimeIntervalSince1970:[self.countdown[@"targetMs"] doubleValue] / 1000.0]
-        : NSDate.date;
+        : [NSDate dateWithTimeIntervalSinceNow:3600];
+    defaultDate.enabled = [self.countdown[@"targetMs"] isKindOfClass:NSNumber.class];
     defaultDate.identifier = @"defaultDate"; defaultDate.target = self;
     defaultDate.action = @selector(defaultCountdownDateChanged:);
+    self.defaultCountdownDatePicker = defaultDate;
     [stack addArrangedSubview:defaultEnabled];
     [stack addArrangedSubview:[self rowWithLabel:@"Default target" control:defaultDate]];
     self.momentsStack = [NSStackView stackViewWithViews:@[]];
@@ -545,44 +793,70 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
         NSButton *enabled = [NSButton checkboxWithTitle:@"Set" target:self action:@selector(momentChanged:)];
         enabled.state = targetEnabled ? NSControlStateValueOn : NSControlStateValueOff;
         enabled.tag = index; enabled.identifier = @"enabled";
+        NSButton *up = [NSButton buttonWithTitle:@"↑" target:self action:@selector(moveMoment:)];
+        up.tag = index; up.identifier = @"up"; up.enabled = index > 0;
+        NSButton *down = [NSButton buttonWithTitle:@"↓" target:self action:@selector(moveMoment:)];
+        down.tag = index; down.identifier = @"down"; down.enabled = index + 1 < self.moments.count;
         NSButton *remove = [NSButton buttonWithTitle:@"−" target:self action:@selector(removeMoment:)];
         remove.tag = index;
-        NSStackView *row = [NSStackView stackViewWithViews:@[name, enabled, date, remove]];
+        NSStackView *row = [NSStackView stackViewWithViews:@[
+            name, enabled, date, up, down, remove
+        ]];
         row.spacing = 8; row.alignment = NSLayoutAttributeCenterY;
         [self.momentsStack addArrangedSubview:row];
     }];
 }
 - (void)defaultCountdownEnabled:(NSButton *)sender {
     self.countdown[@"targetMs"] = sender.state == NSControlStateValueOn
-        ? @((NSDate.date.timeIntervalSince1970 + 3600) * 1000.0) : NSNull.null;
+        ? @(self.defaultCountdownDatePicker.dateValue.timeIntervalSince1970 * 1000.0)
+        : NSNull.null;
+    self.defaultCountdownDatePicker.enabled = sender.state == NSControlStateValueOn;
+    [self draftDidChange];
 }
 - (void)defaultCountdownDateChanged:(NSDatePicker *)sender {
     self.countdown[@"targetMs"] = @(sender.dateValue.timeIntervalSince1970 * 1000.0);
+    [self draftDidChange];
 }
 - (void)addMoment:(id)sender {
     if (self.moments.count < 12) [self.moments addObject:
-        [@{@"name": @"", @"targetMs": @((NSDate.date.timeIntervalSince1970 + 3600) * 1000.0)} mutableCopy]];
+        [@{@"name": @"", @"targetMs": NSNull.null} mutableCopy]];
     [self rebuildMoments];
+    [self draftDidChange];
+}
+- (void)moveMoment:(NSButton *)sender {
+    NSInteger destination = sender.tag + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
+    if (destination >= 0 && destination < self.moments.count)
+        [self.moments exchangeObjectAtIndex:sender.tag withObjectAtIndex:destination];
+    [self rebuildMoments];
+    [self draftDidChange];
 }
 - (void)removeMoment:(NSButton *)sender {
     if (sender.tag < self.moments.count) [self.moments removeObjectAtIndex:sender.tag];
     [self rebuildMoments];
+    [self draftDidChange];
 }
 - (void)momentChanged:(id)sender {
     NSInteger index = [sender tag];
     if (index >= self.moments.count) return;
     if ([[sender identifier] isEqualToString:@"name"]) {
-        NSString *name = [[sender stringValue] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        NSString *name = MatrixCodeSettingText([sender stringValue], 40);
         NSCharacterSet *illegal = [NSCharacterSet characterSetWithCharactersInString:@":{}"];
-        self.moments[index][@"name"] = [[name componentsSeparatedByCharactersInSet:illegal] componentsJoinedByString:@""];
+        name = [[name componentsSeparatedByCharactersInSet:illegal] componentsJoinedByString:@""];
+        self.moments[index][@"name"] = [name stringByTrimmingCharactersInSet:
+            NSCharacterSet.whitespaceAndNewlineCharacterSet];
     } else if ([[sender identifier] isEqualToString:@"enabled"]) {
         BOOL enabled = [sender state] == NSControlStateValueOn;
-        self.moments[index][@"targetMs"] = enabled
-            ? @(NSDate.date.timeIntervalSince1970 * 1000.0) : NSNull.null;
+        NSDatePicker *datePicker = nil;
+        for (NSView *view in [sender superview].subviews) {
+            if ([view isKindOfClass:NSDatePicker.class]) datePicker = (NSDatePicker *)view;
+        }
+        self.moments[index][@"targetMs"] = enabled && datePicker
+            ? @(datePicker.dateValue.timeIntervalSince1970 * 1000.0) : NSNull.null;
         [self rebuildMoments];
     } else {
         self.moments[index][@"targetMs"] = @([[sender dateValue] timeIntervalSince1970] * 1000.0);
     }
+    [self draftDidChange];
 }
 
 - (NSDictionary<NSString *, NSString *> *)serializedValues {
@@ -590,22 +864,46 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
     values[@"mx-controls"] = MatrixCodeJSONString(self.controls);
     self.intro[@"lines"] = self.introLines;
     values[@"mx-intro"] = MatrixCodeJSONString(self.intro);
-    self.messages[@"messages"] = self.messageLines;
+    NSMutableArray<NSString *> *sanitizedMessages = [NSMutableArray array];
+    for (NSUInteger index = 0; index < MIN((NSUInteger)12, self.messageLines.count); index++) {
+        NSString *message = MatrixCodeSettingText(self.messageLines[index], 120);
+        if ([message stringByTrimmingCharactersInSet:
+             NSCharacterSet.whitespaceAndNewlineCharacterSet].length) {
+            [sanitizedMessages addObject:message];
+        }
+    }
+    self.messages[@"messages"] = sanitizedMessages;
     values[@"mx-messages"] = MatrixCodeJSONString(self.messages);
-    self.countdown[@"moments"] = self.moments;
+    NSMutableArray<NSDictionary *> *sanitizedMoments = [NSMutableArray array];
+    NSMutableSet<NSString *> *names = [NSMutableSet set];
+    for (NSUInteger index = 0; index < MIN((NSUInteger)12, self.moments.count); index++) {
+        NSDictionary *moment = self.moments[index];
+        NSString *name = MatrixCodeSettingText(moment[@"name"], 40);
+        name = [[name componentsSeparatedByCharactersInSet:
+            [NSCharacterSet characterSetWithCharactersInString:@":{}"]]
+            componentsJoinedByString:@""];
+        name = [name stringByTrimmingCharactersInSet:
+            NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (!name.length || [names containsObject:name]) continue;
+        [names addObject:name];
+        NSNumber *target = [moment[@"targetMs"] isKindOfClass:NSNumber.class] &&
+            CFGetTypeID((__bridge CFTypeRef)moment[@"targetMs"]) != CFBooleanGetTypeID() &&
+            isfinite([moment[@"targetMs"] doubleValue])
+            ? @(fmin(8.64e15, fmax(0, [moment[@"targetMs"] doubleValue])))
+            : nil;
+        [sanitizedMoments addObject:@{
+            @"name": name, @"targetMs": target ?: NSNull.null,
+        }];
+    }
+    self.countdown[@"moments"] = sanitizedMoments;
     values[@"mx-countdown"] = MatrixCodeJSONString(self.countdown);
     return values;
 }
 
 - (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message {
-    NSMutableDictionary *values = [[self serializedValues] mutableCopy];
-    if (message) {
-        NSMutableDictionary *messages = [self.messages mutableCopy];
-        messages[@"enabled"] = @YES;
-        messages[@"frequencyMs"] = @500;
-        values[@"mx-messages"] = MatrixCodeJSONString(messages);
-    }
-    self.previewController = [[MatrixCodeNativePreviewController alloc] initWithStoredValues:values showIntro:intro];
+    NSDictionary *values = [self serializedValues];
+    self.previewController = [[MatrixCodeNativePreviewController alloc]
+        initWithStoredValues:values showIntro:intro showMessage:message];
     [self.previewController showWindow:nil];
     [self.previewController.window makeKeyAndOrderFront:nil];
 }
@@ -618,15 +916,19 @@ static NSMutableDictionary *MatrixCodeDefaults(NSDictionary *defaults, NSDiction
     [self loadModels];
     for (NSView *view in self.window.contentView.subviews.copy) [view removeFromSuperview];
     [self buildInterface];
+    [self draftDidChange];
 }
 
 - (void)accept:(id)sender {
-    [self.preferences commitValues:[self serializedValues]];
+    NSDictionary *values = [self serializedValues];
+    [self.preferences commitValues:values];
+    [self publishPreviewValues:values];
     [NSApp endSheet:self.window returnCode:NSModalResponseOK];
     self.closeHandler();
 }
 
 - (void)cancel:(id)sender {
+    [self publishPreviewValues:self.originalValues];
     [NSApp endSheet:self.window returnCode:NSModalResponseCancel];
     self.closeHandler();
 }

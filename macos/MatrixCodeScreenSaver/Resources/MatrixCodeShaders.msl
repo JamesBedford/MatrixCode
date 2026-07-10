@@ -10,6 +10,7 @@ struct MatrixCodeGlyphInstance {
     float crossfade;
     float brightness;
     float isHead;
+    float whiteHead;
 };
 
 struct MatrixCodeUniforms {
@@ -26,6 +27,8 @@ struct MatrixCodeUniforms {
     float vignette;
     float scanlines;
     float glowRadius;
+    float leadBrightness;
+    float3 padding4;
 };
 
 struct MatrixCodeVertexOut {
@@ -35,6 +38,7 @@ struct MatrixCodeVertexOut {
     float crossfade;
     float brightness;
     float isHead;
+    float whiteHead;
 };
 
 vertex MatrixCodeVertexOut matrixVertex(
@@ -62,6 +66,7 @@ vertex MatrixCodeVertexOut matrixVertex(
     out.crossfade = instance.crossfade;
     out.brightness = instance.brightness;
     out.isHead = instance.isHead;
+    out.whiteHead = instance.whiteHead;
     return out;
 }
 
@@ -90,7 +95,7 @@ fragment half4 matrixFragment(
 
     float brightness = clamp(in.brightness, 0.0, 1.6);
     float3 color;
-    if (in.isHead > 0.5) {
+    if (in.whiteHead > 0.5) {
         color = mix(uniforms.brightColor, uniforms.headColor,
                     clamp((brightness - 0.8) * 2.0, 0.0, 1.0));
     } else if (brightness < 0.35) {
@@ -107,9 +112,12 @@ fragment half4 matrixFragment(
     float scanline = uniforms.scanlines > 0.5
         ? mix(0.88, 1.0, step(0.5, fract(in.position.y / 3.0)))
         : 1.0;
+    float headBoost = in.isHead > 0.5
+        ? 1.6 + (in.whiteHead > 0.5 ? uniforms.leadBrightness : 0.0)
+        : 1.0;
     float glowBoost = center > 0.01h ? 1.0 : (1.0 + uniforms.glow * 0.45);
     return half4(
-        half3(color * max(brightness, 0.12) * vignette * scanline * glowBoost),
+        half3(color * max(brightness, 0.12) * headBoost * vignette * scanline * glowBoost),
         alpha * half(clamp(brightness * 1.25, 0.0, 1.0))
     );
 }
