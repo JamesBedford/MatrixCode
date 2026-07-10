@@ -92,8 +92,21 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     for (NSView *subview in self.subviews.reverseObjectEnumerator) {
         if (subview.hidden || subview.alphaValue <= 0.01) continue;
         NSPoint converted = [self convertPoint:point toView:subview];
-        NSView *hit = [subview hitTest:converted];
+        NSView *hit = [self interactiveHitInsideView:subview atPoint:converted];
         if (hit) return hit;
+    }
+    return nil;
+}
+
+- (NSView *)interactiveHitInsideView:(NSView *)view atPoint:(NSPoint)point {
+    if (view.hidden || view.alphaValue <= 0.01 || !NSPointInRect(point, view.bounds)) return nil;
+    for (NSView *subview in view.subviews.reverseObjectEnumerator) {
+        NSPoint converted = [view convertPoint:point toView:subview];
+        NSView *hit = [self interactiveHitInsideView:subview atPoint:converted];
+        if (hit) return hit;
+    }
+    if ([view isKindOfClass:NSControl.class] || [view isKindOfClass:NSScrollView.class]) {
+        return [view hitTest:point] ?: view;
     }
     return nil;
 }
@@ -257,7 +270,6 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 @property(nonatomic, strong) NSView *settingsPanel;
 @property(nonatomic, strong) NSTimer *settingsHideTimer;
 @property(nonatomic, strong) MatrixCodeMetalView *charactersPreviewView;
-@property(nonatomic, strong) NSTimer *charactersPreviewTimer;
 @property(nonatomic) BOOL settingsPanelVisible;
 @property(nonatomic, weak) NSView *embeddedHostView;
 @property(nonatomic) BOOL embeddedPresentation;
@@ -303,7 +315,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 
 - (void)publishPreviewValues:(NSDictionary<NSString *, NSString *> *)values {
     [self.settingsMetalView reloadStoredValues:values];
-    [self.charactersPreviewView reloadStoredValues:[self characterPreviewValuesFromValues:values]];
+    [self.settingsMetalView draw];
+    [self redrawCharactersPreviewWithValues:values];
     [self.previewController reloadStoredValues:values];
     [NSNotificationCenter.defaultCenter
         postNotificationName:MatrixCodePreviewValuesDidChangeNotification
@@ -886,16 +899,40 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                     action:@selector(closeEditorSave:)
                                 identifier:@"editor-save"];
     save.keyEquivalent = @"\r";
-    NSArray<NSView *> *footerViews = characters
-        ? @[reset, save]
-        : @[reset, cancel, save];
+    for (NSButton *button in @[reset, save]) {
+        [button.heightAnchor constraintGreaterThanOrEqualToConstant:36].active = YES;
+        [button.widthAnchor constraintGreaterThanOrEqualToConstant:112].active = YES;
+    }
+    [reset.widthAnchor constraintGreaterThanOrEqualToConstant:156].active = YES;
+    [cancel.heightAnchor constraintGreaterThanOrEqualToConstant:36].active = YES;
+    [cancel.widthAnchor constraintGreaterThanOrEqualToConstant:112].active = YES;
+    NSView *footerSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
+    footerSpacer.identifier = @"editor-footer-spacer";
+    [footerSpacer setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                             forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [footerSpacer setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
+                                           forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [footerSpacer.widthAnchor constraintGreaterThanOrEqualToConstant:12].active = YES;
+    NSArray<NSView *> *actionViews = characters ? @[save] : @[cancel, save];
+    NSStackView *footerActions = [NSStackView stackViewWithViews:actionViews];
+    footerActions.identifier = @"editor-footer-actions";
+    footerActions.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    footerActions.alignment = NSLayoutAttributeCenterY;
+    footerActions.spacing = 16;
+    [footerActions setContentHuggingPriority:NSLayoutPriorityDefaultHigh
+                              forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [footerActions setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
+                                            forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSArray<NSView *> *footerViews = @[reset, footerSpacer, footerActions];
     NSStackView *footer = [NSStackView stackViewWithViews:footerViews];
     footer.translatesAutoresizingMaskIntoConstraints = NO;
     footer.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     footer.alignment = NSLayoutAttributeCenterY;
-    footer.spacing = 8;
+    footer.distribution = NSStackViewDistributionFill;
+    footer.spacing = 16;
     [reset setContentHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationHorizontal];
-    [footer setCustomSpacing:characters ? 324 : 220 afterView:reset];
+    [cancel setContentHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [save setContentHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationHorizontal];
 
     [card addSubview:body];
     [card addSubview:footer];
@@ -921,10 +958,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         [body.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
         [body.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
         [body.topAnchor constraintEqualToAnchor:card.topAnchor],
-        [body.bottomAnchor constraintEqualToAnchor:footer.topAnchor constant:-8],
-        [footer.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
-        [footer.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
-        [footer.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-18],
+        [body.bottomAnchor constraintEqualToAnchor:footer.topAnchor constant:-18],
+        [footer.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:28],
+        [footer.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-28],
+        [footer.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-26],
     ]];
     self.editorBackdrop = backdrop;
     self.editorCard = card;
@@ -1129,7 +1166,12 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSMutableDictionary *controls =
         [MatrixCodeJSONObject(previewValues[@"mx-controls"], NSDictionary.class) mutableCopy]
         ?: [NSMutableDictionary dictionary];
+    controls[@"density"] = @18;
+    controls[@"glyphScale"] = @0.82;
+    controls[@"trailLength"] = @0.32;
+    controls[@"trailVariation"] = @1;
     controls[@"rampUpMs"] = @0;
+    controls[@"allowOverlap"] = @YES;
     previewValues[@"mx-controls"] = MatrixCodeJSONString(controls);
 
     NSMutableDictionary *messages =
@@ -1141,22 +1183,17 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 }
 
 - (NSDictionary<NSString *, id> *)charactersPreviewSession {
-    NSTimeInterval epochMs = (NSDate.date.timeIntervalSince1970 - 12.0) * 1000.0;
-    return @{@"seed": @0x43a71f2d, @"epoch": @(epochMs)};
+    return @{@"seed": @0x43a71f2d, @"epoch": @1700000000000};
 }
 
-- (void)startCharactersPreviewTimerIfNeeded {
-    if (self.charactersPreviewTimer) return;
-    __weak typeof(self) weakSelf = self;
-    self.charactersPreviewTimer =
-        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer *timer) {
-        [weakSelf.charactersPreviewView draw];
-    }];
+- (void)redrawCharactersPreviewWithValues:(NSDictionary<NSString *, NSString *> *)values {
+    if (!self.charactersPreviewView) return;
+    [self.charactersPreviewView reloadStoredValues:[self characterPreviewValuesFromValues:values]];
+    [self.charactersPreviewView setDensityScale:1 rainElapsed:18.0];
+    [self.charactersPreviewView draw];
 }
 
 - (void)stopCharactersPreview {
-    [self.charactersPreviewTimer invalidate];
-    self.charactersPreviewTimer = nil;
     [self.charactersPreviewView setAnimationActive:NO];
     self.charactersPreviewView = nil;
 }
@@ -1179,9 +1216,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         preview.wantsLayer = YES;
         preview.layer.cornerRadius = 6.0;
         preview.layer.masksToBounds = YES;
-        [preview setAnimationActive:YES];
         self.charactersPreviewView = preview;
-        [self startCharactersPreviewTimerIfNeeded];
+        [self redrawCharactersPreviewWithValues:[self serializedValues]];
     } else {
         NSTextField *fallback = [NSTextField labelWithString:@"Preview unavailable"];
         fallback.identifier = @"settings-character-preview-unavailable";
@@ -1886,7 +1922,6 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (void)dealloc {
     [_settingsHideTimer invalidate];
     [_settingsAnimationTimer invalidate];
-    [_charactersPreviewTimer invalidate];
     [_settingsMetalView setAnimationActive:NO];
     [_charactersPreviewView setAnimationActive:NO];
 }

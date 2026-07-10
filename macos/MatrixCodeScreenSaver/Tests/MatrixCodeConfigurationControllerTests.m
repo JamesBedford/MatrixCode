@@ -206,6 +206,12 @@ static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *val
     XCTAssertTrue([mirror isKindOfClass:NSButton.class]);
     XCTAssertTrue([previewCard isKindOfClass:NSView.class]);
     XCTAssertTrue([preview isKindOfClass:MatrixCodeMetalView.class]);
+    XCTAssertTrue(preview.isPaused);
+    NSArray<NSNumber *> *firstPreviewSnapshot =
+        [preview diagnosticGlyphStateSnapshotWithWidth:508 height:190];
+    NSArray<NSNumber *> *secondPreviewSnapshot =
+        [preview diagnosticGlyphStateSnapshotWithWidth:508 height:190];
+    XCTAssertEqualObjects(firstPreviewSnapshot, secondPreviewSnapshot);
     XCTAssertEqualObjects([glyphMode.itemArray valueForKey:@"title"],
                           (@[@"Matrix mix", @"Katakana", @"Binary", @"Digits", @"Latin", @"Symbols"]));
     XCTAssertEqualObjects([glyphMode.itemArray valueForKey:@"representedObject"],
@@ -215,6 +221,44 @@ static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *val
                              @"Terminal Mono", @"Rounded", @"Mincho"]));
     XCTAssertEqualObjects([glyphFont.itemArray valueForKey:@"representedObject"],
                           (@[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"]));
+}
+
+- (void)testGlyphModeSelectionImmediatelyRefreshesBackgroundRainGlyphs {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    MatrixCodeMetalView *background = [controller valueForKey:@"settingsMetalView"];
+    XCTAssertTrue([background isKindOfClass:MatrixCodeMetalView.class]);
+    [background setDensityScale:1 rainElapsed:18.0];
+    NSArray<NSNumber *> *matrixSnapshot =
+        [background diagnosticGlyphStateSnapshotWithWidth:420 height:260];
+    XCTAssertGreaterThan(matrixSnapshot.count, (NSUInteger)0);
+    BOOL sawNonBinaryGlyph = NO;
+    for (NSNumber *glyph in matrixSnapshot) {
+        NSInteger value = glyph.integerValue;
+        if (value != 56 && value != 57) {
+            sawNonBinaryGlyph = YES;
+            break;
+        }
+    }
+    XCTAssertTrue(sawNonBinaryGlyph);
+
+    NSButton *open = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"characters");
+    [controller openEditor:open];
+    NSView *characters = MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"settings-editor-card-characters");
+    NSPopUpButton *glyphMode = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(characters, @"glyphMode");
+    MatrixCodeSelectRepresentedValue(glyphMode, @"binary");
+    [controller controlChanged:glyphMode];
+
+    [background setDensityScale:1 rainElapsed:18.0];
+    NSArray<NSNumber *> *binarySnapshot =
+        [background diagnosticGlyphStateSnapshotWithWidth:420 height:260];
+    XCTAssertEqual(binarySnapshot.count, matrixSnapshot.count);
+    for (NSNumber *glyph in binarySnapshot) {
+        NSInteger value = glyph.integerValue;
+        XCTAssertTrue(value == 56 || value == 57, @"Unexpected binary glyph index %@", glyph);
+    }
 }
 
 - (void)testRainPopupsUseWebLabelsAndPersistStableValues {

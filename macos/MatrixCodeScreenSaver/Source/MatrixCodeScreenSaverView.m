@@ -11,7 +11,7 @@
 - (instancetype)initWithFrame:(NSRect)frame isPreview:(BOOL)isPreview {
     self = [super initWithFrame:frame isPreview:isPreview];
     if (self) {
-        self.animationTimeInterval = 1.0 / 60.0;
+        self.animationTimeInterval = 1.0;
         MatrixCodeRainHostMode mode = isPreview
             ? MatrixCodeRainHostModeScreenSaverPreview
             : MatrixCodeRainHostModeScreenSaverPlayback;

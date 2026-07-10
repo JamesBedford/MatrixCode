@@ -1,5 +1,6 @@
 #import <XCTest/XCTest.h>
 
+#import "MatrixCodeMetalView.h"
 #import "MatrixCodeRainHostView.h"
 
 @interface MatrixCodeEscapeTestWindow : NSWindow
@@ -47,6 +48,10 @@ static NSEvent *MatrixCodeEscapeKeyEvent(NSWindow *window) {
 
 static NSEvent *MatrixCodePKeyEvent(BOOL repeat) {
     return MatrixCodeKeyEvent(nil, @"p", 35, repeat);
+}
+
+static NSEvent *MatrixCodeFKeyEvent(BOOL repeat) {
+    return MatrixCodeKeyEvent(nil, @"f", 3, repeat);
 }
 
 static NSEvent *MatrixCodeMouseMovedEvent(NSWindow *window) {
@@ -141,6 +146,34 @@ static NSView *MatrixCodeHostDescendantWithIdentifier(NSView *view, NSString *id
     XCTAssertNil([controller window]);
 }
 
+- (void)testEscapeKeyDismissesStandaloneSettingsOverlay {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = NO;
+    window.contentView = hostView;
+
+    [hostView showSettingsOverlay];
+    [hostView layoutSubtreeIfNeeded];
+
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
+
+    [hostView keyDown:MatrixCodeEscapeKeyEvent(window)];
+    [hostView layoutSubtreeIfNeeded];
+
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
+    XCTAssertNil([hostView valueForKey:@"configurationController"]);
+}
+
 - (void)testStandaloneSettingsAppearWhenPointerMovesOverRainWindow {
     NSWindow *window =
         [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
@@ -166,22 +199,124 @@ static NSView *MatrixCodeHostDescendantWithIdentifier(NSView *view, NSString *id
     XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
 }
 
-- (void)testPKeyTogglesUserPauseWithoutRepeating {
+- (void)testStandaloneSettingsControlsReceiveHitTesting {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
     MatrixCodeRainHostView *hostView =
-        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
                                                  mode:MatrixCodeRainHostModeStandalone
                                               session:nil
                                 suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = NO;
+    window.contentView = hostView;
+
+    [hostView showSettingsOverlay];
+    [hostView layoutSubtreeIfNeeded];
+
+    NSView *name = MatrixCodeHostDescendantWithIdentifier(hostView, @"mx-user-name");
+    XCTAssertNotNil(name);
+    NSRect nameFrame = [name convertRect:name.bounds toView:hostView];
+    NSView *hit = [hostView hitTest:NSMakePoint(NSMidX(nameFrame), NSMidY(nameFrame))];
+    XCTAssertNotNil(hit);
+    XCTAssertTrue(hit == name || [hit isDescendantOf:name],
+                  @"Expected the viewer-name field to receive clicks, got %@", hit);
+}
+
+- (void)testPKeyTogglesUserPauseWithoutRepeating {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 640, 480)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = YES;
+    window.contentView = hostView;
     [hostView startAnimation];
+    MatrixCodeMetalView *metalView = [hostView valueForKey:@"metalView"];
+    XCTAssertNotNil(metalView);
+    XCTAssertFalse(metalView.isPaused);
 
     [hostView keyDown:MatrixCodePKeyEvent(NO)];
     XCTAssertTrue([[hostView valueForKey:@"userPaused"] boolValue]);
+    XCTAssertTrue(metalView.isPaused);
 
     [hostView keyDown:MatrixCodePKeyEvent(YES)];
     XCTAssertTrue([[hostView valueForKey:@"userPaused"] boolValue]);
+    XCTAssertTrue(metalView.isPaused);
 
     [hostView keyDown:MatrixCodePKeyEvent(NO)];
     XCTAssertFalse([[hostView valueForKey:@"userPaused"] boolValue]);
+    XCTAssertFalse(metalView.isPaused);
+}
+
+- (void)testStandaloneAnimationUsesMetalDisplayLinkInsteadOfDuplicateTimer {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 640, 480)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = YES;
+    window.contentView = hostView;
+
+    [hostView startAnimation];
+
+    MatrixCodeMetalView *metalView = [hostView valueForKey:@"metalView"];
+    XCTAssertNotNil(metalView);
+    XCTAssertFalse(metalView.isPaused);
+    XCTAssertNil([hostView valueForKey:@"animationTimer"]);
+    XCTAssertEqual(metalView.preferredFramesPerSecond,
+                   [MatrixCodeMetalView maximumFramesPerSecondForScreen:window.screen ?: NSScreen.mainScreen]);
+}
+
+- (void)testFKeyTogglesMeasuredFPSOverlayWithoutExtraTimer {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 640, 480)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = YES;
+    window.contentView = hostView;
+    [hostView startAnimation];
+    MatrixCodeMetalView *metalView = [hostView valueForKey:@"metalView"];
+    XCTAssertNotNil(metalView);
+
+    [hostView keyDown:MatrixCodeFKeyEvent(NO)];
+    NSTextField *overlay = (NSTextField *)MatrixCodeHostDescendantWithIdentifier(hostView, @"fps-overlay");
+    XCTAssertNotNil(overlay);
+    XCTAssertFalse(overlay.hidden);
+    XCTAssertEqualObjects(overlay.stringValue, @"0 FPS");
+    XCTAssertNil([hostView valueForKey:@"animationTimer"]);
+
+    MatrixCodeMetalFrameHandler handler = metalView.frameHandler;
+    XCTAssertNotNil(handler);
+    NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    for (NSUInteger frame = 0; frame <= 32; frame++) {
+        handler(metalView, [start dateByAddingTimeInterval:frame / 120.0], 120);
+    }
+    XCTAssertEqualObjects(overlay.stringValue, @"120 FPS");
+
+    [hostView keyDown:MatrixCodeFKeyEvent(YES)];
+    XCTAssertFalse(overlay.hidden);
+
+    [hostView keyDown:MatrixCodeFKeyEvent(NO)];
+    XCTAssertTrue(overlay.hidden);
 }
 
 @end

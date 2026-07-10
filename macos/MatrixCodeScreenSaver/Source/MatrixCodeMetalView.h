@@ -2,12 +2,23 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class MatrixCodeMetalView;
+
+typedef void (^MatrixCodeMetalFrameHandler)(MatrixCodeMetalView *view,
+                                            NSDate *date,
+                                            double framesPerSecond);
+
 @interface MatrixCodeMetalView : MTKView
 
+@property(nonatomic, copy, nullable) MatrixCodeMetalFrameHandler frameHandler;
+
++ (NSInteger)maximumFramesPerSecondForScreen:(nullable NSScreen *)screen;
 - (instancetype)initWithFrame:(NSRect)frame
                       session:(nullable NSDictionary<NSString *, id> *)session
                 storedValues:(NSDictionary<NSString *, NSString *> *)storedValues;
+- (void)configureFramePacingForScreen:(nullable NSScreen *)screen;
 - (void)setAnimationActive:(BOOL)active;
+- (void)freezeAnimationAtDate:(NSDate *)date;
 - (void)setDensityScale:(float)densityScale;
 - (void)setDensityScale:(float)densityScale rainElapsed:(NSTimeInterval)rainElapsed;
 - (void)reloadStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues;

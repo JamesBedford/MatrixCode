@@ -228,19 +228,30 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
         NSSlider *glyphRate = (NSSlider *)MatrixCodeVisualDescendant(card, @"glyphRate");
         NSView *preview = MatrixCodeVisualDescendant(card, @"settings-character-preview");
         NSView *previewRain = MatrixCodeVisualDescendant(card, @"settings-character-preview-rain");
+        NSView *reset = MatrixCodeVisualDescendant(card, @"editor-reset");
+        NSView *done = MatrixCodeVisualDescendant(card, @"editor-save");
         XCTAssertNotNil(card);
         XCTAssertTrue([glyphRate isKindOfClass:NSSlider.class]);
         XCTAssertNotNil(preview);
         XCTAssertTrue([previewRain isKindOfClass:MatrixCodeMetalView.class]);
+        XCTAssertNotNil(reset);
+        XCTAssertNotNil(done);
 
         NSRect cardInset = NSInsetRect(card.bounds, 16, 16);
         NSRect sliderFrame = [glyphRate.superview convertRect:glyphRate.frame toView:card];
         NSRect previewFrame = [preview.superview convertRect:preview.frame toView:card];
+        NSRect resetFrame = [reset.superview convertRect:reset.frame toView:card];
+        NSRect doneFrame = [done.superview convertRect:done.frame toView:card];
         XCTAssertTrue(NSContainsRect(cardInset, sliderFrame),
                       @"Glyph change slider clips against the Characters card at %@", sizeValue);
         XCTAssertTrue(NSContainsRect(cardInset, previewFrame),
                       @"Rain preview clips against the Characters card at %@", sizeValue);
         XCTAssertLessThanOrEqual(NSMaxX(sliderFrame), NSWidth(card.bounds) - 20 + 0.5);
+        XCTAssertEqualWithAccuracy(NSMinX(resetFrame), 28, 1.0);
+        XCTAssertEqualWithAccuracy(NSMaxX(doneFrame), NSWidth(card.bounds) - 28, 1.0);
+        XCTAssertGreaterThan(NSMinX(doneFrame), NSMaxX(resetFrame) + 120);
+        XCTAssertGreaterThanOrEqual(NSHeight(resetFrame), 36);
+        XCTAssertGreaterThanOrEqual(NSHeight(doneFrame), 36);
 
         NSBitmapImageRep *bitmap = MatrixCodeRenderView(card);
         XCTAssertNotNil(bitmap);
@@ -250,6 +261,40 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
                              @"Offscreen Characters editor render appears blank at %@", sizeValue);
         XCTAssertGreaterThan(greenPixels, 20,
                              @"Characters editor render lost its green accent at %@", sizeValue);
+    }
+}
+
+- (void)testMessagesEditorKeepsCancelSaveActionsTogetherAtTrailingEdge {
+    NSArray<NSValue *> *sizes = @[
+        [NSValue valueWithSize:NSMakeSize(920, 700)],
+        [NSValue valueWithSize:NSMakeSize(700, 560)],
+    ];
+    for (NSValue *sizeValue in sizes) {
+        NSSize size = sizeValue.sizeValue;
+        MatrixCodeConfigurationController *controller =
+            [self controllerWithContentSize:size];
+        [controller presentEditorKind:@"messages"];
+        NSView *content = controller.window.contentView;
+        [content layoutSubtreeIfNeeded];
+
+        NSView *card = MatrixCodeVisualDescendant(content, @"settings-editor-card-messages");
+        NSView *reset = MatrixCodeVisualDescendant(card, @"editor-reset");
+        NSView *cancel = MatrixCodeVisualDescendant(card, @"editor-cancel");
+        NSView *save = MatrixCodeVisualDescendant(card, @"editor-save");
+        XCTAssertNotNil(card);
+        XCTAssertNotNil(reset);
+        XCTAssertNotNil(cancel);
+        XCTAssertNotNil(save);
+
+        NSRect resetFrame = [reset.superview convertRect:reset.frame toView:card];
+        NSRect cancelFrame = [cancel.superview convertRect:cancel.frame toView:card];
+        NSRect saveFrame = [save.superview convertRect:save.frame toView:card];
+        XCTAssertEqualWithAccuracy(NSMinX(resetFrame), 28, 1.0);
+        XCTAssertEqualWithAccuracy(NSMaxX(saveFrame), NSWidth(card.bounds) - 28, 1.0);
+        XCTAssertGreaterThan(NSMinX(cancelFrame), NSMaxX(resetFrame) + 120);
+        XCTAssertEqualWithAccuracy(NSMinX(saveFrame) - NSMaxX(cancelFrame), 16, 1.0);
+        XCTAssertGreaterThanOrEqual(NSHeight(cancelFrame), 36);
+        XCTAssertGreaterThanOrEqual(NSHeight(saveFrame), 36);
     }
 }
 

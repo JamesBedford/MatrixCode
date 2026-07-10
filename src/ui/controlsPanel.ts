@@ -288,8 +288,18 @@ export class ControlsPanel {
     this.scheduleHide();
   }
 
+  isVisible(): boolean {
+    return this.el.classList.contains("is-visible");
+  }
+
+  dismiss(): boolean {
+    if (!this.isVisible()) return false;
+    this.forceHide();
+    return true;
+  }
+
   toggleVisible(): void {
-    if (this.el.classList.contains("is-visible")) this.forceHide();
+    if (this.isVisible()) this.forceHide();
     else this.show();
   }
 
@@ -301,6 +311,7 @@ export class ControlsPanel {
   }
 
   private forceHide(): void {
+    window.clearTimeout(this.hideTimer);
     this.el.classList.remove("is-visible");
     document.body.style.cursor = "none";
   }

@@ -882,7 +882,6 @@ export async function mountMatrixRain(
   };
 
   const onKey = (e: KeyboardEvent): void => {
-    if (isTextInputEvent(e)) return;
     let handled = false;
     if (multiMonitorState) {
       if (e.key === "Escape") {
@@ -895,27 +894,31 @@ export async function mountMatrixRain(
       }
       return;
     }
-    if (e.key === "f" || e.key === "F") { toggleFullscreen(); handled = true; }
-    else if (e.key === "h" || e.key === "H") { panel?.toggleVisible(); handled = true; }
-    else if (e.key === "i" || e.key === "I") { openSettingsSurface("intro"); handled = true; }
-    else if (e.key === "m" || e.key === "M") { openSettingsSurface("messages"); handled = true; }
-    else if (e.key === "c" || e.key === "C") { openSettingsSurface("countdown"); handled = true; }
-    else if (e.key === "n" || e.key === "N") { toggleMessages(); handled = true; }
-    else if (e.key === "-" || e.key === "_") { nudgeDensity(1 / DENSITY_KEY_STEP); handled = true; }
-    else if (e.key === "=" || e.key === "+") { nudgeDensity(DENSITY_KEY_STEP); handled = true; }
-    else if (e.key === "p" || e.key === "P") {
-      handled = true;
-      if (!e.repeat) {
-        userPaused = !userPaused;
-        if (userPaused) {
-          stop();
-          renderStatic();
-        } else {
-          start();
+    if (e.key === "Escape" && panel?.dismiss()) handled = true;
+    if (!handled && isTextInputEvent(e)) return;
+    if (!handled) {
+      if (e.key === "f" || e.key === "F") { toggleFullscreen(); handled = true; }
+      else if (e.key === "h" || e.key === "H") { panel?.toggleVisible(); handled = true; }
+      else if (e.key === "i" || e.key === "I") { openSettingsSurface("intro"); handled = true; }
+      else if (e.key === "m" || e.key === "M") { openSettingsSurface("messages"); handled = true; }
+      else if (e.key === "c" || e.key === "C") { openSettingsSurface("countdown"); handled = true; }
+      else if (e.key === "n" || e.key === "N") { toggleMessages(); handled = true; }
+      else if (e.key === "-" || e.key === "_") { nudgeDensity(1 / DENSITY_KEY_STEP); handled = true; }
+      else if (e.key === "=" || e.key === "+") { nudgeDensity(DENSITY_KEY_STEP); handled = true; }
+      else if (e.key === "p" || e.key === "P") {
+        handled = true;
+        if (!e.repeat) {
+          userPaused = !userPaused;
+          if (userPaused) {
+            stop();
+            renderStatic();
+          } else {
+            start();
+          }
         }
       }
+      else if (e.key === "Escape") { message?.skip(); handled = true; }
     }
-    else if (e.key === "Escape") { message?.skip(); handled = true; }
     if (handled) {
       e.preventDefault();
       e.stopPropagation();

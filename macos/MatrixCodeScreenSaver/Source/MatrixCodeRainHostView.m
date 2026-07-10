@@ -34,6 +34,11 @@
 @property(nonatomic) BOOL userPaused;
 @property(nonatomic, strong, nullable) NSDate *pauseStartedDate;
 @property(nonatomic, strong, nullable) NSTrackingArea *settingsRevealTrackingArea;
+@property(nonatomic, strong, nullable) NSTextField *fpsOverlay;
+@property(nonatomic) BOOL fpsOverlayVisible;
+@property(nonatomic) NSTimeInterval fpsLastFrameTime;
+@property(nonatomic) NSTimeInterval fpsLastDisplayUpdate;
+@property(nonatomic) double fpsEma;
 @end
 
 @implementation MatrixCodeRainHostView
@@ -246,9 +251,16 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     if (!self.metalView) {
         return;
     }
+    [self.metalView configureFramePacingForScreen:screen ?: self.window.screen];
+    __weak typeof(self) weakSelf = self;
+    self.metalView.frameHandler = ^(MatrixCodeMetalView *view,
+                                    NSDate *date,
+                                    double framesPerSecond) {
+        [weakSelf advanceAnimationAtDate:date framesPerSecond:framesPerSecond];
+    };
     [self addSubview:self.metalView];
+    [self ensureFPSOverlay];
     if (!self.suppressesIntroOverlay) {
-        __weak typeof(self) weakSelf = self;
         self.introOverlay = [[MatrixCodeIntroOverlayView alloc] initWithFrame:self.bounds
                                                                 storedValues:storedValues
                                                                tokenResolver:self.tokenResolver
@@ -287,17 +299,71 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
             ? MIN(60, MAX(0, [controls[@"rampUpMs"] doubleValue] / 1000.0))
             : 8;
     }
-    [self.metalView draw];
+    if (self.metalView.isPaused) [self.metalView draw];
 }
 
 - (BOOL)animationShouldRun {
     return self.hostActive && !self.reducedMotion && !self.userPaused;
 }
 
+- (double)animationFramesPerSecond {
+    NSInteger framesPerSecond = self.metalView.preferredFramesPerSecond;
+    return framesPerSecond > 0 ? framesPerSecond : 60;
+}
+
+- (void)ensureFPSOverlay {
+    if (self.fpsOverlay) return;
+    NSTextField *overlay = [NSTextField labelWithString:@"0 FPS"];
+    overlay.translatesAutoresizingMaskIntoConstraints = NO;
+    overlay.identifier = @"fps-overlay";
+    overlay.hidden = YES;
+    overlay.drawsBackground = YES;
+    overlay.backgroundColor = [NSColor colorWithWhite:0 alpha:0.58];
+    overlay.textColor = [NSColor colorWithSRGBRed:0 green:1 blue:0.25 alpha:0.92];
+    overlay.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium];
+    overlay.alignment = NSTextAlignmentLeft;
+    overlay.bordered = NO;
+    overlay.wantsLayer = YES;
+    overlay.layer.cornerRadius = 4;
+    overlay.layer.masksToBounds = YES;
+    [self addSubview:overlay positioned:NSWindowAbove relativeTo:self.metalView];
+    [NSLayoutConstraint activateConstraints:@[
+        [overlay.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [overlay.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
+        [overlay.widthAnchor constraintGreaterThanOrEqualToConstant:62],
+        [overlay.heightAnchor constraintGreaterThanOrEqualToConstant:24],
+    ]];
+    self.fpsOverlay = overlay;
+}
+
+- (void)toggleFPSOverlay {
+    [self ensureFPSOverlay];
+    self.fpsOverlayVisible = !self.fpsOverlayVisible;
+    self.fpsOverlay.hidden = !self.fpsOverlayVisible;
+    self.fpsLastFrameTime = 0;
+    self.fpsLastDisplayUpdate = 0;
+    self.fpsEma = 0;
+    if (self.fpsOverlayVisible) self.fpsOverlay.stringValue = @"0 FPS";
+}
+
+- (void)updateFPSOverlayAtDate:(NSDate *)date {
+    if (!self.fpsOverlayVisible) return;
+    NSTimeInterval now = date.timeIntervalSince1970;
+    if (self.fpsLastFrameTime > 0 && now > self.fpsLastFrameTime) {
+        double instant = 1.0 / (now - self.fpsLastFrameTime);
+        self.fpsEma = self.fpsEma <= 0 ? instant : self.fpsEma + 0.18 * (instant - self.fpsEma);
+    }
+    self.fpsLastFrameTime = now;
+    if (self.fpsLastDisplayUpdate > 0 && now - self.fpsLastDisplayUpdate < 0.25) return;
+    self.fpsLastDisplayUpdate = now;
+    self.fpsOverlay.stringValue = [NSString stringWithFormat:@"%.0f FPS", fmax(0, self.fpsEma)];
+}
+
 - (void)startInternalAnimationTimerIfNeeded {
     if (!self.usesInternalAnimationTimer || self.animationTimer || ![self animationShouldRun]) return;
+    if (self.metalView && !self.metalView.isPaused) return;
     __weak typeof(self) weakSelf = self;
-    self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+    self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / [self animationFramesPerSecond]
                                                           repeats:YES
                                                             block:^(NSTimer *timer) {
         [weakSelf animateOneFrame];
@@ -331,11 +397,11 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     [self stopInternalAnimationTimer];
 }
 
-- (void)animateOneFrame {
-    if (self.userPaused) return;
+- (void)advanceAnimationAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond {
     if (!self.metalView || !self.runStartDate) return;
-    NSDate *now = self.reducedMotion ? self.runStartDate : [NSDate date];
-    [self.introOverlay updateAtDate:now framesPerSecond:60];
+    NSDate *now = self.reducedMotion ? self.runStartDate : (date ?: NSDate.date);
+    [self updateFPSOverlayAtDate:now];
+    [self.introOverlay updateAtDate:now framesPerSecond:framesPerSecond];
     NSTimeInterval elapsed = [now timeIntervalSinceDate:self.runStartDate];
     if (!self.reducedMotion && self.introScheduled && !self.introOverlay.rainDuringIntro) {
         elapsed = self.deferredRainStartDate
@@ -348,16 +414,25 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
             : fmin(1, elapsed / self.rampDuration));
     float densityScale = MatrixCodeRainRampEase(linearDensityScale);
     [self.metalView setDensityScale:densityScale rainElapsed:elapsed];
+}
+
+- (void)animateOneFrame {
+    if (self.userPaused) return;
+    if (!self.metalView || !self.runStartDate) return;
+    if (!self.metalView.isPaused) return;
+    [self advanceAnimationAtDate:NSDate.date framesPerSecond:[self animationFramesPerSecond]];
     [self.metalView draw];
 }
 
 - (void)toggleUserPaused {
     if (!self.hostActive || self.reducedMotion) return;
     if (!self.userPaused) {
-        self.pauseStartedDate = [NSDate date];
+        NSDate *pauseDate = NSDate.date;
+        [self advanceAnimationAtDate:pauseDate framesPerSecond:[self animationFramesPerSecond]];
+        self.pauseStartedDate = pauseDate;
         self.userPaused = YES;
         [self stopInternalAnimationTimer];
-        [self.metalView draw];
+        [self.metalView freezeAnimationAtDate:pauseDate];
         return;
     }
 
@@ -510,6 +585,8 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     if (!event.isARepeat && commandOnly && [characters isEqualToString:@","] &&
         self.mode == MatrixCodeRainHostModeStandalone) {
         [self showSettingsOverlay];
+    } else if (!event.isARepeat && !hasCommandControlOrOption && [characters isEqualToString:@"f"]) {
+        [self toggleFPSOverlay];
     } else if (!event.isARepeat && !hasCommandControlOrOption && [characters isEqualToString:@"p"]) {
         [self toggleUserPaused];
     } else if (self.configurationController && event.keyCode == 53) {

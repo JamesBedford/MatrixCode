@@ -30,6 +30,12 @@ typedef struct {
 } MatrixCodeGlyphCellState;
 
 typedef struct {
+    float headRow;
+    float trailSpeed;
+    BOOL whiteHead;
+} MatrixCodeActiveRainStream;
+
+typedef struct {
     vector_float2 viewport;
     vector_float3 tailColor;
     float padding0;
@@ -159,11 +165,20 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
     return expf(logf(0.004f) * 1.2f * averageSpeed / fmaxf(1, targetRows));
 }
 
+static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
+    NSInteger framesPerSecond = screen.maximumFramesPerSecond;
+    if (framesPerSecond <= 0) framesPerSecond = NSScreen.mainScreen.maximumFramesPerSecond;
+    if (framesPerSecond <= 0) framesPerSecond = 60;
+    return MIN(240, MAX(30, framesPerSecond));
+}
+
 @interface MatrixCodeMetalView () <MTKViewDelegate>
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipeline;
 @property(nonatomic, strong) id<MTLTexture> atlas;
 @property(nonatomic, strong) id<MTLBuffer> instanceBuffer;
+@property(nonatomic, copy) NSArray<id<MTLBuffer>> *instanceBuffers;
+@property(nonatomic) NSUInteger instanceBufferIndex;
 @property(nonatomic) NSUInteger instanceCapacity;
 @property(nonatomic) NSUInteger instanceCount;
 @property(nonatomic) MatrixCodeUniforms uniforms;
@@ -205,9 +220,17 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
 @property(nonatomic) NSInteger glyphStateLaneCount;
 @property(nonatomic) NSTimeInterval lastGlyphStateTime;
 @property(nonatomic) BOOL hasGlyphStateTime;
+@property(nonatomic) NSTimeInterval currentFrameTimeSeconds;
+@property(nonatomic) BOOL hasCurrentFrameTime;
+@property(nonatomic) NSTimeInterval frozenFrameTimeSeconds;
+@property(nonatomic) BOOL hasFrozenFrameTime;
 @end
 
 @implementation MatrixCodeMetalView
+
++ (NSInteger)maximumFramesPerSecondForScreen:(NSScreen *)screen {
+    return MatrixCodeDisplayFramesPerSecond(screen);
+}
 
 #if DEBUG
 + (float)diagnosticEffectiveTrailLength:(float)trailLength
@@ -229,7 +252,7 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
     self.framebufferOnly = YES;
     self.paused = YES;
     self.enableSetNeedsDisplay = NO;
-    self.preferredFramesPerSecond = 60;
+    self.preferredFramesPerSecond = MatrixCodeDisplayFramesPerSecond(NSScreen.mainScreen);
     self.delegate = self;
     self.animationActive = NO;
     self.densityScale = 1;
@@ -250,9 +273,24 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
     return self;
 }
 
+- (void)configureFramePacingForScreen:(NSScreen *)screen {
+    self.preferredFramesPerSecond = MatrixCodeDisplayFramesPerSecond(screen);
+}
+
 - (void)setAnimationActive:(BOOL)active {
     _animationActive = active;
+    self.hasFrozenFrameTime = NO;
+    self.paused = !active;
     if (active) [self draw];
+}
+
+- (void)freezeAnimationAtDate:(NSDate *)date {
+    NSDate *frameDate = date ?: NSDate.date;
+    self.frozenFrameTimeSeconds = frameDate.timeIntervalSince1970;
+    self.hasFrozenFrameTime = YES;
+    _animationActive = NO;
+    self.paused = YES;
+    [self draw];
 }
 
 - (void)setDensityScale:(float)densityScale {
@@ -276,6 +314,7 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
 
 - (void)reloadStoredValues:(NSDictionary<NSString *,NSString *> *)storedValues {
     BOOL previousMirror = MatrixCodeBool(self.controls, @"mirror", YES);
+    NSString *previousGlyphMode = MatrixCodeGlyphMode(self.controls);
     NSString *previousFont = MatrixCodeGlyphFont(self.controls);
     NSDictionary *controls = nil;
     NSString *raw = storedValues[@"mx-controls"];
@@ -319,7 +358,11 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
         (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ 0xa511e9b3U));
     [self updatePalette];
     BOOL nextMirror = MatrixCodeBool(self.controls, @"mirror", YES);
+    NSString *nextGlyphMode = MatrixCodeGlyphMode(self.controls);
     NSString *nextFont = MatrixCodeGlyphFont(self.controls);
+    if (![previousGlyphMode isEqualToString:nextGlyphMode]) {
+        [self resetGlyphState];
+    }
     if (self.atlas && (previousMirror != nextMirror || ![previousFont isEqualToString:nextFont])) {
         [self buildAtlas];
     }
@@ -596,6 +639,30 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
     }
 }
 
+- (BOOL)messageDisplayHasRenderableGlyph:(NSString *)display {
+    for (NSUInteger index = 0; index < display.length; index++) {
+        if (self.messageGlyphs[[display substringWithRange:NSMakeRange(index, 1)]]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (void)refreshActiveMessageDisplayAtTime:(NSTimeInterval)now
+                          framesPerSecond:(double)framesPerSecond {
+    if (!self.activeMessageTemplate) return;
+    NSString *resolved = [self.tokenResolver resolveText:self.activeMessageTemplate
+                                                  atDate:[NSDate dateWithTimeIntervalSince1970:now]
+                                         framesPerSecond:framesPerSecond];
+    if (![self messageDisplayHasRenderableGlyph:resolved] ||
+        resolved.length > self.activeMessagePlacementColumns) {
+        return;
+    }
+    self.activeMessageDisplay = resolved;
+    self.activeMessageStartColumn =
+        MAX(0, (self.activeMessagePlacementColumns - (NSInteger)resolved.length) / 2);
+}
+
 - (NSInteger)messageGlyphAtGlobalColumn:(NSInteger)globalColumn
                               globalRow:(NSInteger)globalRow
                             localColumn:(NSInteger)localColumn
@@ -604,21 +671,6 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
                               intensity:(float *)intensity
                                scramble:(float *)scramble {
     if (!self.activeMessageTemplate) return NSNotFound;
-    NSString *resolved = [self.tokenResolver resolveText:self.activeMessageTemplate
-                                                  atDate:[NSDate dateWithTimeIntervalSince1970:now]
-                                         framesPerSecond:self.preferredFramesPerSecond];
-    BOOL renderable = NO;
-    for (NSUInteger index = 0; index < resolved.length; index++) {
-        if (self.messageGlyphs[[resolved substringWithRange:NSMakeRange(index, 1)]]) {
-            renderable = YES;
-            break;
-        }
-    }
-    if (renderable && resolved.length <= self.activeMessagePlacementColumns) {
-        self.activeMessageDisplay = resolved;
-        self.activeMessageStartColumn =
-            MAX(0, (self.activeMessagePlacementColumns - (NSInteger)resolved.length) / 2);
-    }
     NSString *display = self.activeMessageDisplay ?: @"";
     float vignette = MatrixCodeVignette(self.controls);
     NSInteger row = vignette > 0 ? localRow : globalRow;
@@ -686,8 +738,17 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
 - (void)ensureInstanceCapacity:(NSUInteger)capacity {
     if (capacity <= self.instanceCapacity) return;
     self.instanceCapacity = MAX(capacity, MAX((NSUInteger)4096, self.instanceCapacity * 2));
-    self.instanceBuffer = [self.device newBufferWithLength:self.instanceCapacity * sizeof(MatrixCodeGlyphInstance)
-                                                   options:MTLResourceStorageModeShared];
+    NSMutableArray<id<MTLBuffer>> *buffers = [NSMutableArray arrayWithCapacity:3];
+    for (NSUInteger index = 0; index < 3; index++) {
+        id<MTLBuffer> buffer =
+            [self.device newBufferWithLength:self.instanceCapacity * sizeof(MatrixCodeGlyphInstance)
+                                     options:MTLResourceStorageModeShared |
+                                             MTLResourceCPUCacheModeWriteCombined];
+        if (buffer) [buffers addObject:buffer];
+    }
+    self.instanceBuffers = buffers;
+    self.instanceBufferIndex = 0;
+    self.instanceBuffer = buffers.firstObject;
 }
 
 - (void)updateInstancesForDrawableSize:(CGSize)drawableSize {
@@ -718,6 +779,10 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
         }
     }
     [self ensureInstanceCapacity:(NSUInteger)(columns * rows * laneCount)];
+    if (self.instanceBuffers.count > 0) {
+        self.instanceBufferIndex = (self.instanceBufferIndex + 1) % self.instanceBuffers.count;
+        self.instanceBuffer = self.instanceBuffers[self.instanceBufferIndex];
+    }
 
     float speedControl = MatrixCodeNumber(self.controls, @"speed", 1, 0.1, 3);
     float rawTrail = MatrixCodeNumber(self.controls, @"trailLength", 0.255, 0.01, 0.5);
@@ -729,7 +794,9 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
         ? self.session[@"screens"] : @[];
     float rampDuration = sessionScreens.count > 1 ? 0 :
         MatrixCodeNumber(self.controls, @"rampUpMs", 8000, 0, 60000) / 1000.0f;
-    NSTimeInterval now = self.animationActive ? NSDate.date.timeIntervalSince1970 : self.epochSeconds + 2.5;
+    NSTimeInterval now = self.hasCurrentFrameTime ? self.currentFrameTimeSeconds :
+        (self.hasFrozenFrameTime ? self.frozenFrameTimeSeconds :
+            (self.animationActive ? NSDate.date.timeIntervalSince1970 : self.epochSeconds + 2.5));
     float elapsed = (float)(now - self.epochSeconds);
     float rainElapsed = sessionScreens.count > 1 ? elapsed :
         (self.usesExternalRainTimeline ? (float)self.rainElapsed : elapsed);
@@ -752,6 +819,8 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
                           globalRows:(NSInteger)virtualRows
                            localCols:columns
                            localRows:rows];
+    [self refreshActiveMessageDisplayAtTime:now
+                            framesPerSecond:self.preferredFramesPerSecond];
     float glyphDt = [self advanceGlyphStateClockToTime:rainElapsed];
     MatrixCodeGlyphCellState *glyphStates = [self glyphStatesForColumns:columns
                                                                    rows:rows
@@ -776,23 +845,32 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
         uint32_t laneSeed = self.seed ^ (uint32_t)(lane * 0x9e3779b9U);
         for (NSInteger column = 0; column < columns; column++) {
             int globalColumn = (int)(firstGlobalColumn + column);
+            MatrixCodeActiveRainStream activeStreams[64];
+            NSInteger activeStreamCount = 0;
+            for (NSInteger stream = 0; stream < streamCount && activeStreamCount < 64; stream++) {
+                uint32_t key = laneSeed ^ (uint32_t)(globalColumn * 0x9e3779b9U) ^
+                    (uint32_t)(stream * 0x85ebca6bU);
+                MatrixCodeRainStreamSample streamSample = MatrixCodeRainSampleStream(
+                    key, rainElapsed, self.densityScale, rampDuration, virtualRows,
+                    speedControl, fmaxf(laneDensity, 0.1f), streamFraction);
+                if (!streamSample.active) continue;
+                activeStreams[activeStreamCount++] = (MatrixCodeActiveRainStream){
+                    .headRow = streamSample.headRow,
+                    .trailSpeed = MatrixCodeRainEffectiveTrailSpeed(
+                        streamSample.speed, speedControl, trailVariation),
+                    .whiteHead = streamSample.whiteHead,
+                };
+            }
             for (NSInteger row = 0; row < rows; row++) {
                 int globalRow = (int)(firstGlobalRow + row);
                 float brightness = 0;
                 BOOL head = NO;
                 BOOL whiteHead = NO;
-                for (NSInteger stream = 0; stream < streamCount; stream++) {
-                    uint32_t key = laneSeed ^ (uint32_t)(globalColumn * 0x9e3779b9U) ^
-                        (uint32_t)(stream * 0x85ebca6bU);
-                    MatrixCodeRainStreamSample streamSample = MatrixCodeRainSampleStream(
-                        key, rainElapsed, self.densityScale, rampDuration, virtualRows,
-                        speedControl, fmaxf(laneDensity, 0.1f), streamFraction);
-                    if (!streamSample.active) continue;
+                for (NSInteger stream = 0; stream < activeStreamCount; stream++) {
+                    MatrixCodeActiveRainStream streamSample = activeStreams[stream];
                     float distance = streamSample.headRow - globalRow;
                     if (distance < 0) continue;
-                    float trailSpeed = MatrixCodeRainEffectiveTrailSpeed(
-                        streamSample.speed, speedControl, trailVariation);
-                    float age = distance / fmaxf(trailSpeed, 0.1f);
+                    float age = distance / fmaxf(streamSample.trailSpeed, 0.1f);
                     float value = powf(trail, age / 1.2f);
                     if (value < 0.004f) continue;
                     if (distance < 1.05f) {
@@ -945,7 +1023,16 @@ static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float
 
 - (void)drawInMTKView:(MTKView *)view {
     if (!self.commandQueue || !self.pipeline || !view.currentDrawable) return;
+    NSDate *frameDate = self.animationActive ? NSDate.date : nil;
+    self.hasCurrentFrameTime = frameDate != nil;
+    if (frameDate) {
+        self.currentFrameTimeSeconds = frameDate.timeIntervalSince1970;
+        if (self.frameHandler) {
+            self.frameHandler(self, frameDate, self.preferredFramesPerSecond);
+        }
+    }
     [self updateInstancesForDrawableSize:view.drawableSize];
+    self.hasCurrentFrameTime = NO;
     MTLRenderPassDescriptor *pass = view.currentRenderPassDescriptor;
     if (!pass) return;
     id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
