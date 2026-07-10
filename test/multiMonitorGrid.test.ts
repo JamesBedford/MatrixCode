@@ -5,7 +5,7 @@ import {
   stepsToAdvance,
   type GridSlice,
   type ScreenRect,
-} from "../src/super/superGrid.ts";
+} from "../src/multimonitor/multiMonitorGrid.ts";
 
 // cell=20 with 1920x1080 screens divides evenly (96 x 54) so we can assert
 // exact column/row alignment without rounding noise.

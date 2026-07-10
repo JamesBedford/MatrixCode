@@ -12,7 +12,7 @@
 
 - Default `rampUpMs` stays **0** — out of the box nothing changes; the ramp is opt-in via the intro editor.
 - Ramp affects density only (via active-column count); `speed`, the linear curve, and all other behaviour are unchanged.
-- No ramp under `prefers-reduced-motion` (static full frame) or in super-fullscreen/panel windows.
+- No ramp under `prefers-reduced-motion` (static full frame) or in multi-monitor fullscreen/panel windows.
 - Commit messages: concise single line, no `Co-Authored-By`.
 - Tests run in a Node environment (no DOM) — `app.ts` / editor changes are verified by `tsc --noEmit`, the full suite, and a manual check.
 

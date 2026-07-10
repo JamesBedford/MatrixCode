@@ -6,6 +6,8 @@ import { createRng } from "./util/rng.ts";
 import { MessageOverlay, resolveUserName } from "./sim/messageOverlay.ts";
 import { resolveTokens } from "./sim/tokens.ts";
 import { densityRampFactor, loadRampMs, rampEase } from "./sim/introRain.ts";
+import { MAX_FRAME_CATCHUP_SECONDS, simulationStepPlan } from "./sim/frameSteps.ts";
+import { advanceMultiClick, settledMultiClickAction } from "./sim/multiClick.ts";
 import { computeLanes, tierCap, seedForLayer, MAX_LANES, type Lane } from "./sim/overlapLanes.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
@@ -23,16 +25,16 @@ import { MessagesEditor } from "./ui/messagesEditor.ts";
 import { CountdownStore } from "./config/countdownStore.ts";
 import { CountdownEditor } from "./ui/countdownEditor.ts";
 import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
-import { stepsToAdvance, extractSlice } from "./super/superGrid.ts";
+import { stepsToAdvance, extractSlice } from "./multimonitor/multiMonitorGrid.ts";
 import {
-  type SuperConfig,
-  type SuperSessionResult,
-  startSuperSession,
+  type MultiMonitorConfig,
+  type MultiMonitorSessionResult,
+  startMultiMonitorSession,
   parsePanelConfig,
   enterPanelFullscreen,
   openExitChannel,
   prefetchScreens,
-} from "./super/superFullscreen.ts";
+} from "./multimonitor/multiMonitorFullscreen.ts";
 
 export interface MatrixRainHandle {
   destroy: () => void;
@@ -48,17 +50,19 @@ const BASE_SEED = 0x1a2b3c;
 const DENSITY_KEY_STEP = 1.2;
 // The message scheduler's own PRNG seed, kept separate from the sim's so scheduling never perturbs the rain.
 const MSG_SEED = 0x5eed1e;
-// Super-fullscreen lockstep: advance the shared sim in fixed steps toward the
+// Multi-monitor fullscreen lockstep: advance the shared sim in fixed steps toward the
 // shared wall-clock, capping per-frame catch-up so a stalled window recovers
 // gradually instead of freezing.
-const SUPER_FIXED_DT = 1 / 60;
-const SUPER_MAX_STEPS = 6;
+const MULTI_MONITOR_FIXED_DT = 1 / 60;
+// Match normal mode's bounded catch-up window. The previous six-step budget accumulated simulation
+// debt below 10 FPS, then visibly fast-forwarded when adaptive resolution recovered.
+const MULTI_MONITOR_MAX_STEPS = Math.ceil(MAX_FRAME_CATCHUP_SECONDS / MULTI_MONITOR_FIXED_DT);
 // Window within which consecutive background clicks count as one gesture.
 const MULTI_CLICK_MS = 350;
 
-/** Active super-fullscreen state for this window (controller or a panel). */
-interface SuperState {
-  config: SuperConfig;
+/** Active multi-monitor fullscreen state for this window (controller or a panel). */
+interface MultiMonitorState {
+  config: MultiMonitorConfig;
   isController: boolean;
   openedWindows: Window[];
   localState: Uint8Array;
@@ -183,6 +187,11 @@ export async function mountMatrixRain(
   let running = false;
   let raf = 0;
   let last = 0;
+  // Token-facing FPS is tracked independently so it remains available in multi-monitor fullscreen, whose
+  // fixed-step branch intentionally bypasses the adaptive-resolution controller and its FPS EMA.
+  let fpsLast = 0;
+  let fpsEmaMs = 0;
+  let currentFps = 0;
   let userPaused = false;
   // Intro rain choreography. Default sentinel: rain already running at full (no intro / repeat visit).
   let rainStartAtMs = Number.NEGATIVE_INFINITY;
@@ -192,9 +201,9 @@ export async function mountMatrixRain(
   // Debounce so the live Ramp-up slider replays the build-up once the drag settles, not every step.
   let rampPreviewTimer = 0;
 
-  // Super-fullscreen: this window is a panel iff the URL carries a slice config.
+  // Multi-monitor fullscreen: this window is a panel iff the URL carries a slice config.
   const panelConfig = parsePanelConfig();
-  let superState: SuperState | null = null;
+  let multiMonitorState: MultiMonitorState | null = null;
   let exitChan: ReturnType<typeof openExitChannel> | null = null;
 
   // Size the canvas backing + renderer targets to the full device resolution times the current
@@ -287,28 +296,38 @@ export async function mountMatrixRain(
   // ---------- Overlays ----------
   // Panels are a pure backdrop — no intro, no controls UI.
   const introStore = panelConfig ? null : new IntroStore();
-  const messagesStore = panelConfig ? null : new MessagesStore();
-  const countdownStore = panelConfig ? null : new CountdownStore();
+  // Multi-monitor fullscreen panels have no editor UI, but they still need the same persisted message and
+  // countdown documents as the controller so every window can schedule an identical virtual-grid message.
+  const messagesStore = new MessagesStore();
+  const countdownStore = new CountdownStore();
   const viewerName = resolveUserName();
-  // When this run began — bare {countup} counts up from here (see resolveTokens / countTarget).
+  // When this run began — drives {uptime} and bare {countup} (see resolveTokens / countTarget).
   const runStartMs = Date.now();
+  // Super mode temporarily supplies its shared fixed-step wall clock so ticking tokens resolve
+  // identically in every window instead of depending on each panel's slightly different Date.now().
+  let tokenClockMs: number | null = null;
   // One pure resolver for every surface (intro + in-rain messages). Reads the clock, the default
   // target, and the named moments live, so {time}/{countdown}/{countup} tick without any reconfigure.
   const resolveMessageText = (raw: string): string => {
     const doc = countdownStore?.get();
     return resolveTokens(raw, {
       name: viewerName,
-      nowMs: Date.now(),
+      nowMs: tokenClockMs ?? Date.now(),
       countdownTargetMs: doc?.targetMs ?? null,
       moments: Object.fromEntries((doc?.moments ?? []).map((m) => [m.name, m.targetMs])),
-      runStartMs,
+      runStartMs: multiMonitorState?.config.epoch ?? runStartMs,
+      fps: currentFps,
     });
   };
   // Current moment names, for the intro/messages editors' token hover.
   const getMomentNames = (): string[] => (countdownStore?.get().moments ?? []).map((m) => m.name);
 
-  const messageScheduler = panelConfig ? null : new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED), resolveText: resolveMessageText });
-  if (messageScheduler && messagesStore) messageScheduler.configure(messagesStore.get());
+  const createMessageScheduler = (doc: MessagesDoc = messagesStore.get()): MessageScheduler => {
+    const scheduler = new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED), resolveText: resolveMessageText });
+    scheduler.configure(doc);
+    return scheduler;
+  };
+  let messageScheduler = createMessageScheduler();
   const message = panelConfig ? null : new MessageOverlay(container, { resolveText: resolveMessageText });
 
   // Reflect the stored script onto the live overlay (raw lines; tokens resolve per-frame).
@@ -442,14 +461,14 @@ export async function mountMatrixRain(
 
   const reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  // Draw one frame from the current sim state. In super mode it paints this
+  // Draw one frame from the current sim state. In multi-monitor mode it paints this
   // window's slice of the shared grid; otherwise the whole grid.
   const paint = (): void => {
     if (!sim) return;
-    if (superState) {
-      const { vCols, vRows, slice } = superState.config;
-      extractSlice(sim.state, vCols, vRows, slice, superState.localState);
-      stateTex.upload(superState.localState);
+    if (multiMonitorState) {
+      const { vCols, vRows, slice } = multiMonitorState.config;
+      extractSlice(sim.state, vCols, vRows, slice, multiMonitorState.localState);
+      stateTex.upload(multiMonitorState.localState);
     } else {
       stateTex.upload(sim.state);
     }
@@ -488,21 +507,40 @@ export async function mountMatrixRain(
   const loop = (now: number): void => {
     if (!running) return;
     raf = requestAnimationFrame(loop);
+    const fpsIntervalMs = Math.min(Math.max(now - fpsLast, 0), 100);
+    fpsLast = now;
+    fpsEmaMs = fpsEmaMs === 0 ? fpsIntervalMs : fpsEmaMs + 0.15 * (fpsIntervalMs - fpsEmaMs);
+    currentFps = fpsEmaMs > 0 ? 1000 / fpsEmaMs : 0;
     // Snapshot the controls once per frame and reuse for both the sim step and the render
     // params, instead of spreading the store twice.
     const c = controls.get();
-    if (superState) {
+    if (multiMonitorState) {
       // Advance toward the shared wall-clock so every window stays in lockstep.
-      const target = superState.config.warmupSeconds + (Date.now() - superState.config.epoch) / 1000;
-      const steps = stepsToAdvance(target, superState.simClock, SUPER_FIXED_DT, SUPER_MAX_STEPS);
-      for (let i = 0; i < steps; i++) sim.update(SUPER_FIXED_DT, c);
-      superState.simClock += steps * SUPER_FIXED_DT;
+      const target = multiMonitorState.config.warmupSeconds + (Date.now() - multiMonitorState.config.epoch) / 1000;
+      const steps = stepsToAdvance(target, multiMonitorState.simClock, MULTI_MONITOR_FIXED_DT, MULTI_MONITOR_MAX_STEPS);
+      for (let i = 0; i < steps; i++) {
+        // Drive scheduling from the shared fixed-step clock, not this window's RAF/performance clock.
+        // Recreated schedulers + identical clocks keep message choice, placement, and timing in sync.
+        tokenClockMs =
+          multiMonitorState.config.epoch +
+          (multiMonitorState.simClock + i * MULTI_MONITOR_FIXED_DT - multiMonitorState.config.warmupSeconds) * 1000;
+        messageScheduler.update(
+          (multiMonitorState.simClock + i * MULTI_MONITOR_FIXED_DT) * 1000,
+          sim,
+          (multiMonitorState.config.perDisplayMessages ?? c.vignette > 0)
+            ? [multiMonitorState.config.slice]
+            : undefined,
+        );
+        sim.update(MULTI_MONITOR_FIXED_DT, c);
+      }
+      tokenClockMs = null;
+      multiMonitorState.simClock += steps * MULTI_MONITOR_FIXED_DT;
       paint();
       return;
     }
     flushResize();
     const intervalMs = now - last;
-    const dt = Math.min(intervalMs / 1000, 1 / 15);
+    const stepPlan = simulationStepPlan(intervalMs / 1000);
     last = now;
     // Adaptive resolution: feed the achieved frame interval; reallocate the backing only when the
     // scale actually changes (the controller's cooldown keeps that rare). The controller's EMA is
@@ -513,8 +551,7 @@ export async function mountMatrixRain(
       applyBackingSize();
     }
     if (hud) {
-      const fps = adaptiveRes.smoothedMs > 0 ? 1000 / adaptiveRes.smoothedMs : 0;
-      hud.textContent = `${fps.toFixed(0)} fps · ${Math.round(renderScale * 100)}% res · ${canvas.width}×${canvas.height}`;
+      hud.textContent = `${currentFps.toFixed(0)} fps · ${Math.round(renderScale * 100)}% res · ${canvas.width}×${canvas.height}`;
     }
     let extraLayers: ExtraLayer[] = [];
     if (now >= rainStartAtMs) {
@@ -526,9 +563,12 @@ export async function mountMatrixRain(
       sim.spawnRateScale = intro * lanes[0]!.weight;
       // Set/clear in-rain message targets before stepping so they take effect this frame (base layer only).
       messageScheduler?.update(now, sim);
-      sim.update(dt, laneControls(c, lanes[0]!.density));
-      // Overlap layers (index >= 1): independent sims at fractional offsets, composited additively.
-      extraLayers = updateExtraLayers(lanes, dt, c, intro);
+      for (let i = 0; i < stepPlan.steps; i++) {
+        sim.update(stepPlan.dt, laneControls(c, lanes[0]!.density));
+        // Overlap layers (index >= 1): independent sims at fractional offsets, composited additively.
+        // On a slow render frame, bounded substeps preserve wall-clock speed instead of dropping time.
+        extraLayers = updateExtraLayers(lanes, stepPlan.dt, c, intro);
+      }
     }
     // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
     stateTex.upload(sim.state);
@@ -544,6 +584,7 @@ export async function mountMatrixRain(
     }
     running = true;
     last = performance.now();
+    fpsLast = last;
     raf = requestAnimationFrame(loop);
   };
 
@@ -552,9 +593,9 @@ export async function mountMatrixRain(
     cancelAnimationFrame(raf);
   };
 
-  // In super mode the grid is fixed by the shared geometry, so a resize (e.g. the
+  // In multi-monitor mode the grid is fixed by the shared geometry, so a resize (e.g. the
   // fullscreen transition) only updates the device-pixel canvas size, never the grid.
-  const applySuperDeviceSize = (): void => {
+  const applyMultiMonitorDeviceSize = (): void => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     cssW = window.innerWidth;
     cssH = window.innerHeight;
@@ -567,8 +608,8 @@ export async function mountMatrixRain(
 
   // ---------- Resize ----------
   const handleResize = (w: number, h: number): void => {
-    if (superState) {
-      applySuperDeviceSize();
+    if (multiMonitorState) {
+      applyMultiMonitorDeviceSize();
       if (!running) renderStatic();
       return;
     }
@@ -622,31 +663,41 @@ export async function mountMatrixRain(
     else void container.requestFullscreen?.();
   };
 
-  // ---------- Super fullscreen (all monitors) ----------
+  // ---------- Multi-monitor fullscreen (all monitors) ----------
   // Switch this window's rain into a slice of the shared virtual grid.
-  const enterSuperRender = (config: SuperConfig, isController: boolean, openedWindows: Window[]): void => {
-    container.classList.add("mx-super"); // hides the controls/intro overlays via CSS
+  const enterMultiMonitorRender = (config: MultiMonitorConfig, isController: boolean, openedWindows: Window[]): void => {
+    container.classList.add("mx-multimonitor"); // hides the controls/intro overlays via CSS
     sim = new RainSim({ cols: config.vCols, rows: config.vRows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: config.seed });
     sim.warmUp(controls.get(), config.warmupSeconds);
+    // The controller's normal-mode scheduler has already consumed random values while panel schedulers
+    // are fresh. Reload persisted settings and restart all schedulers here so the original window
+    // cannot retain a stale document while newly opened panel windows use the latest one.
+    messageScheduler = createMessageScheduler(new MessagesStore().get());
     const lc = config.slice.cols;
     const lr = config.slice.rows;
     stateTex.resize(lc, lr);
     grid = { cols: lc, rows: lr };
-    superState = { config, isController, openedWindows, localState: new Uint8Array(lc * lr * 4), simClock: config.warmupSeconds };
+    multiMonitorState = {
+      config,
+      isController,
+      openedWindows,
+      localState: new Uint8Array(lc * lr * 4),
+      simClock: config.warmupSeconds,
+    };
     pending = null; // discard any normal-mode resize queued before the switch
-    applySuperDeviceSize();
+    applyMultiMonitorDeviceSize();
     start();
     renderStatic();
   };
 
-  const exitSuper = (broadcast: boolean): void => {
-    if (!superState) return;
-    const { isController, openedWindows } = superState;
+  const exitMultiMonitor = (broadcast: boolean): void => {
+    if (!multiMonitorState) return;
+    const { isController, openedWindows } = multiMonitorState;
     if (broadcast) exitChan?.broadcastExit();
     exitChan?.close();
     exitChan = null;
-    superState = null;
-    container.classList.remove("mx-super");
+    multiMonitorState = null;
+    container.classList.remove("mx-multimonitor");
     if (document.fullscreenElement) void document.exitFullscreen();
     if (isController) {
       for (const w of openedWindows) {
@@ -658,7 +709,8 @@ export async function mountMatrixRain(
       }
       pending = null; // a stale fullscreen-sized resize must not survive the switch back
       applySize(cssW, cssH); // rebuild sim/state/renderer back to this window's own grid
-      resetExtras(); // overlap is disabled in super mode; start the overlap lanes clean on return
+      messageScheduler = createMessageScheduler();
+      resetExtras(); // overlap is disabled in multi-monitor mode; start the overlap lanes clean on return
       renderStatic();
     } else {
       try {
@@ -677,18 +729,19 @@ export async function mountMatrixRain(
   };
 
   // Controller path: a triple-click fans the rain out onto every monitor.
-  const enterSuper = async (): Promise<void> => {
-    if (superState || panelConfig) return;
+  const enterMultiMonitor = async (): Promise<void> => {
+    if (multiMonitorState || panelConfig) return;
     const cell = DEFAULT_SIM_CONFIG.targetCellPx * controls.get().glyphScale;
-    let res: SuperSessionResult;
+    let res: MultiMonitorSessionResult;
     try {
-      res = await startSuperSession(container, cell, WARMUP_SECONDS);
+      res = await startMultiMonitorSession(container, cell, WARMUP_SECONDS, controls.get().vignette > 0);
     } catch {
       res = { kind: "fallback" };
     }
     switch (res.kind) {
       case "fallback":
-        toggleFullscreen(); // single monitor / unsupported → ordinary fullscreen
+        // Single monitor / unsupported browser: use ordinary fullscreen instead.
+        if (!document.fullscreenElement) toggleFullscreen();
         return;
       case "denied":
         flashNotice("Allow “Window management” for this site (address-bar site settings), then triple-click again.");
@@ -699,12 +752,12 @@ export async function mountMatrixRain(
       case "popupsBlocked":
         flashNotice("Pop-ups are blocked — allow pop-ups for this site, then triple-click again.");
         return;
-      case "super":
+      case "multiMonitor":
         if (res.openedWindows.length < res.expectedPanels) {
           flashNotice("Some windows were blocked — allow pop-ups for this site to fill every monitor.");
         }
-        exitChan = openExitChannel(() => exitSuper(false));
-        enterSuperRender(res.selfConfig, true, res.openedWindows);
+        exitChan = openExitChannel(() => exitMultiMonitor(false));
+        enterMultiMonitorRender(res.selfConfig, true, res.openedWindows);
         return;
     }
   };
@@ -718,7 +771,7 @@ export async function mountMatrixRain(
   // Toggle the "Show messages" setting — the shortcut and the editor toggle share one source of
   // truth. Persists, reconfigures the live scheduler, and reflects into an open editor.
   const toggleMessages = (): void => {
-    if (!messagesStore || !messageScheduler) return;
+    if (!messageScheduler) return;
     const doc = messagesStore.get();
     doc.enabled = !doc.enabled;
     messagesStore.set(doc);
@@ -727,8 +780,8 @@ export async function mountMatrixRain(
   };
 
   const onKey = (e: KeyboardEvent): void => {
-    if (superState) {
-      if (e.key === "Escape") exitSuper(true);
+    if (multiMonitorState) {
+      if (e.key === "Escape") exitMultiMonitor(true);
       return;
     }
     if (e.key === "f" || e.key === "F") toggleFullscreen();
@@ -753,23 +806,23 @@ export async function mountMatrixRain(
   };
   window.addEventListener("pointerdown", onPointerDown);
 
-  // Multi-click on the backdrop: double → ordinary fullscreen, triple → super.
-  // The triple acts on the 3rd click immediately so it keeps the transient
-  // activation that getScreenDetails / window.open / requestFullscreen require.
+  // Multi-click on the backdrop: double → ordinary fullscreen, triple → multi-monitor fullscreen.
+  // Wait out the triple-click window before ordinary fullscreen; transitioning on click two can
+  // swallow click three. Multi-monitor mode still launches immediately on the third click's activation.
   let clickCount = 0;
   let clickTimer = 0;
   const onCanvasClick = (): void => {
-    if (superState) return;
-    clickCount += 1;
-    if (clickCount >= 3) {
+    if (multiMonitorState) return;
+    const next = advanceMultiClick(clickCount);
+    clickCount = next.count;
+    if (next.action === "multiMonitor") {
       window.clearTimeout(clickTimer);
-      clickCount = 0;
-      void enterSuper();
+      void enterMultiMonitor();
       return;
     }
     window.clearTimeout(clickTimer);
     clickTimer = window.setTimeout(() => {
-      if (clickCount === 2) toggleFullscreen();
+      if (settledMultiClickAction(clickCount) === "fullscreen") toggleFullscreen();
       clickCount = 0;
     }, MULTI_CLICK_MS);
   };
@@ -782,12 +835,12 @@ export async function mountMatrixRain(
   // Esc inside fullscreen is intercepted by the browser (no keydown reaches us),
   // so the authoritative "show ended" signal is leaving fullscreen.
   const onFullscreenChange = (): void => {
-    if (superState && !document.fullscreenElement) exitSuper(true);
+    if (multiMonitorState && !document.fullscreenElement) exitMultiMonitor(true);
   };
   document.addEventListener("fullscreenchange", onFullscreenChange);
   // Closing any window ends the whole show.
   const onBeforeUnload = (): void => {
-    if (superState) exitChan?.broadcastExit();
+    if (multiMonitorState) exitChan?.broadcastExit();
   };
   window.addEventListener("beforeunload", onBeforeUnload);
 
@@ -822,7 +875,7 @@ export async function mountMatrixRain(
       applyChromeAccent(preset);
       applyFavicon(preset);
     }
-    if (changed.has("glyphScale") && !superState) {
+    if (changed.has("glyphScale") && !multiMonitorState) {
       applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
     }
     if (changed.has("mirror")) {
@@ -838,11 +891,11 @@ export async function mountMatrixRain(
     }
     // Adjusting Ramp-up replays the build-up from an empty grid so the slider gives immediate
     // feedback instead of only applying on the next load. Debounced so a drag settles first, and
-    // only while the loop is animating in normal (non-super) mode.
-    if (changed.has("rampUpMs") && !superState) {
+    // only while the loop is animating in normal (non-multi-monitor) mode.
+    if (changed.has("rampUpMs") && !multiMonitorState) {
       window.clearTimeout(rampPreviewTimer);
       const ms = controls.get().rampUpMs;
-      if (ms > 0) rampPreviewTimer = window.setTimeout(() => { if (running && !superState) beginRampFromEmpty(ms); }, 200);
+      if (ms > 0) rampPreviewTimer = window.setTimeout(() => { if (running && !multiMonitorState) beginRampFromEmpty(ms); }, 200);
     }
     // While paused (reduced motion / hidden tab) the RAF loop isn't redrawing,
     // so reflect any control change — color, glow, quality, etc. — in a fresh frame.
@@ -871,8 +924,8 @@ export async function mountMatrixRain(
 
   if (panelConfig) {
     // This window was opened as a panel: render its slice and go fullscreen.
-    enterSuperRender(panelConfig, false, []);
-    exitChan = openExitChannel(() => exitSuper(false));
+    enterMultiMonitorRender(panelConfig, false, []);
+    exitChan = openExitChannel(() => exitMultiMonitor(false));
     void enterPanelFullscreen(container).then(() => {
       // Without the AutomaticFullscreen policy a panel can't self-fullscreen; hint
       // that a click will do it (a click carries the activation requestFullscreen needs).
@@ -890,7 +943,7 @@ export async function mountMatrixRain(
   return {
     controls,
     destroy: () => {
-      if (superState) exitSuper(false);
+      if (multiMonitorState) exitMultiMonitor(false);
       stop();
       window.clearTimeout(rampPreviewTimer);
       ro.disconnect();

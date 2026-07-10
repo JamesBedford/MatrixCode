@@ -209,7 +209,7 @@ export class Renderer {
       uBackground: preset.background,
       uGlow: params.glow,
       uScanline: params.scanlines ? 0.12 : 0,
-      uVignette: params.vignette ? 0.42 : 0,
+      uVignette: params.vignette,
       uResolution: [this.deviceW, this.deviceH],
     });
   }

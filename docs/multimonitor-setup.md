@@ -1,4 +1,4 @@
-# Super fullscreen across all monitors
+# Multi-monitor fullscreen
 
 **Triple-click the rain** to fan it out across *every* connected monitor: one
 fullscreen window per display, all rendering one continuous rain that respects
@@ -58,5 +58,5 @@ hash. Every window runs the *same* deterministic simulation over the full virtua
 grid, stepped in a fixed timestep against that shared epoch, and renders only its
 own slice. Same seed + same clock ⇒ pixel-aligned, glyph-identical seams, with no
 per-frame data crossing windows. A single `BroadcastChannel` is used only to end
-the show on every window together. See `src/super/superGrid.ts` and
-`src/super/superFullscreen.ts`.
+the show on every window together. See `src/multimonitor/multiMonitorGrid.ts` and
+`src/multimonitor/multiMonitorFullscreen.ts`.

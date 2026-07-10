@@ -116,7 +116,7 @@ Callbacks to `app.ts`: `onPreview(draft)`, `onSave(draft)`, `onCancel()`. (Reset
 - **Save**: `sanitize` → `IntroStore.set` → resolve `{name}` and `overlay.setScript` so future replays/first-visit use it → close the editor.
 - Replay and Preview never set the `mx-intro-seen` flag (only first-visit autoplay does).
 - **Escape coordination**: while the editor is open and **not** previewing, Escape closes the editor and is not forwarded to the intro-skip handler. During a preview the editor is hidden, so Escape skips the preview as usual and the overlay's `onDone` restores the editor.
-- Panels (super-fullscreen slice windows) have no controls UI, so the editor is never constructed there — unchanged.
+- Panels (multi-monitor fullscreen slice windows) have no controls UI, so the editor is never constructed there — unchanged.
 
 z-index: the modal sits above the panel (z-10), intro (z-15), and notice (z-20) — e.g. z-30. During preview the editor is hidden so the intro shows.
 

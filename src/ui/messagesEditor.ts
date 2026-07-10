@@ -88,10 +88,19 @@ export class MessagesEditor extends ModalEditor {
     this.dialog.appendChild(this.heading("h3", "Messages"));
 
     const hint = document.createElement("p");
-    hint.className = "mx-modal-hint";
-    hint.textContent = "Messages appear scattered inside the rain. Raise Density to make them easier to read. Use {name}, {time}, {countdown} or {countup}. ⓘ";
-    hint.title = momentHint(this.getMomentNames());
-    hint.style.cursor = "help";
+    hint.className = "mx-modal-hint mx-modal-tooltip-trigger";
+    hint.tabIndex = 0;
+    hint.setAttribute("aria-describedby", "mx-messages-token-tooltip");
+    hint.append(
+      "Messages appear scattered inside the rain. Raise Density to make them easier to read. Use {name}, {greeting}, {uptime}, {fps}, {time}, {countdown} or {countup}. ⓘ",
+    );
+
+    const tooltip = document.createElement("span");
+    tooltip.id = "mx-messages-token-tooltip";
+    tooltip.className = "mx-modal-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.textContent = momentHint(this.getMomentNames());
+    hint.appendChild(tooltip);
     this.dialog.appendChild(hint);
 
     this.listEl = document.createElement("div");

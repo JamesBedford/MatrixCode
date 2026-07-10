@@ -39,8 +39,11 @@ void main() {
   }
 
   if (uVignette > 0.0) {
-    float v = smoothstep(0.95, 0.35, length(vUv - 0.5));
-    col *= mix(1.0, v, uVignette);
+    // Start the falloff earlier so the vignette is visible beyond just the corners.
+    float d = length((vUv - 0.5) / vec2(0.42, 0.42));
+    float v = smoothstep(0.95, 0.15, d);
+    // Blend toward a steeper falloff so 100% reads as a clearly stronger vignette.
+    col *= mix(1.0, pow(v, 2.8), uVignette);
   }
 
   frag = vec4(col, 1.0);

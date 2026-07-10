@@ -49,8 +49,8 @@ export interface Controls {
   mirror: boolean;
   /** Faint CRT scanlines overlay. */
   scanlines: boolean;
-  /** Subtle edge vignette. */
-  vignette: boolean;
+  /** Subtle edge vignette amount (0 = off, 1 = full strength). */
+  vignette: number;
   /** Allow raindrops to overlap between columns once density is turned well up (fractional interleaved lanes). */
   allowOverlap: boolean;
   /** Render quality tier (bloom levels / DPR budget). */
@@ -154,7 +154,7 @@ export interface RenderParams {
   glow: number;
   leadBrightness: number;
   scanlines: boolean;
-  vignette: boolean;
+  vignette: number;
   quality: QualityTier;
   preset: ColorPreset;
 }

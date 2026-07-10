@@ -1,7 +1,7 @@
 // Dynamic text tokens shared by the typed intro and the in-rain messages. Pure and DOM-free:
 // the clock and countdown target are injected via a TokenContext so this whole module is
-// deterministic and unit-testable. `{name}` is resolved here too (it used to live in
-// messageOverlay.ts) so every surface substitutes tokens through one code path.
+// deterministic and unit-testable. Runtime values such as `{greeting}`, `{uptime}`, and `{fps}`
+// are resolved here too so every surface substitutes tokens through one code path.
 
 import { holidayTargetMs, HOLIDAY_TOKENS } from "./holidays.ts";
 
@@ -15,14 +15,16 @@ export const NAME_TOKEN = "{name}";
 export interface TokenContext {
   /** Viewer name for `{name}` (blank falls back to DEFAULT_USER_NAME). */
   name: string;
-  /** Current wall-clock, epoch ms — drives `{time}`/`{countdown}`/`{countup}`. */
+  /** Current wall-clock, epoch ms — drives time-based tokens. */
   nowMs: number;
   /** Default target for bare `{countdown}`/`{countup}`, epoch ms, or null when unset. */
   countdownTargetMs: number | null;
   /** Named moments, name → target epoch ms (null = unset). Omitted ⇒ no named moments. */
   moments?: Record<string, number | null>;
-  /** When this run began, epoch ms. Bare `{countup}` counts up from here when no default target is set. Omitted ⇒ bare `{countup}` with no target shows 00:00. */
+  /** When this app session began, epoch ms. Drives `{uptime}` and bare `{countup}` when no default target is set. */
   runStartMs?: number;
+  /** Smoothed frames per second for `{fps}`. Omitted or invalid values display as 0 FPS. */
+  fps?: number;
 }
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -34,6 +36,16 @@ const MONTHS = [
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/** A greeting selected from the viewer's local hour. */
+export function greeting(date: Date): string {
+  const hour = date.getHours();
+  if (hour < 4) return "PARTY ON";
+  if (hour < 12) return "GOOD MORNING";
+  if (hour < 18) return "GOOD AFTERNOON";
+  if (hour < 23) return "GOOD EVENING";
+  return "GOOD NIGHT";
+}
 
 /** Day of the year, 1..366, in local time. */
 function dayOfYear(d: Date): number {
@@ -89,16 +101,25 @@ export function formatCountdown(remainingMs: number): string {
   return `${pad2(minutes)}:${pad2(seconds)}`;
 }
 
-// One pass over the text: {name}, {time[:FORMAT]}, {countdown[:NAME]}, {countup[:NAME]}.
+// One pass over the text: {name}, {greeting}, {uptime}, {fps}, {time[:FORMAT]},
+// {countdown[:NAME]}, {countup[:NAME]}.
 // Group 1 = kind, group 2 = optional argument (a strftime format for time, a moment name otherwise).
 // Unknown {foo} is left as-is.
-const TOKEN_RE = /\{(name|time|countdown|countup)(?::([^}]*))?\}/g;
+const TOKEN_RE = /\{(name|greeting|uptime|fps|time|countdown|countup)(?::([^}]*))?\}/g;
 
 /** Substitute all supported tokens in `text` using `ctx`. Pure — unknown tokens pass through. */
 export function resolveTokens(text: string, ctx: TokenContext): string {
   const moments = ctx.moments ?? {};
   return text.replace(TOKEN_RE, (_whole, kind: string, arg: string | undefined) => {
     if (kind === "name") return ctx.name.trim() || DEFAULT_USER_NAME;
+    if (kind === "greeting") return greeting(new Date(ctx.nowMs));
+    if (kind === "uptime") {
+      return formatCountdown(ctx.runStartMs === undefined ? 0 : ctx.nowMs - ctx.runStartMs);
+    }
+    if (kind === "fps") {
+      const fps = ctx.fps !== undefined && Number.isFinite(ctx.fps) ? ctx.fps : 0;
+      return `${Math.max(0, Math.round(fps))} FPS`;
+    }
     if (kind === "time") return strftime(new Date(ctx.nowMs), arg !== undefined ? arg : "%H:%M");
     // kind === "countdown" | "countup"
     const target = countTarget(kind, arg, ctx, moments);
@@ -128,11 +149,13 @@ function countTarget(
   return kind === "countup" ? ctx.runStartMs ?? null : null;
 }
 
-/** UI copy for the editors' hover: the user's named moments plus the built-in holidays, as ready-to-type tokens. */
+/** UI copy for the editors' hover: dynamic-token guidance plus ready-to-type moment tokens. */
 export function momentHint(names: string[]): string {
+  const greeting = "{greeting} uses local time: PARTY ON (00:00–03:59), GOOD MORNING (04:00–11:59), GOOD AFTERNOON (12:00–17:59), GOOD EVENING (18:00–22:59), GOOD NIGHT (23:00–23:59).";
+  const runtime = "{uptime} is time since this web app initialized. {fps} is the app's smoothed frame rate.";
   const yours = names.length
     ? `Your moments: ${names.map((n) => `{countdown:${n}}`).join(", ")}`
     : "No named moments yet.";
   const builtins = `Built-in (use {countdown:NAME}): ${HOLIDAY_TOKENS.join(", ")}`;
-  return `${yours}\n${builtins}\nAlso {countup:…} for any of these.`;
+  return `${greeting}\n${runtime}\n${yours}\n${builtins}\nAlso {countup:…} for any of these.`;
 }

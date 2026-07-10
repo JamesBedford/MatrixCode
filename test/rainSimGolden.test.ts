@@ -22,7 +22,7 @@ const CONTROLS: Controls = {
   preset: "classic",
   mirror: true,
   scanlines: false,
-  vignette: false,
+  vignette: 0,
   allowOverlap: true,
   quality: "high",
 };
@@ -62,6 +62,6 @@ describe("RainSim golden output (locks byte-exact packing across perf refactors)
       sim.setMessageScramble(0.3);
       sim.update(1 / 60, DENSE);
     }
-    expect(checksum(sim.state)).toBe(478879554);
+    expect(checksum(sim.state)).toBe(4128080799);
   });
 });

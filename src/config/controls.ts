@@ -14,7 +14,7 @@ export const DEFAULT_CONTROLS: Controls = {
   preset: "classic",
   mirror: true,
   scanlines: false,
-  vignette: false,
+  vignette: 0,
   allowOverlap: true,
   quality: "high",
 };
@@ -49,6 +49,12 @@ function finiteNum(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
+function legacyVignette(v: unknown): number | undefined {
+  if (finiteNum(v)) return clamp(v, 0, 1);
+  if (typeof v === "boolean") return v ? 0.42 : 0;
+  return undefined;
+}
+
 function sanitize(input: Partial<Controls>): Partial<Controls> {
   const out: Partial<Controls> = {};
   if (finiteNum(input.speed)) out.speed = clamp(input.speed, 0.1, 3);
@@ -62,7 +68,8 @@ function sanitize(input: Partial<Controls>): Partial<Controls> {
   if (input.preset && PRESET_NAMES.includes(input.preset)) out.preset = input.preset;
   if (typeof input.mirror === "boolean") out.mirror = input.mirror;
   if (typeof input.scanlines === "boolean") out.scanlines = input.scanlines;
-  if (typeof input.vignette === "boolean") out.vignette = input.vignette;
+  const vignette = legacyVignette(input.vignette);
+  if (vignette !== undefined) out.vignette = vignette;
   if (typeof input.allowOverlap === "boolean") out.allowOverlap = input.allowOverlap;
   if (input.quality && QUALITIES.includes(input.quality)) out.quality = input.quality;
   return out;
@@ -92,7 +99,7 @@ function loadUrl(): Partial<Controls> {
     if (v === null) continue;
     const def = DEFAULT_CONTROLS[key];
     if (typeof def === "number") {
-      raw[key] = Number(v);
+      raw[key] = key === "vignette" && (v === "true" || v === "false") ? (v === "true" ? 0.42 : 0) : Number(v);
     } else if (typeof def === "boolean") {
       const b = parseBool(v);
       if (b !== undefined) raw[key] = b;
@@ -113,7 +120,7 @@ function syncUrl(state: Controls): void {
       if (value === DEFAULT_CONTROLS[key]) {
         p.delete(param);
       } else {
-        p.set(param, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+        p.set(param, String(value));
       }
     }
     const query = p.toString();

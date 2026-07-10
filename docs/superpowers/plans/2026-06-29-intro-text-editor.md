@@ -1044,13 +1044,13 @@ Append to the end of `src/styles.css`:
 }
 ```
 
-- [ ] **Step 3: Hide the modal in super-fullscreen mode**
+- [ ] **Step 3: Hide the modal in multi-monitor fullscreen mode**
 
 In `src/styles.css`, find the existing super-mode rule:
 
 ```css
-#app.mx-super .mx-ui,
-#app.mx-super .mx-message {
+#app.mx-multimonitor .mx-ui,
+#app.mx-multimonitor .mx-message {
   display: none !important;
 }
 ```
@@ -1058,9 +1058,9 @@ In `src/styles.css`, find the existing super-mode rule:
 Replace it with:
 
 ```css
-#app.mx-super .mx-ui,
-#app.mx-super .mx-message,
-#app.mx-super .mx-modal-backdrop {
+#app.mx-multimonitor .mx-ui,
+#app.mx-multimonitor .mx-message,
+#app.mx-multimonitor .mx-modal-backdrop {
   display: none !important;
 }
 ```
@@ -1314,6 +1314,6 @@ git commit -m "Wire intro editor: Edit-intro button, preview, save, persistence"
 
 ## Self-Review Notes
 
-- **Spec coverage:** edit/add/remove/reorder lines (Task 3 `renderLines`/`move`/add/remove); per-line hold + pause (Task 1 model, Task 3 fields); global typing speed/start delay/fade-out (Task 1 `TypeConfig`, Task 3 timing section); `{name}` token (Task 1 `resolveLines`, wired in Task 4); Preview + Save + Cancel + Reset (Task 3 footer, Task 4 handlers); localStorage persistence (Task 2); button next to Replay (Task 4 Step 1); Escape coordination + shortcut suppression (Task 3 capture listener); default look preserved via `pauseMs: 0` (Task 1); seconds-in-UI/ms-stored (Task 3 `secondsField`); intro-seen flag untouched by replay/preview (Task 4 `markSeenPending`); modal hidden in super mode (Task 3 Step 3); editor teardown (Task 4 Step 5).
+- **Spec coverage:** edit/add/remove/reorder lines (Task 3 `renderLines`/`move`/add/remove); per-line hold + pause (Task 1 model, Task 3 fields); global typing speed/start delay/fade-out (Task 1 `TypeConfig`, Task 3 timing section); `{name}` token (Task 1 `resolveLines`, wired in Task 4); Preview + Save + Cancel + Reset (Task 3 footer, Task 4 handlers); localStorage persistence (Task 2); button next to Replay (Task 4 Step 1); Escape coordination + shortcut suppression (Task 3 capture listener); default look preserved via `pauseMs: 0` (Task 1); seconds-in-UI/ms-stored (Task 3 `secondsField`); intro-seen flag untouched by replay/preview (Task 4 `markSeenPending`); modal hidden in multi-monitor mode (Task 3 Step 3); editor teardown (Task 4 Step 5).
 - **Type consistency:** `setScript(lines, cfg)`, `resolveLines(lines, name)`, `toTypeConfig(script)`, `cloneIntro(script)`, `sanitizeIntro(raw)`, `IntroScript`, `IntroEditorCallbacks` are used with identical signatures across tasks. `DEFAULT_HOLD_MS`/`DEFAULT_PAUSE_MS` are the single source of truth for per-line defaults (consumed by both `introStore.ts` and `introEditor.ts`).
 - **No placeholders:** every code step contains complete, runnable code.

@@ -38,6 +38,54 @@ describe("resolveTokens — {time}", () => {
   });
 });
 
+describe("resolveTokens — {greeting}", () => {
+  it.each([
+    [0, "PARTY ON"],
+    [3, "PARTY ON"],
+    [4, "GOOD MORNING"],
+    [11, "GOOD MORNING"],
+    [12, "GOOD AFTERNOON"],
+    [17, "GOOD AFTERNOON"],
+    [18, "GOOD EVENING"],
+    [22, "GOOD EVENING"],
+    [23, "GOOD NIGHT"],
+  ])("uses the local-time greeting at %i:00", (hour, expected) => {
+    expect(resolveTokens("{greeting}", ctx({ nowMs: at(2026, 6, 1, hour) }))).toBe(expected);
+  });
+
+  it("resolves alongside other dynamic tokens", () => {
+    const nowMs = at(2026, 6, 1, 8, 30);
+    expect(resolveTokens("{greeting}, {name}. IT IS {time}.", ctx({ name: "Trinity", nowMs })))
+      .toBe("GOOD MORNING, Trinity. IT IS 08:30.");
+  });
+});
+
+describe("resolveTokens — runtime metrics", () => {
+  it("{uptime} shows elapsed app-session time", () => {
+    const nowMs = at(2026, 6, 1, 13, 45, 30);
+    expect(resolveTokens("{uptime}", { ...ctx({ nowMs }), runStartMs: nowMs - 3_661_000 }))
+      .toBe("01:01:01");
+  });
+
+  it("{uptime} clamps a missing or future session start", () => {
+    const nowMs = at(2026, 6, 1, 13, 45, 30);
+    expect(resolveTokens("{uptime}", ctx({ nowMs }))).toBe("00:00");
+    expect(resolveTokens("{uptime}", { ...ctx({ nowMs }), runStartMs: nowMs + 1_000 }))
+      .toBe("00:00");
+  });
+
+  it("{fps} rounds the injected smoothed frame rate and includes its unit", () => {
+    expect(resolveTokens("{fps}", { ...ctx(), fps: 59.6 })).toBe("60 FPS");
+    expect(resolveTokens("{fps}", { ...ctx(), fps: 29.4 })).toBe("29 FPS");
+  });
+
+  it("{fps} safely handles missing, negative, and invalid values", () => {
+    expect(resolveTokens("{fps}", ctx())).toBe("0 FPS");
+    expect(resolveTokens("{fps}", { ...ctx(), fps: -5 })).toBe("0 FPS");
+    expect(resolveTokens("{fps}", { ...ctx(), fps: Number.NaN })).toBe("0 FPS");
+  });
+});
+
 describe("strftime", () => {
   it("handles midnight in both 12h and 24h", () => {
     const midnight = new Date(2026, 0, 1, 0, 5, 0);
@@ -190,6 +238,22 @@ describe("resolveTokens — built-in holidays & run-time countup", () => {
 });
 
 describe("momentHint", () => {
+  it("explains the runtime metric tokens", () => {
+    const h = momentHint([]);
+    expect(h).toContain("{uptime} is time since this web app initialized");
+    expect(h).toContain("{fps} is the app's smoothed frame rate");
+  });
+
+  it("explains every local-time greeting range", () => {
+    const h = momentHint([]);
+    expect(h).toContain("{greeting} uses local time");
+    expect(h).toContain("PARTY ON (00:00–03:59)");
+    expect(h).toContain("GOOD MORNING (04:00–11:59)");
+    expect(h).toContain("GOOD AFTERNOON (12:00–17:59)");
+    expect(h).toContain("GOOD EVENING (18:00–22:59)");
+    expect(h).toContain("GOOD NIGHT (23:00–23:59)");
+  });
+
   it("lists the user's moments as tokens plus the built-in dates", () => {
     const h = momentHint(["launch", "party"]);
     expect(h).toContain("Your moments: {countdown:launch}, {countdown:party}");

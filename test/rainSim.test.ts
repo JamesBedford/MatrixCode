@@ -17,7 +17,7 @@ const CONTROLS: Controls = {
   preset: "classic",
   mirror: true,
   scanlines: false,
-  vignette: false,
+  vignette: 0,
   allowOverlap: true,
   quality: "high",
 };
@@ -363,6 +363,7 @@ describe("RainSim — message injection", () => {
     const withMsg = makeSim(20, 40, 4242);
     const targets = rowTargets(withMsg, 10, 5, MSG_GLYPHS);
     withMsg.setMessageTargets(targets);
+    withMsg.setMessageScramble(0.5);
     for (let i = 0; i < 300; i++) {
       plain.update(1 / 60, DENSE);
       withMsg.update(1 / 60, DENSE);

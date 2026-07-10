@@ -18,11 +18,19 @@ export interface MessageSink {
   setMessageScramble(p: number): void;
 }
 
+/** A rectangular part of the simulation grid in which a copy of the message should be centered. */
+export interface MessageRegion {
+  colStart: number;
+  rowStart: number;
+  cols: number;
+  rows: number;
+}
+
 export interface MessageSchedulerDeps {
   glyphSet: GlyphSet;
   /** A seeded PRNG owned by the scheduler — separate from the sim's, so scheduling never perturbs the rain. */
   rng: Rng;
-  /** Resolve dynamic tokens ({name}/{time}/{countdown}) in a message before layout. Default: identity. */
+  /** Resolve dynamic tokens ({name}/{greeting}/{uptime}/{fps}/{time}/{countdown}) before layout. Default: identity. */
   resolveText?: (raw: string) => string;
 }
 
@@ -54,10 +62,11 @@ export class MessageScheduler {
   private lastRows = -1;
   // The active message, tracked so a ticking placeholder ({time}/{countdown}) can re-lay-out live:
   // `activeRaw` is the unresolved template, `activeDisplay` its last resolved+rendered value, and
-  // `activeRow` the row picked once at fire (reused on re-layout so the message never jumps).
+  // `activePlacements` holds the independently-jittered row chosen inside each target region.
   private activeRaw: string | null = null;
-  private activeRow = 0;
+  private activePlacements: Array<{ region: MessageRegion; row: number }> = [];
   private activeDisplay = "";
+  private placementKey = "";
 
   constructor(deps: MessageSchedulerDeps) {
     this.glyph = deps.glyphSet;
@@ -73,10 +82,18 @@ export class MessageScheduler {
     this.activeStart = null;
     this.activeUntil = null;
     this.nextFireAt = null;
+    this.activePlacements = [];
+    this.placementKey = "";
   }
 
-  /** Per-frame heartbeat: expire/clear an active message, or fire a new one when due. */
-  update(nowMs: number, sim: MessageSink): void {
+  /**
+   * Per-frame heartbeat: expire/clear an active message, or fire a new one when due. When `regions`
+   * is supplied, the same message is centered independently in every region; otherwise it is centered
+   * once across the whole grid.
+   */
+  update(nowMs: number, sim: MessageSink, regions?: readonly MessageRegion[]): void {
+    const placementRegions = this.normalizeRegions(sim, regions);
+    const placementKey = this.keyForRegions(placementRegions);
     if (this.pendingClear) {
       sim.clearMessageTargets();
       this.pendingClear = false;
@@ -92,17 +109,33 @@ export class MessageScheduler {
       this.nextFireAt = null;
       this.lastCols = sim.cols;
       this.lastRows = sim.rows;
+      this.placementKey = placementKey;
       return;
     }
 
-    // A resize cancels an active message (its cell indices are now stale; the sim already dropped them).
-    if ((sim.cols !== this.lastCols || sim.rows !== this.lastRows) && this.activeUntil !== null) {
-      this.activeStart = null;
-      this.activeUntil = null;
-      this.nextFireAt = null;
+    // RainSim drops message targets when its grid is resized because the cell indices become stale.
+    // Re-layout an active message when the grid or placement regions change so fullscreen transitions
+    // do not make it disappear and changing vignette mode takes effect without restarting the delay.
+    const placementChanged = placementKey !== this.placementKey;
+    if (
+      (sim.cols !== this.lastCols || sim.rows !== this.lastRows || placementChanged) &&
+      this.activeUntil !== null
+    ) {
+      this.choosePlacements(placementRegions);
+      const display = this.activeRaw === null ? this.activeDisplay : this.resolveText(this.activeRaw);
+      if (!this.applyMessage(display, sim, false)) {
+        // A narrower grid may no longer fit the message. End this activation cleanly and try
+        // another configured message after the usual gap.
+        this.activeRaw = null;
+        this.activeStart = null;
+        this.activeUntil = null;
+        this.nextFireAt = nowMs + this.gap();
+        this.activePlacements = [];
+      }
     }
     this.lastCols = sim.cols;
     this.lastRows = sim.rows;
+    this.placementKey = placementKey;
 
     if (this.activeUntil !== null) {
       if (nowMs >= this.activeUntil) {
@@ -110,6 +143,7 @@ export class MessageScheduler {
         this.activeStart = null;
         this.activeUntil = null;
         this.nextFireAt = nowMs + this.gap();
+        this.activePlacements = [];
       } else {
         // Re-resolve the active template; if a placeholder ticked (e.g. a countdown second), re-lay it
         // out in place so only the changed glyphs re-reveal — the rest of the message stays steady.
@@ -128,11 +162,16 @@ export class MessageScheduler {
       return;
     }
 
-    if (nowMs >= this.nextFireAt) this.fire(nowMs, sim);
+    if (nowMs >= this.nextFireAt) this.fire(nowMs, sim, placementRegions);
   }
 
   /** Fire a message immediately (used by the editor's Preview); optionally adopt `doc` first. */
-  previewOne(nowMs: number, sim: MessageSink, doc?: MessagesDoc): void {
+  previewOne(
+    nowMs: number,
+    sim: MessageSink,
+    doc?: MessagesDoc,
+    regions?: readonly MessageRegion[],
+  ): void {
     if (doc) this.configure(doc);
     if (this.cfg === null) return;
     if (this.pendingClear) {
@@ -141,7 +180,9 @@ export class MessageScheduler {
     }
     this.lastCols = sim.cols;
     this.lastRows = sim.rows;
-    this.fire(nowMs, sim);
+    const placementRegions = this.normalizeRegions(sim, regions);
+    this.placementKey = this.keyForRegions(placementRegions);
+    this.fire(nowMs, sim, placementRegions);
   }
 
   /** A jittered gap (±25%) before the next message. */
@@ -164,6 +205,38 @@ export class MessageScheduler {
     return lo + Math.floor(this.rng() * (hi - lo + 1));
   }
 
+  /** Clamp caller-provided regions to the simulation; an absent/empty list means the full grid. */
+  private normalizeRegions(sim: MessageSink, regions?: readonly MessageRegion[]): MessageRegion[] {
+    if (!regions || regions.length === 0) {
+      return [{ colStart: 0, rowStart: 0, cols: sim.cols, rows: sim.rows }];
+    }
+    const normalized: MessageRegion[] = [];
+    for (const region of regions) {
+      const colStart = Math.max(0, Math.min(sim.cols, Math.floor(region.colStart)));
+      const rowStart = Math.max(0, Math.min(sim.rows, Math.floor(region.rowStart)));
+      const colEnd = Math.max(colStart, Math.min(sim.cols, Math.ceil(region.colStart + region.cols)));
+      const rowEnd = Math.max(rowStart, Math.min(sim.rows, Math.ceil(region.rowStart + region.rows)));
+      if (colEnd > colStart && rowEnd > rowStart) {
+        normalized.push({ colStart, rowStart, cols: colEnd - colStart, rows: rowEnd - rowStart });
+      }
+    }
+    return normalized.length > 0
+      ? normalized
+      : [{ colStart: 0, rowStart: 0, cols: sim.cols, rows: sim.rows }];
+  }
+
+  private keyForRegions(regions: readonly MessageRegion[]): string {
+    return regions.map((r) => `${r.colStart},${r.rowStart},${r.cols},${r.rows}`).join(";");
+  }
+
+  /** Pick vertical placement independently inside every target region. */
+  private choosePlacements(regions: readonly MessageRegion[]): void {
+    this.activePlacements = regions.map((region) => ({
+      region,
+      row: region.rowStart + this.pickRow(region.rows),
+    }));
+  }
+
   private computeHasRenderable(cfg: MessagesDoc): boolean {
     return cfg.messages.some((m) => this.layout(this.resolveText(m)).glyphs.length > 0);
   }
@@ -180,20 +253,26 @@ export class MessageScheduler {
   }
 
   /**
-   * Lay out `display` centered on `this.activeRow` and hand its cells to the sim: from-scratch on the
-   * initial appearance (`isUpdate === false` → setMessageTargets), or in place on a live tick
-   * (`isUpdate === true` → updateMessageTargets, preserving unchanged reveals). Returns false and leaves
-   * the sim untouched when nothing is renderable (keeps the previous targets on a bad re-resolve).
+   * Lay out `display` centered in every active placement and hand its cells to the sim: from-scratch
+   * on the initial appearance (`isUpdate === false` → setMessageTargets), or in place on a live tick
+   * (`isUpdate === true` → updateMessageTargets, preserving unchanged reveals). Returns false and
+   * leaves the sim untouched when nothing is renderable or it cannot fit every requested region.
    */
   private applyMessage(display: string, sim: MessageSink, isUpdate: boolean): boolean {
     const { glyphs, width } = this.layout(display);
-    if (glyphs.length === 0 || width > sim.cols) return false;
+    if (
+      glyphs.length === 0 ||
+      this.activePlacements.length === 0 ||
+      this.activePlacements.some(({ region }) => width > region.cols)
+    ) return false;
 
-    const startCol = Math.max(0, Math.floor((sim.cols - width) / 2));
     const targets = new Map<number, number>();
-    for (const { offset, glyph } of glyphs) {
-      const col = startCol + offset;
-      if (col < sim.cols) targets.set(this.activeRow * sim.cols + col, glyph);
+    for (const { region, row } of this.activePlacements) {
+      const startCol = region.colStart + Math.floor((region.cols - width) / 2);
+      for (const { offset, glyph } of glyphs) {
+        const col = startCol + offset;
+        targets.set(row * sim.cols + col, glyph);
+      }
     }
     if (targets.size === 0) return false;
 
@@ -204,7 +283,7 @@ export class MessageScheduler {
   }
 
   /** Choose a message + placement and hand the target cells to the sim. */
-  private fire(nowMs: number, sim: MessageSink): void {
+  private fire(nowMs: number, sim: MessageSink, regions: readonly MessageRegion[]): void {
     const cfg = this.cfg!;
     const candidates = cfg.messages.map((m) => m.trim()).filter((m) => m.length > 0);
     if (candidates.length === 0) {
@@ -213,9 +292,10 @@ export class MessageScheduler {
     }
 
     const raw = candidates[Math.floor(this.rng() * candidates.length)]!;
-    this.activeRow = this.pickRow(sim.rows); // pick once; reused on live re-layout so the message never jumps
+    this.choosePlacements(regions); // rows are picked once and reused for live token re-layout
     const display = this.resolveText(raw);
     if (!this.applyMessage(display, sim, false)) {
+      this.activePlacements = [];
       this.nextFireAt = nowMs + this.gap(); // unrenderable or too wide → skip, try again later
       return;
     }

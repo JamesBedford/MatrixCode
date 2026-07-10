@@ -66,7 +66,7 @@ export class IntroEditor extends ModalEditor {
 
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint";
-    hint.textContent = "Use {name}, {time}, {time:%H:%M}, {countdown} or {countup}. ⓘ";
+    hint.textContent = "Use {name}, {greeting}, {uptime}, {fps}, {time}, {time:%H:%M}, {countdown} or {countup}. ⓘ";
     hint.title = momentHint(this.getMomentNames());
     hint.style.cursor = "help";
     this.dialog.appendChild(hint);

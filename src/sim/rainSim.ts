@@ -44,6 +44,9 @@ export class RainSim {
   private cfg: SimConfig;
   private glyph: GlyphSet;
   private rng: Rng;
+  // Message-only randomness must not perturb the shared rain stream when multi-monitor windows
+  // target different physical slices.
+  private messageRng: Rng;
   private seed: number;
   private time = 0;
 
@@ -81,6 +84,7 @@ export class RainSim {
     this.glyph = opts.glyphSet;
     this.seed = opts.seed ?? 0x9e3779b9;
     this.rng = createRng(this.seed);
+    this.messageRng = createRng((this.seed ^ 0x27d4eb2d) >>> 0);
     this.state = new Uint8Array(opts.cols * opts.rows * 4);
     this.allocate(opts.cols, opts.rows);
     this.seedColumns(0, opts.cols);
@@ -130,7 +134,7 @@ export class RainSim {
     // A passing head delivers the message letter; otherwise a random glyph. During a flicker dissolve
     // the head may stamp a random glyph instead (the extra rng draw only happens while scrambling).
     this.glyphNew[idx] =
-      target < 0 ? g : this.messageScramble > 0 && this.rng() < this.messageScramble ? g : target;
+      target < 0 ? g : this.messageScramble > 0 && this.messageRng() < this.messageScramble ? g : target;
     this.phase[idx] = 1;
     if (target >= 0) this.claimed[idx] = 1;
   }
@@ -347,7 +351,7 @@ export class RainSim {
             // A lit message cell resolves to its letter on this mutation and holds it (revealed via mutation).
             // During a flicker dissolve it may instead resolve to a random glyph (extra rng only while scrambling).
             this.claimed[idx] = 1;
-            const next = this.messageScramble > 0 && this.rng() < this.messageScramble ? g : target;
+            const next = this.messageScramble > 0 && this.messageRng() < this.messageScramble ? g : target;
             if (next !== this.glyphNew[idx]) {
               this.glyphOld[idx] = this.glyphNew[idx]!;
               this.glyphNew[idx] = next;

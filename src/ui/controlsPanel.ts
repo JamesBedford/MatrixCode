@@ -55,6 +55,17 @@ export class ControlsPanel {
     this.range("Glyph size", "glyphScale", 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
     this.range("Glow", "glow", 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
     this.range("Lead glow", "leadBrightness", 0, 3, 0.05, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
+    this.range(
+      "Vignette",
+      "vignette",
+      0,
+      1,
+      0.01,
+      (v) => controls.set({ vignette: v }),
+      (v) => (v <= 0 ? "off" : `${Math.round(v * 100)}%`),
+      undefined,
+      "Edge darkening amount (0 = off, 100% = strongest).",
+    );
 
     this.select<PresetName>("Color", c.preset, [
       ["classic", "Classic green"],
@@ -75,7 +86,6 @@ export class ControlsPanel {
 
     this.toggle("Mirror glyphs", c.mirror, (v) => controls.set({ mirror: v }));
     this.toggle("Scanlines", c.scanlines, (v) => controls.set({ scanlines: v }));
-    this.toggle("Vignette", c.vignette, (v) => controls.set({ vignette: v }));
     this.toggle("Allow overlap", c.allowOverlap, (v) => controls.set({ allowOverlap: v }));
 
     const replay = this.button("▷ Replay intro", () => {

@@ -43,10 +43,10 @@ body {
   /* canvas is purely decorative */
 }
 
-/* Super fullscreen (all monitors): an uninterrupted backdrop — no overlays. */
-#app.mx-super .mx-ui,
-#app.mx-super .mx-message,
-#app.mx-super .mx-modal-backdrop {
+/* Multi-monitor fullscreen: an uninterrupted backdrop — no overlays. */
+#app.mx-multimonitor .mx-ui,
+#app.mx-multimonitor .mx-message,
+#app.mx-multimonitor .mx-modal-backdrop {
   display: none !important;
 }
 
@@ -278,6 +278,43 @@ body {
   font-size: 10px;
   letter-spacing: 0.04em;
   color: rgb(var(--mx-accent-rgb) / 0.5);
+}
+.mx-modal-tooltip-trigger {
+  position: relative;
+  cursor: help;
+}
+.mx-modal-tooltip-trigger:focus-visible {
+  outline: 1px solid var(--mx-green);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.mx-modal-tooltip {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(500px, calc(100vw - 100px));
+  padding: 9px 11px;
+  color: var(--mx-label);
+  background: rgb(3 12 7 / 0.98);
+  border: 1px solid var(--mx-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.65), 0 0 14px rgb(var(--mx-accent-rgb) / 0.12);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.03em;
+  white-space: pre-line;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms;
+  pointer-events: none;
+}
+.mx-modal-tooltip-trigger:hover .mx-modal-tooltip,
+.mx-modal-tooltip-trigger:focus-visible .mx-modal-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
 }
 .mx-line {
   display: grid;

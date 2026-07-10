@@ -29,7 +29,7 @@ Most "Matrix rain" projects (including the classic terminal `cmatrix`) scroll a 
 - **WebGL2 renderer** with multi-level bloom (brightpass → blur → composite), scanlines, and vignette
 - **Film-accurate simulation** — stationary glyph grid, wave-of-illumination model, per-cell brightness decay (not scrolling text)
 - **Single-file build** — `vite build` produces one inlined `matrixcode.html` with no external dependencies
-- **Multi-monitor super fullscreen** — triple-click spans the rain across every connected display as one continuous grid (Chromium only; see [docs/multimonitor-setup.md](docs/multimonitor-setup.md))
+- **Multi-monitor fullscreen** — triple-click spans the rain across every connected display as one continuous grid (Chromium only; see [docs/multimonitor-setup.md](docs/multimonitor-setup.md))
 - **Settings panel** — press `H` to toggle; controls for color theme, quality tier, glyph scale, and more
 - **Intro typewriter message** — plays once per visitor; `Escape` or click skips it
 - **Canvas 2D fallback** — displayed automatically if WebGL2 is unavailable
@@ -41,7 +41,7 @@ Most "Matrix rain" projects (including the classic terminal `cmatrix`) scroll a 
 | `H` | Toggle settings panel |
 | `F` | Toggle fullscreen |
 | Double-click | Toggle fullscreen |
-| Triple-click | Super fullscreen (all monitors) |
+| Triple-click | Multi-monitor fullscreen |
 | `Escape` / click | Skip intro message |
 
 ## Getting Started
@@ -67,7 +67,7 @@ Data flows in one direction each frame:
 
 **Configuration:** `ControlsStore` (`src/config/controls.ts`) is an observable store of user-facing settings. Static tuning lives in `src/config/simConfig.ts`; color themes in `src/config/colorPresets.ts`.
 
-**Multi-monitor:** all windows run the same deterministic simulation against a shared seed and `Date.now()` epoch — same clock ⇒ pixel-aligned seams with no per-frame cross-window messaging. A `BroadcastChannel` is used only to coordinate exit. See `src/super/`.
+**Multi-monitor:** all windows run the same deterministic simulation against a shared seed and `Date.now()` epoch — same clock ⇒ pixel-aligned seams with no per-frame cross-window messaging. A `BroadcastChannel` is used only to coordinate exit. See `src/multimonitor/`.
 
 ## License
 

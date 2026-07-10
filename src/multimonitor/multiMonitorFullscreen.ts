@@ -1,7 +1,7 @@
-// Orchestration for "super fullscreen": from one gesture, fan the rain out onto
+// Orchestration for multi-monitor fullscreen: from one gesture, fan the rain out onto
 // every connected monitor. Uses the Chromium Window Management API
 // (getScreenDetails + requestFullscreen({ screen })). Each monitor gets its own
-// browser window rendering a slice of one shared virtual grid (see superGrid.ts);
+// browser window rendering a slice of one shared virtual grid (see multiMonitorGrid.ts);
 // the slices are kept in lockstep by a shared seed + wall-clock epoch, so no
 // per-frame data crosses windows. Cross-window messaging is limited to a single
 // BroadcastChannel used to exit the whole show at once.
@@ -9,10 +9,10 @@
 // Degrades gracefully: on a single monitor, an unsupported browser, or a denied
 // permission, the caller falls back to ordinary fullscreen on the current screen.
 
-import { computeVirtualGrid, type GridSlice, type ScreenRect } from "./superGrid.ts";
+import { computeVirtualGrid, type GridSlice, type ScreenRect } from "./multiMonitorGrid.ts";
 
 /** Everything a window needs to render its slice of the shared rain in lockstep. */
-export interface SuperConfig {
+export interface MultiMonitorConfig {
   seed: number;
   /** Shared Date.now() baseline; all windows advance the sim relative to this. */
   epoch: number;
@@ -21,12 +21,14 @@ export interface SuperConfig {
   cell: number;
   vCols: number;
   vRows: number;
+  /** Session-wide placement rule captured from the controller's vignette setting. */
+  perDisplayMessages?: boolean;
   slice: GridSlice;
 }
 
-export type SuperSessionResult =
+export type MultiMonitorSessionResult =
   // Launched: this window's slice + the panel windows opened for the others.
-  | { kind: "super"; selfConfig: SuperConfig; openedWindows: Window[]; expectedPanels: number }
+  | { kind: "multiMonitor"; selfConfig: MultiMonitorConfig; openedWindows: Window[]; expectedPanels: number }
   // Single monitor / unsupported browser — caller should do ordinary fullscreen.
   | { kind: "fallback" }
   // The window-management permission is blocked/denied for this site.
@@ -37,8 +39,9 @@ export type SuperSessionResult =
   // Pop-ups are blocked, so no panel windows could open.
   | { kind: "popupsBlocked" };
 
-const CHANNEL_NAME = "mx-superfs";
-const HASH_KEY = "superfs";
+const CHANNEL_NAME = "mx-multimonitor-fullscreen";
+const HASH_KEY = "multimonitor";
+const LEGACY_HASH_KEY = "superfs";
 
 // Minimal structural types for the Window Management API (absent from lib.dom).
 interface ScreenDetailed extends ScreenRect {
@@ -90,22 +93,28 @@ function indexOfCurrent(details: ScreenDetails): number {
   return idx >= 0 ? idx : 0;
 }
 
-function buildPanelUrl(config: SuperConfig): string {
+function buildPanelUrl(config: MultiMonitorConfig): string {
   const base = location.origin + location.pathname + location.search;
   return `${base}#${HASH_KEY}=${encodeURIComponent(JSON.stringify(config))}`;
 }
 
-/** Read this window's panel config from the URL hash, or null if not a panel. */
-export function parsePanelConfig(): SuperConfig | null {
-  const m = new RegExp(`[#&]${HASH_KEY}=([^&]+)`).exec(location.hash);
+/** Parse a panel config from a URL hash. Exported separately for compatibility tests. */
+export function parsePanelHash(hash: string): MultiMonitorConfig | null {
+  // Keep accepting the old key so panel URLs produced before the feature rename still load.
+  const m = new RegExp(`[#&](?:${HASH_KEY}|${LEGACY_HASH_KEY})=([^&]+)`).exec(hash);
   if (!m) return null;
   try {
-    const cfg = JSON.parse(decodeURIComponent(m[1]!)) as SuperConfig;
+    const cfg = JSON.parse(decodeURIComponent(m[1]!)) as MultiMonitorConfig;
     if (typeof cfg.vCols === "number" && typeof cfg.vRows === "number" && cfg.slice) return cfg;
   } catch {
     /* malformed — treat as a normal window */
   }
   return null;
+}
+
+/** Read this window's panel config from the URL hash, or null if not a panel. */
+export function parsePanelConfig(): MultiMonitorConfig | null {
+  return parsePanelHash(location.hash);
 }
 
 /**
@@ -118,11 +127,12 @@ export function parsePanelConfig(): SuperConfig | null {
  * → ordinary fullscreen), `denied`, `needsRetry` (permission just resolved — its
  * prompt spent this gesture), or `popupsBlocked`.
  */
-export async function startSuperSession(
+export async function startMultiMonitorSession(
   rootEl: HTMLElement,
   cell: number,
   warmupSeconds: number,
-): Promise<SuperSessionResult> {
+  perDisplayMessages: boolean,
+): Promise<MultiMonitorSessionResult> {
   if (!isSupported()) return { kind: "fallback" };
 
   // Granting the permission shows a prompt that consumes this click's transient
@@ -162,13 +172,14 @@ export async function startSuperSession(
   const epoch = Date.now();
   const curIdx = indexOfCurrent(details);
 
-  const configFor = (i: number): SuperConfig => ({
+  const configFor = (i: number): MultiMonitorConfig => ({
     seed,
     epoch,
     warmupSeconds,
     cell,
     vCols: grid.vCols,
     vRows: grid.vRows,
+    perDisplayMessages,
     slice: grid.slices[rects[i]!.id]!,
   });
 
@@ -179,7 +190,7 @@ export async function startSuperSession(
     const features = `popup,left=${Math.round(s.availLeft)},top=${Math.round(s.availTop)},width=${Math.round(
       s.availWidth,
     )},height=${Math.round(s.availHeight)}`;
-    const w = window.open(buildPanelUrl(configFor(i)), `mx-panel-${i}`, features);
+    const w = window.open(buildPanelUrl(configFor(i)), `mx-monitor-${i}`, features);
     if (w) openedWindows.push(w);
   }
 
@@ -190,7 +201,7 @@ export async function startSuperSession(
 
   await requestScreenFullscreen(rootEl, details.currentScreen);
 
-  return { kind: "super", selfConfig: configFor(curIdx), openedWindows, expectedPanels };
+  return { kind: "multiMonitor", selfConfig: configFor(curIdx), openedWindows, expectedPanels };
 }
 
 /** Fullscreen `rootEl` on a specific screen, falling back to the current screen. */

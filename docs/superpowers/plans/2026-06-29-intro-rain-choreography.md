@@ -17,7 +17,7 @@
 - Defaults reproduce today's intro exactly: `rainDuringIntro: true`, `postIntroDelayMs: 0`, `rampUpMs: 0`.
 - Durations are shown in the modal in **seconds** (step 0.1), stored as **milliseconds**.
 - localStorage key stays `mx-intro`. Existing stored scripts lack the new fields; `sanitizeIntro` must fill the defaults.
-- The existing P-key play/pause (`userPaused`) and super-fullscreen paths must keep working — do not alter them.
+- The existing P-key play/pause (`userPaused`) and multi-monitor fullscreen paths must keep working — do not alter them.
 - After changes: `npx tsc --noEmit` clean and `npm test` green.
 
 ---
@@ -448,7 +448,7 @@ git commit -m "Add Rain section to intro editor (during/after, delay, ramp-up)"
 - Consumes: `densityRampFactor` (Task 2), `RainSim.reset()` (Task 1), `IntroScript` rain fields (Task 3), existing `IntroStore`/`sanitizeIntro`/`toTypeConfig`/`resolveLines`.
 - Produces: a `startIntroSequence(script)` used by first-visit autoplay, Replay, and Preview; loop density-ramp gating.
 
-This is integration/DOM glue (no Node unit test). Verified by `npx tsc --noEmit`, `npm test` (the full suite still passes), `npm run build`, and a controller-run Playwright smoke. The P-key pause (`userPaused`) and super-fullscreen paths must remain untouched.
+This is integration/DOM glue (no Node unit test). Verified by `npx tsc --noEmit`, `npm test` (the full suite still passes), `npm run build`, and a controller-run Playwright smoke. The P-key pause (`userPaused`) and multi-monitor fullscreen paths must remain untouched.
 
 - [ ] **Step 1: Import the ramp helper**
 
@@ -682,4 +682,4 @@ git commit -m "Choreograph rain start with the intro: during/after, delay, densi
 - **Spec coverage:** during/after toggle (Task 3 field + Task 4 toggle + Task 5 `rainDuringIntro` branch); post-intro delay (field + field UI + `onDone` sets `rainStartAtMs`); density ramp (field + UI + `densityRampFactor` in the loop, Task 2); empty-start vs warm-up (`sim.reset()` only for after-mode or ramp>0, Task 5; warm-up at mount untouched); black during after-mode pre-start (loop skips `sim.update`, renders empty state); applies only when the intro plays (only `startIntroSequence` sets the choreography state; default sentinel keeps the loop at full); reduced-motion guard (Task 5 Step 3); Replay/Preview reproduce it (Steps 3 & 5); persistence + sanitize bounds (Task 3); seconds-in-UI/ms-stored (existing `secondsField`); defaults reproduce today (sentinel + ramp 0 + during).
 - **Type consistency:** `startIntroSequence(script: IntroScript)`, `densityRampFactor(now, rainStartAtMs, rampUpMs)`, `RainSim.reset()`, and the `IntroScript` field names (`rainDuringIntro`, `postIntroDelayMs`, `rampUpMs`) are used identically across tasks. Loop variables `rainStartAtMs`/`rampUpMs`/`rainPendingAfterIntro`/`pendingPostIntroDelayMs` are declared once (Step 2) and read in the loop (Step 6) and `onDone` (Step 4).
 - **No placeholders:** every code step contains complete, runnable code.
-- **Don't-break list:** `userPaused` P-key pause (loop/`start()` untouched except the density gate, which preserves today's behavior via the sentinel), super-fullscreen path (returns before the modified loop body), and the no-intro/reduced-motion paths (sentinel keeps `f = 1`).
+- **Don't-break list:** `userPaused` P-key pause (loop/`start()` untouched except the density gate, which preserves today's behavior via the sentinel), multi-monitor fullscreen path (returns before the modified loop body), and the no-intro/reduced-motion paths (sentinel keeps `f = 1`).

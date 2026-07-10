@@ -133,7 +133,7 @@ export function totalDuration(lines: MessageLine[], cfg: TypeConfig): number {
 export interface MessageOverlayOptions {
   lines?: MessageLine[];
   config?: TypeConfig;
-  /** Resolve dynamic tokens ({name}/{time}/{countdown}) in each line, called per frame. */
+  /** Resolve dynamic tokens ({name}/{greeting}/{uptime}/{fps}/{time}/{countdown}) in each line, called per frame. */
   resolveText?: (text: string) => string;
 }
 

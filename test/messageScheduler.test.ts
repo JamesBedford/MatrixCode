@@ -70,6 +70,47 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     expect(sim.last!.get(row * 20 + 10)).toBe(glyphSet.charToGlyphIndex("B"));
   });
 
+  it("centers one message across the whole virtual grid when no regions are supplied", () => {
+    const s = sched();
+    const sim = new FakeSim(90, 40);
+    s.previewOne(0, sim, doc({ messages: ["AB"], verticalJitter: 0 }));
+    expect(sim.last!.size).toBe(2);
+    const row = rowOf(sim.last!, 90);
+    expect(sim.last!.get(row * 90 + 44)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(row * 90 + 45)).toBe(glyphSet.charToGlyphIndex("B"));
+  });
+
+  it("centers a copy within every display region when regions are supplied", () => {
+    const s = sched();
+    const sim = new FakeSim(90, 40);
+    const regions = [
+      { colStart: 0, rowStart: 0, cols: 30, rows: 40 },
+      { colStart: 30, rowStart: 0, cols: 30, rows: 40 },
+      { colStart: 60, rowStart: 0, cols: 30, rows: 40 },
+    ];
+    s.previewOne(0, sim, doc({ messages: ["AB"], verticalPosition: 0.5, verticalJitter: 0 }), regions);
+    expect(sim.last!.size).toBe(6);
+    for (const startCol of [14, 44, 74]) {
+      expect(sim.last!.get(20 * 90 + startCol)).toBe(glyphSet.charToGlyphIndex("A"));
+      expect(sim.last!.get(20 * 90 + startCol + 1)).toBe(glyphSet.charToGlyphIndex("B"));
+    }
+  });
+
+  it("applies vertical position and jitter relative to each display region", () => {
+    const s = sched(8);
+    const sim = new FakeSim(60, 80);
+    const regions = [
+      { colStart: 0, rowStart: 0, cols: 30, rows: 30 },
+      { colStart: 30, rowStart: 40, cols: 30, rows: 40 },
+    ];
+    s.previewOne(0, sim, doc({ messages: ["A"], verticalPosition: 0.5, verticalJitter: 0.5 }), regions);
+    const rows = [...sim.last!.keys()].map((idx) => Math.floor(idx / sim.cols));
+    expect(rows[0]).toBeGreaterThanOrEqual(7);
+    expect(rows[0]).toBeLessThanOrEqual(22);
+    expect(rows[1]).toBeGreaterThanOrEqual(49);
+    expect(rows[1]).toBeLessThanOrEqual(70);
+  });
+
   it("places the row within the middle vertical band", () => {
     for (let seed = 1; seed <= 8; seed++) {
       const s = sched(seed);
@@ -190,17 +231,32 @@ describe("MessageScheduler.update scheduling", () => {
     expect(sim.sets).toBe(0);
   });
 
-  it("cancels an active message when the grid is resized", () => {
+  it("re-lays out an active message when the grid is resized", () => {
     const s = sched(7);
     const sim = new FakeSim(30, 40);
     s.previewOne(0, sim, doc({ messages: ["HI"], persistenceMs: 100000 }));
     expect(sim.last).not.toBeNull();
+    const setsBeforeResize = sim.sets;
     // Simulate a resize: sim drops its own targets, dims change.
     sim.clearMessageTargets();
     sim.cols = 50;
     sim.rows = 60;
     s.update(10, sim);
-    // Scheduler should treat the message as cancelled and not be stuck "active".
+    expect(sim.last).not.toBeNull();
+    expect(sim.sets).toBe(setsBeforeResize + 1);
+    const row = rowOf(sim.last!, 50);
+    expect(sim.last!.get(row * 50 + 24)).toBe(glyphSet.charToGlyphIndex("H"));
+    expect(sim.last!.get(row * 50 + 25)).toBe(glyphSet.charToGlyphIndex("I"));
+  });
+
+  it("ends an active message cleanly if it no longer fits after a resize", () => {
+    const s = sched(7);
+    const sim = new FakeSim(30, 40);
+    s.previewOne(0, sim, doc({ messages: ["A MESSAGE"], persistenceMs: 100000 }));
+    sim.clearMessageTargets();
+    sim.cols = 4;
+    sim.rows = 20;
+    s.update(10, sim);
     expect(sim.last).toBeNull();
   });
 
