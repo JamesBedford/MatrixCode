@@ -1,6 +1,7 @@
 #import "MatrixCodeAppDelegate.h"
 
 #import "MatrixCodePreferences.h"
+#import "MatrixCodeMetalView.h"
 #import "MatrixCodeRainHostView.h"
 #import "MatrixCodeSession.h"
 
@@ -215,7 +216,19 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
     [self exitMultiMonitor:nil];
     self.preMultiMonitorKeyWindow = requestingHost.window ?: NSApp.keyWindow;
     [NSApp activateIgnoringOtherApps:YES];
-    NSDictionary<NSString *, id> *sharedSession = [MatrixCodeSession sessionForScreen:screens.firstObject];
+    NSMutableDictionary<NSString *, id> *sharedSession =
+        [[MatrixCodeSession sessionForScreen:screens.firstObject] mutableCopy];
+    NSInteger sharedFramesPerSecond = 0;
+    for (NSScreen *screen in screens) {
+        NSInteger framesPerSecond = [MatrixCodeMetalView maximumFramesPerSecondForScreen:screen];
+        if (framesPerSecond <= 0) continue;
+        sharedFramesPerSecond = sharedFramesPerSecond <= 0
+            ? framesPerSecond
+            : MIN(sharedFramesPerSecond, framesPerSecond);
+    }
+    if (sharedFramesPerSecond > 0) {
+        sharedSession[@"preferredFramesPerSecond"] = @(sharedFramesPerSecond);
+    }
     NSString *controlsScreenId = [sharedSession[@"controlsScreenId"] isKindOfClass:NSString.class]
         ? sharedSession[@"controlsScreenId"] : nil;
     BOOL showFPSOverlay = requestingHost.fpsOverlayVisible;

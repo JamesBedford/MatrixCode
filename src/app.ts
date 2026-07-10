@@ -125,6 +125,15 @@ function showNotice(parent: HTMLElement, text: string): HTMLElement {
   return n;
 }
 
+function createToast(parent: HTMLElement): HTMLElement {
+  const toast = document.createElement("div");
+  toast.className = "mx-toast";
+  toast.setAttribute("role", "status");
+  toast.setAttribute("aria-live", "polite");
+  parent.appendChild(toast);
+  return toast;
+}
+
 /** A tiny diagnostics overlay (smoothed FPS · render scale · backing resolution). */
 function createHud(parent: HTMLElement): HTMLElement {
   const d = document.createElement("div");
@@ -879,6 +888,21 @@ export async function mountMatrixRain(
     window.setTimeout(() => n.remove(), ms);
   };
 
+  let shortcutToast: HTMLElement | null = null;
+  let shortcutToastTimer = 0;
+  const showShortcutToast = (label: string, enabled: boolean): void => {
+    shortcutToast ??= createToast(container);
+    shortcutToast.textContent = `${label} ${enabled ? "enabled" : "disabled"}`;
+    shortcutToast.classList.remove("is-visible");
+    // Restart the transition when the user toggles repeatedly.
+    void shortcutToast.offsetWidth;
+    shortcutToast.classList.add("is-visible");
+    window.clearTimeout(shortcutToastTimer);
+    shortcutToastTimer = window.setTimeout(() => {
+      shortcutToast?.classList.remove("is-visible");
+    }, 1700);
+  };
+
   // Controller path: start multi-monitor mode across every available monitor.
   const enterMultiMonitor = async (): Promise<void> => {
     if (nativeHosted || multiMonitorState || panelConfig) return;
@@ -921,13 +945,14 @@ export async function mountMatrixRain(
 
   // Toggle the "Show messages" setting — the shortcut and the editor toggle share one source of
   // truth. Persists, reconfigures the live scheduler, and reflects into an open editor.
-  const toggleMessages = (): void => {
+  const toggleMessages = (announce = false): void => {
     if (!messageScheduler) return;
     const doc = messagesStore.get();
     doc.enabled = !doc.enabled;
     messagesStore.set(doc);
     messageScheduler.configure(messagesStore.get());
     messagesEditor?.syncEnabled(doc.enabled);
+    if (announce) showShortcutToast("Messages", doc.enabled);
   };
 
   const setHudVisible = (visible: boolean): void => {
@@ -983,9 +1008,10 @@ export async function mountMatrixRain(
       else if (e.key === "f" || e.key === "F") { toggleFullscreen(); handled = true; }
       else if (e.key === "h" || e.key === "H") { panel?.toggleVisible(); handled = true; }
       else if (e.key === "i" || e.key === "I") { openSettingsSurface("intro"); handled = true; }
+      else if (!e.repeat && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.code === "KeyM") { toggleMessages(true); handled = true; }
       else if (e.key === "m" || e.key === "M") { openSettingsSurface("messages"); handled = true; }
       else if (e.key === "c" || e.key === "C") { openSettingsSurface("countdown"); handled = true; }
-      else if (e.key === "n" || e.key === "N") { toggleMessages(); handled = true; }
+      else if (e.key === "n" || e.key === "N") { toggleMessages(true); handled = true; }
       else if (e.key === "-" || e.key === "_") { nudgeDensity(1 / DENSITY_KEY_STEP); handled = true; }
       else if (e.key === "=" || e.key === "+") { nudgeDensity(DENSITY_KEY_STEP); handled = true; }
       else if (e.key === "p" || e.key === "P") {
@@ -1173,6 +1199,7 @@ export async function mountMatrixRain(
       if (multiMonitorState) exitMultiMonitor(false);
       controlsChan?.close();
       stop();
+      window.clearTimeout(shortcutToastTimer);
       window.clearTimeout(rampPreviewTimer);
       ro.disconnect();
       window.removeEventListener("resize", onWindowResize);
@@ -1192,6 +1219,7 @@ export async function mountMatrixRain(
       characterEditor?.destroy();
       panel?.destroy();
       message?.destroy();
+      shortcutToast?.remove();
       renderer.dispose();
       stateTex.dispose();
       for (const t of extraTexs) t.dispose();

@@ -11,7 +11,9 @@ FOUNDATION_EXPORT NSString * const MatrixCodePreviewValuesKey;
 - (instancetype)init NS_UNAVAILABLE;
 - (void)showSettingsPanel;
 - (void)openEditorKind:(NSString *)kind;
-- (void)toggleMessagesEnabled;
+- (void)refreshEmbeddedPresentationLayout;
+- (BOOL)toggleMessagesEnabled;
+- (BOOL)toggleImagesEnabled;
 - (void)nudgeDensityByFactor:(double)factor;
 @end
 

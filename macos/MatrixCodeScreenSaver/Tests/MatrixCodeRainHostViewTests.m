@@ -112,11 +112,20 @@ static NSEvent *MatrixCodeCommandShiftMKeyEvent(BOOL repeat) {
                                        repeat);
 }
 
+static NSEvent *MatrixCodeShiftXKeyEvent(void) {
+    return MatrixCodeKeyEventWithFlags(nil, @"X", 7, NSEventModifierFlagShift, NO);
+}
+
+static NSEvent *MatrixCodeShiftMKeyEvent(void) {
+    return MatrixCodeKeyEventWithFlags(nil, @"M", 46, NSEventModifierFlagShift, NO);
+}
+
 static NSEvent *MatrixCodeLetterKeyEvent(NSString *letter) {
     NSDictionary<NSString *, NSNumber *> *keyCodes = @{
         @"h": @4,
         @"i": @34,
         @"m": @46,
+        @"x": @7,
         @"c": @8,
         @"n": @45,
         @"-": @27,
@@ -160,6 +169,17 @@ static NSView *MatrixCodeHostDescendantWithIdentifier(NSView *view, NSString *id
 static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostView) {
     MatrixCodePreferences *preferences = [hostView valueForKey:@"preferences"];
     return MatrixCodeJSONDictionary([preferences storedValues][@"mx-messages"]);
+}
+
+static NSDictionary *MatrixCodeHostStoredImages(MatrixCodeRainHostView *hostView) {
+    MatrixCodePreferences *preferences = [hostView valueForKey:@"preferences"];
+    return MatrixCodeJSONDictionary([preferences storedValues][@"mx-images"]);
+}
+
+static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostView) {
+    NSTextField *label = (NSTextField *)MatrixCodeHostDescendantWithIdentifier(hostView,
+                                                                               @"shortcut-toast-label");
+    return label.stringValue;
 }
 
 - (void)testEscapeKeyExitsStandaloneFullScreen {
@@ -316,6 +336,76 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     }
 }
 
+- (void)testImagesEditorRefreshesStaleFullscreenHostLayout {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1920, 1080)
+                                    styleMask:NSWindowStyleMaskTitled |
+                                              NSWindowStyleMaskResizable
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = NO;
+    window.contentView = hostView;
+
+    [hostView setFrame:NSMakeRect(0, 240, 1920, 640)];
+    [hostView keyDown:MatrixCodeLetterKeyEvent(@"x")];
+    [hostView layoutSubtreeIfNeeded];
+
+    CGFloat expectedHeight = window.contentLayoutRect.size.height;
+    CGFloat expectedWidth = window.contentLayoutRect.size.width;
+    XCTAssertEqualWithAccuracy(hostView.frame.origin.x, 0, 0.5);
+    XCTAssertEqualWithAccuracy(hostView.frame.origin.y, 0, 0.5);
+    XCTAssertEqualWithAccuracy(hostView.bounds.size.width, expectedWidth, 0.5);
+    XCTAssertEqualWithAccuracy(hostView.bounds.size.height, expectedHeight, 0.5);
+
+    NSView *backdrop = MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-editor-backdrop");
+    NSView *panel = MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel");
+    MatrixCodeMetalView *metalView = [hostView valueForKey:@"metalView"];
+    XCTAssertNotNil(backdrop);
+    XCTAssertNotNil(panel);
+    XCTAssertNotNil(metalView);
+    XCTAssertEqualWithAccuracy(metalView.frame.origin.x, 0, 0.5);
+    XCTAssertEqualWithAccuracy(metalView.frame.origin.y, 0, 0.5);
+    XCTAssertEqualWithAccuracy(backdrop.frame.size.height, expectedHeight, 0.5);
+    XCTAssertEqualWithAccuracy(panel.frame.size.height, expectedHeight - 32, 0.5);
+    XCTAssertEqualWithAccuracy(metalView.frame.size.height, expectedHeight, 0.5);
+}
+
+- (void)testFullscreenLayoutSyncUsesScreenBoundsWhenWindowContentSizeIsStale {
+    MatrixCodeEscapeTestWindow *window =
+        [[MatrixCodeEscapeTestWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                                      styleMask:NSWindowStyleMaskTitled |
+                                                                NSWindowStyleMaskResizable
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+    window.reportsFullScreen = YES;
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = NO;
+    window.contentView = hostView;
+
+    [hostView setFrame:NSMakeRect(0, 260, 800, 320)];
+    [hostView layoutSubtreeIfNeeded];
+
+    NSSize frameContentSize = [window contentRectForFrameRect:window.frame].size;
+    NSSize screenSize = (window.screen ?: NSScreen.mainScreen).frame.size;
+    CGFloat expectedWidth = fmax(fmax(window.contentLayoutRect.size.width, frameContentSize.width),
+                                 screenSize.width);
+    CGFloat expectedHeight = fmax(fmax(window.contentLayoutRect.size.height, frameContentSize.height),
+                                  screenSize.height);
+    XCTAssertEqualWithAccuracy(hostView.frame.origin.x, 0, 0.5);
+    XCTAssertEqualWithAccuracy(hostView.frame.origin.y, 0, 0.5);
+    XCTAssertEqualWithAccuracy(hostView.frame.size.width, expectedWidth, 0.5);
+    XCTAssertEqualWithAccuracy(hostView.frame.size.height, expectedHeight, 0.5);
+}
+
 - (void)testStandaloneSettingsAppearWhenPointerMovesOverRainWindow {
     NSWindow *window =
         [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
@@ -385,11 +475,13 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     NSDictionary *messages = MatrixCodeHostStoredMessages(hostView);
     XCTAssertTrue([messages[@"enabled"] boolValue]);
     XCTAssertEqual([messages[@"messages"] count], 4);
+    XCTAssertEqualObjects(MatrixCodeHostShortcutToastText(hostView), @"MESSAGES ENABLED");
     XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
 
     [hostView keyDown:MatrixCodeLetterKeyEvent(@"n")];
     messages = MatrixCodeHostStoredMessages(hostView);
     XCTAssertFalse([messages[@"enabled"] boolValue]);
+    XCTAssertEqualObjects(MatrixCodeHostShortcutToastText(hostView), @"MESSAGES DISABLED");
 }
 
 - (void)testNKeyTreatsNumericEnabledAsInvalidLikeWebSanitizer {
@@ -410,6 +502,64 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     NSDictionary *messages = MatrixCodeHostStoredMessages(hostView);
     XCTAssertEqualObjects(messages[@"enabled"], @YES);
     XCTAssertEqualObjects(messages[@"messages"], @[@"NEO"]);
+}
+
+- (void)testShiftMKeyTogglesMessagesWithoutOpeningSettingsOverlay {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    window.contentView = hostView;
+
+    [hostView keyDown:MatrixCodeShiftMKeyEvent()];
+
+    NSDictionary *messages = MatrixCodeHostStoredMessages(hostView);
+    XCTAssertTrue([messages[@"enabled"] boolValue]);
+    XCTAssertEqualObjects(MatrixCodeHostShortcutToastText(hostView), @"MESSAGES ENABLED");
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+
+    [hostView keyDown:MatrixCodeShiftMKeyEvent()];
+    messages = MatrixCodeHostStoredMessages(hostView);
+    XCTAssertFalse([messages[@"enabled"] boolValue]);
+    XCTAssertEqualObjects(MatrixCodeHostShortcutToastText(hostView), @"MESSAGES DISABLED");
+}
+
+- (void)testShiftXKeyTogglesImagesWithoutOpeningSettingsOverlay {
+    [self.preferences commitValues:@{
+        @"mx-images": MatrixCodeJSONString(@{
+            @"enabled": @NO,
+            @"images": @[],
+        }),
+    }];
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    window.contentView = hostView;
+
+    [hostView keyDown:MatrixCodeShiftXKeyEvent()];
+
+    NSDictionary *images = MatrixCodeHostStoredImages(hostView);
+    XCTAssertTrue([images[@"enabled"] boolValue]);
+    XCTAssertEqualObjects(MatrixCodeHostShortcutToastText(hostView), @"IMAGES ENABLED");
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+
+    [hostView keyDown:MatrixCodeShiftXKeyEvent()];
+    images = MatrixCodeHostStoredImages(hostView);
+    XCTAssertFalse([images[@"enabled"] boolValue]);
+    XCTAssertEqualObjects(MatrixCodeHostShortcutToastText(hostView), @"IMAGES DISABLED");
 }
 
 - (void)testDensityShortcutKeysUseWebMultiplicativeStep {

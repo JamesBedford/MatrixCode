@@ -17,8 +17,66 @@ static const NSTimeInterval MatrixCodeSettingsFadeDuration = 0.24;
 static const NSTimeInterval MatrixCodeSettingsHideDelay = 2.8;
 static const CGFloat MatrixCodeSettingsPanelWidth = 320.0;
 static const CGFloat MatrixCodeSettingsPanelContentWidth = 284.0;
+static const CGFloat MatrixCodeSettingsPanelInset = 16.0;
+static const CGFloat MatrixCodeEditorCardWidth = 620.0;
+static const CGFloat MatrixCodeEditorCardMaxHeight = 610.0;
+static const CGFloat MatrixCodeEditorCardVerticalMargin = 48.0;
 static const NSUInteger MatrixCodeImageMaskMaxDimension = 96;
 static const NSUInteger MatrixCodeImageMaskMaxStoredCharacters = 49152;
+
+static NSRect MatrixCodeFramePinnedToSuperviewEdges(NSView *superview, NSEdgeInsets insets) {
+    if (!superview) return NSZeroRect;
+    NSRect bounds = superview.bounds;
+    CGFloat width = fmax(0, NSWidth(bounds) - insets.left - insets.right);
+    CGFloat height = fmax(0, NSHeight(bounds) - insets.top - insets.bottom);
+    return NSMakeRect(insets.left, insets.bottom, width, height);
+}
+
+static void MatrixCodeSyncPinnedViewToSuperviewEdges(NSView *view,
+                                                     NSView *superview,
+                                                     NSEdgeInsets insets) {
+    if (!view || !superview) return;
+    view.frame = MatrixCodeFramePinnedToSuperviewEdges(superview, insets);
+    [view setNeedsLayout:YES];
+}
+
+static void MatrixCodePinViewToSuperviewEdges(NSView *view,
+                                               NSView *superview,
+                                               NSEdgeInsets insets) {
+    if (!view || !superview) return;
+    view.translatesAutoresizingMaskIntoConstraints = YES;
+    view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    MatrixCodeSyncPinnedViewToSuperviewEdges(view, superview, insets);
+}
+
+static void MatrixCodeSyncSettingsPanelFrame(NSView *panel, NSView *overlay) {
+    if (!panel || !overlay) return;
+    CGFloat height = fmax(0, NSHeight(overlay.bounds) - MatrixCodeSettingsPanelInset * 2.0);
+    panel.frame = NSMakeRect(MatrixCodeSettingsPanelInset,
+                             MatrixCodeSettingsPanelInset,
+                             MatrixCodeSettingsPanelWidth,
+                             height);
+    [panel setNeedsLayout:YES];
+}
+
+static void MatrixCodePinSettingsPanelToOverlay(NSView *panel, NSView *overlay) {
+    if (!panel || !overlay) return;
+    panel.translatesAutoresizingMaskIntoConstraints = YES;
+    panel.autoresizingMask = NSViewMaxXMargin | NSViewHeightSizable;
+    MatrixCodeSyncSettingsPanelFrame(panel, overlay);
+}
+
+static void MatrixCodeSyncEditorCardFrame(NSView *card, NSView *backdrop) {
+    if (!card || !backdrop) return;
+    CGFloat width = MatrixCodeEditorCardWidth;
+    CGFloat height = fmin(MatrixCodeEditorCardMaxHeight,
+                          fmax(0, NSHeight(backdrop.bounds) - MatrixCodeEditorCardVerticalMargin));
+    card.frame = NSMakeRect((NSWidth(backdrop.bounds) - width) * 0.5,
+                            (NSHeight(backdrop.bounds) - height) * 0.5,
+                            width,
+                            height);
+    [card setNeedsLayout:YES];
+}
 
 static NSDictionary *MatrixCodeJSONObject(NSString *raw, Class expectedClass) {
     if (![raw isKindOfClass:NSString.class]) return nil;
@@ -370,6 +428,24 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (NSView *)presentationContentView {
     return self.embeddedPresentation ? self.embeddedHostView : self.window.contentView;
+}
+
+- (void)refreshEmbeddedPresentationLayout {
+    if (!self.embeddedPresentation) return;
+    NSView *root = [self presentationContentView];
+    if (!root) return;
+    if (self.settingsOverlayView.superview == root) {
+        MatrixCodeSyncPinnedViewToSuperviewEdges(self.settingsOverlayView,
+                                                 root,
+                                                 NSEdgeInsetsMake(0, 0, 0, 0));
+        MatrixCodeSyncSettingsPanelFrame(self.settingsPanel, self.settingsOverlayView);
+    }
+    if (self.editorBackdrop.superview == root) {
+        MatrixCodeSyncPinnedViewToSuperviewEdges(self.editorBackdrop,
+                                                 root,
+                                                 NSEdgeInsetsMake(0, 0, 0, 0));
+        MatrixCodeSyncEditorCardFrame(self.editorCard, self.editorBackdrop);
+    }
 }
 
 - (void)publishPreviewValues:(NSDictionary<NSString *, NSString *> *)values {
@@ -727,25 +803,13 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [overlay addSubview:panel];
     self.settingsOverlayView = overlay;
     self.settingsPanel = panel;
-    [NSLayoutConstraint activateConstraints:@[
-        [overlay.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
-        [overlay.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
-        [overlay.topAnchor constraintEqualToAnchor:content.topAnchor],
-        [overlay.bottomAnchor constraintEqualToAnchor:content.bottomAnchor],
-        [panel.leadingAnchor constraintEqualToAnchor:overlay.leadingAnchor constant:16],
-        [panel.topAnchor constraintEqualToAnchor:overlay.topAnchor constant:16],
-        [panel.bottomAnchor constraintEqualToAnchor:overlay.bottomAnchor constant:-16],
-        [panel.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelWidth],
-    ]];
+    MatrixCodePinViewToSuperviewEdges(overlay, content, NSEdgeInsetsMake(0, 0, 0, 0));
+    MatrixCodePinSettingsPanelToOverlay(panel, overlay);
     if (self.settingsMetalView) {
-        [NSLayoutConstraint activateConstraints:@[
-            [self.settingsMetalView.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
-            [self.settingsMetalView.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
-            [self.settingsMetalView.topAnchor constraintEqualToAnchor:content.topAnchor],
-            [self.settingsMetalView.bottomAnchor constraintEqualToAnchor:content.bottomAnchor],
-        ]];
+        MatrixCodePinViewToSuperviewEdges(self.settingsMetalView, content, NSEdgeInsetsMake(0, 0, 0, 0));
     }
     [self setSettingsPanelVisible:YES immediate:YES];
+    [self refreshEmbeddedPresentationLayout];
 }
 
 - (NSFont *)settingsFontOfSize:(CGFloat)size weight:(NSFontWeight)weight {
@@ -1122,23 +1186,23 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [card addSubview:footer];
     [backdrop addSubview:card];
     [root addSubview:backdrop positioned:NSWindowAbove relativeTo:nil];
-    NSLayoutConstraint *cardPreferredHeight = [card.heightAnchor constraintEqualToConstant:610];
+    NSLayoutConstraint *cardPreferredHeight =
+        [card.heightAnchor constraintEqualToConstant:MatrixCodeEditorCardMaxHeight];
     cardPreferredHeight.priority = NSLayoutPriorityDefaultLow;
     NSLayoutConstraint *cardViewportHeight =
-        [card.heightAnchor constraintEqualToAnchor:backdrop.heightAnchor constant:-48];
+        [card.heightAnchor constraintEqualToAnchor:backdrop.heightAnchor
+                                          constant:-MatrixCodeEditorCardVerticalMargin];
     cardViewportHeight.priority = NSLayoutPriorityDefaultHigh;
+    MatrixCodePinViewToSuperviewEdges(backdrop, root, NSEdgeInsetsMake(0, 0, 0, 0));
     [NSLayoutConstraint activateConstraints:@[
-        [backdrop.leadingAnchor constraintEqualToAnchor:root.leadingAnchor],
-        [backdrop.trailingAnchor constraintEqualToAnchor:root.trailingAnchor],
-        [backdrop.topAnchor constraintEqualToAnchor:root.topAnchor],
-        [backdrop.bottomAnchor constraintEqualToAnchor:root.bottomAnchor],
         [card.centerXAnchor constraintEqualToAnchor:backdrop.centerXAnchor],
         [card.centerYAnchor constraintEqualToAnchor:backdrop.centerYAnchor],
-        [card.widthAnchor constraintEqualToConstant:620],
+        [card.widthAnchor constraintEqualToConstant:MatrixCodeEditorCardWidth],
         cardPreferredHeight,
         cardViewportHeight,
-        [card.heightAnchor constraintLessThanOrEqualToConstant:610],
-        [card.heightAnchor constraintLessThanOrEqualToAnchor:backdrop.heightAnchor constant:-48],
+        [card.heightAnchor constraintLessThanOrEqualToConstant:MatrixCodeEditorCardMaxHeight],
+        [card.heightAnchor constraintLessThanOrEqualToAnchor:backdrop.heightAnchor
+                                                    constant:-MatrixCodeEditorCardVerticalMargin],
         [body.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
         [body.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
         [body.topAnchor constraintEqualToAnchor:card.topAnchor],
@@ -1150,6 +1214,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     self.editorBackdrop = backdrop;
     self.editorCard = card;
     self.editorKind = kind;
+    [self refreshEmbeddedPresentationLayout];
 }
 
 - (NSString *)canonicalEditorKind:(NSString *)kind {
@@ -1182,13 +1247,26 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [self presentEditorKind:canonical];
 }
 
-- (void)toggleMessagesEnabled {
+- (BOOL)toggleMessagesEnabled {
     BOOL enabled = [self.messages[@"enabled"] boolValue];
-    self.messages[@"enabled"] = MatrixCodeSettingBoolObject(!enabled);
+    BOOL nextEnabled = !enabled;
+    self.messages[@"enabled"] = MatrixCodeSettingBoolObject(nextEnabled);
     [self draftDidChange];
     if ([self.editorKind isEqualToString:@"messages"]) {
         [self presentEditorKind:@"messages"];
     }
+    return nextEnabled;
+}
+
+- (BOOL)toggleImagesEnabled {
+    BOOL enabled = [self.images[@"enabled"] boolValue];
+    BOOL nextEnabled = !enabled;
+    self.images[@"enabled"] = MatrixCodeSettingBoolObject(nextEnabled);
+    [self draftDidChange];
+    if ([self.editorKind isEqualToString:@"images"]) {
+        [self presentEditorKind:@"images"];
+    }
+    return nextEnabled;
 }
 
 - (void)nudgeDensityByFactor:(double)factor {

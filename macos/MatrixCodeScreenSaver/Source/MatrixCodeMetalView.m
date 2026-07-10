@@ -474,9 +474,9 @@ static NSInteger MatrixCodeFramesPerSecondFromCandidates(NSInteger screenMaximum
                                                          double displayModeRefreshRate,
                                                          double displayLinkRefreshRate) {
     double best = 0;
-    MatrixCodeConsiderRefreshRate(screenMaximum, &best);
     MatrixCodeConsiderRefreshRate(displayModeRefreshRate, &best);
     MatrixCodeConsiderRefreshRate(displayLinkRefreshRate, &best);
+    if (best <= 0) MatrixCodeConsiderRefreshRate(screenMaximum, &best);
     if (best <= 0) best = 60;
     return MIN(240, MAX(60, (NSInteger)lround(best)));
 }
@@ -513,6 +513,14 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
     return MatrixCodeFramesPerSecondFromCandidates(screenMaximum,
                                                    MatrixCodeDisplayModeRefreshRate(resolvedScreen),
                                                    MatrixCodeDisplayLinkRefreshRate(resolvedScreen));
+}
+
+static NSInteger MatrixCodeSessionPreferredFramesPerSecond(NSDictionary<NSString *, id> *session) {
+    NSNumber *value = [session[@"preferredFramesPerSecond"] isKindOfClass:NSNumber.class]
+        ? session[@"preferredFramesPerSecond"] : nil;
+    if (!value) return 0;
+    NSInteger framesPerSecond = value.integerValue;
+    return framesPerSecond > 0 ? MIN(240, MAX(1, framesPerSecond)) : 0;
 }
 
 @interface MatrixCodeMetalView () <MTKViewDelegate>
@@ -692,7 +700,16 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
 }
 
 - (void)configureFramePacingForScreen:(NSScreen *)screen {
-    self.preferredFramesPerSecond = MatrixCodeDisplayFramesPerSecond(screen);
+    NSInteger sessionFramesPerSecond = MatrixCodeSessionPreferredFramesPerSecond(self.session);
+    self.preferredFramesPerSecond = sessionFramesPerSecond > 0
+        ? sessionFramesPerSecond
+        : MatrixCodeDisplayFramesPerSecond(screen);
+}
+
+- (BOOL)usesSynchronizedMultiMonitorTimeline {
+    NSArray *screens = [self.session[@"screens"] isKindOfClass:NSArray.class]
+        ? self.session[@"screens"] : @[];
+    return screens.count > 1;
 }
 
 - (void)setAnimationActive:(BOOL)active {
@@ -825,8 +842,9 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
     self.activeImagePlacementY = 0.5f;
     float frequency = MatrixCodeNumber(self.messages, @"frequencyMs", 8000, 500, 600000) / 1000.0f;
     float imageFrequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0f;
-    NSTimeInterval scheduleBase = self.animationActive
-        ? NSDate.date.timeIntervalSince1970 : self.epochSeconds;
+    NSTimeInterval scheduleBase = [self usesSynchronizedMultiMonitorTimeline]
+        ? self.epochSeconds
+        : (self.animationActive ? NSDate.date.timeIntervalSince1970 : self.epochSeconds);
     self.nextMessageFire = scheduleBase + frequency *
         (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ 0xa511e9b3U));
     self.nextImageFire = scheduleBase + imageFrequency *
@@ -1132,16 +1150,22 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
         return;
     }
     if (self.activeMessageTemplate && now >= self.activeMessageEnd) {
+        BOOL synchronizedTimeline = [self usesSynchronizedMultiMonitorTimeline];
+        NSTimeInterval endedAt = self.activeMessageEnd;
         self.activeMessageTemplate = nil;
         self.activeMessageDisplay = nil;
         [self resetActiveMessageTargetState];
         float frequency = MatrixCodeNumber(self.messages, @"frequencyMs", 8000, 500, 600000) / 1000.0f;
-        uint32_t cycle = (uint32_t)floor(now - self.epochSeconds);
-        self.nextMessageFire = now + frequency *
+        NSTimeInterval scheduleAnchor = synchronizedTimeline ? endedAt : now;
+        uint32_t cycle = (uint32_t)floor(scheduleAnchor - self.epochSeconds);
+        self.nextMessageFire = scheduleAnchor + frequency *
             (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ cycle ^ 0xa511e9b3U));
     }
     if (!self.activeMessageTemplate && now >= self.nextMessageFire) {
-        uint32_t activation = (uint32_t)floor((now - self.epochSeconds) * 10);
+        BOOL synchronizedTimeline = [self usesSynchronizedMultiMonitorTimeline];
+        NSTimeInterval fireTime = self.nextMessageFire;
+        NSTimeInterval activationTime = synchronizedTimeline ? fireTime : now;
+        uint32_t activation = (uint32_t)floor((activationTime - self.epochSeconds) * 10);
         NSUInteger selected = MatrixCodeHash(self.seed ^ activation ^ 0x63d83595U) % candidates.count;
         float vignette = MatrixCodeVignette(self.controls);
         NSInteger placementRows = vignette > 0 ? localRows : globalRows;
@@ -1162,7 +1186,8 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
         NSInteger placementSpan = dropLayout ? placementRows : placementCols;
         if (!renderable || display.length > placementSpan) {
             float frequency = MatrixCodeNumber(self.messages, @"frequencyMs", 8000, 500, 600000) / 1000.0f;
-            self.nextMessageFire = now + frequency *
+            NSTimeInterval scheduleAnchor = synchronizedTimeline ? fireTime : now;
+            self.nextMessageFire = scheduleAnchor + frequency *
                 (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ activation ^ 0xa511e9b3U));
             return;
         }
@@ -1172,11 +1197,11 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
         self.activeMessagePlacementColumns = placementCols;
         self.activeMessagePlacementRows = placementRows;
         [self resetActiveMessageTargetState];
-        self.activeMessageStart = now;
+        self.activeMessageStart = activationTime;
         float appear = MatrixCodeNumber(self.messages, @"appearMs", 4000, 0, 600000) / 1000.0f;
         float hold = MatrixCodeNumber(self.messages, @"persistenceMs", 10000, 500, 600000) / 1000.0f;
         float disappear = MatrixCodeNumber(self.messages, @"disappearMs", 4000, 0, 600000) / 1000.0f;
-        self.activeMessageEnd = now + appear + hold + disappear;
+        self.activeMessageEnd = activationTime + appear + hold + disappear;
 
         float position = MatrixCodeNumber(self.messages, @"verticalPosition", 0.475, 0, 1);
         float jitter = MatrixCodeNumber(self.messages, @"verticalJitter", 0.25, 0, 1);
@@ -1304,14 +1329,20 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
         return;
     }
     if (self.activeImage && now >= self.activeImageEnd) {
+        BOOL synchronizedTimeline = [self usesSynchronizedMultiMonitorTimeline];
+        NSTimeInterval endedAt = self.activeImageEnd;
         [self resetActiveImageState];
         float frequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0f;
-        uint32_t cycle = (uint32_t)floor(now - self.epochSeconds);
-        self.nextImageFire = now + frequency *
+        NSTimeInterval scheduleAnchor = synchronizedTimeline ? endedAt : now;
+        uint32_t cycle = (uint32_t)floor(scheduleAnchor - self.epochSeconds);
+        self.nextImageFire = scheduleAnchor + frequency *
             (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ cycle ^ 0x6d2b79f5U));
     }
     if (!self.activeImage && now >= self.nextImageFire) {
-        uint32_t activation = (uint32_t)floor((now - self.epochSeconds) * 10);
+        BOOL synchronizedTimeline = [self usesSynchronizedMultiMonitorTimeline];
+        NSTimeInterval fireTime = self.nextImageFire;
+        NSTimeInterval activationTime = synchronizedTimeline ? fireTime : now;
+        uint32_t activation = (uint32_t)floor((activationTime - self.epochSeconds) * 10);
         NSUInteger selected = MatrixCodeHash(self.seed ^ activation ^ 0x3f4d1c23U) % configured.count;
         NSDictionary *image = configured[selected];
         NSData *mask = [[NSData alloc] initWithBase64EncodedString:image[@"data"] options:0];
@@ -1319,7 +1350,8 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
         NSInteger height = [image[@"height"] integerValue];
         if (!mask || mask.length != (NSUInteger)(width * height)) {
             float frequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0f;
-            self.nextImageFire = now + frequency *
+            NSTimeInterval scheduleAnchor = synchronizedTimeline ? fireTime : now;
+            self.nextImageFire = scheduleAnchor + frequency *
                 (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ activation ^ 0x6d2b79f5U));
             return;
         }
@@ -1327,13 +1359,13 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
         self.activeImageMaskData = mask;
         self.activeImageWidth = width;
         self.activeImageHeight = height;
-        self.activeImageStart = now;
+        self.activeImageStart = activationTime;
         self.activeImagePlacementX = MatrixCodeUnit(self.seed ^ activation ^ 0x731f4a7dU);
         self.activeImagePlacementY = MatrixCodeUnit(self.seed ^ activation ^ 0x4c2d65bfU);
         float appear = MatrixCodeNumber(self.images, @"appearMs", 4500, 0, 600000) / 1000.0f;
         float hold = MatrixCodeNumber(self.images, @"persistenceMs", 12000, 500, 600000) / 1000.0f;
         float disappear = MatrixCodeNumber(self.images, @"disappearMs", 4500, 0, 600000) / 1000.0f;
-        self.activeImageEnd = now + appear + hold + disappear;
+        self.activeImageEnd = activationTime + appear + hold + disappear;
     }
 }
 
@@ -1746,11 +1778,11 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
                     glyphState->phase = 1;
                 } else if (!head && brightness > 0.05f &&
                            (mutationChance > 0 || imageGlyph != NSNotFound)) {
-                    float imageSecondMutationChance = imageGlyph != NSNotFound
+                    float imageFrameMutationChance = imageGlyph != NSNotFound
                         ? fminf(0.72f, 0.08f + imageInfluence * 0.46f)
                         : 0;
                     float imageMutationChance = MatrixCodeStepChanceForReferenceRateChance(
-                        imageSecondMutationChance, glyphDt, 1.0f);
+                        imageFrameMutationChance, glyphDt, 60.0f);
                     float combinedMutationChance = fmaxf(mutationChance, imageMutationChance);
                     if (combinedMutationChance > 0 &&
                         MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState)) <

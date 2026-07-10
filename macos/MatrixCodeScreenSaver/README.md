@@ -103,7 +103,9 @@ surrounding geometry, typography, palette, and interaction model match the web U
 In the standalone app, double-click the rain to toggle native
 fullscreen and triple-click the rain or press `Shift-Command-M` to start the
 continuous multi-monitor presentation. Press `P` to pause or resume the
-animation; the presentation commands are also available from the **View** menu.
+animation; press `N` or `Shift-M` to toggle Messages and `Shift-X` to toggle Images. These
+shortcut-triggered state changes show a top-right toast using the active Matrix
+theme. The presentation commands are also available from the **View** menu.
 The standalone app restores
 the saved window frame on launch and, if quit while presenting, re-enters
 fullscreen or multi-monitor mode on the next launch. The browser build cannot

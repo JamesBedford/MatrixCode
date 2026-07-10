@@ -252,8 +252,40 @@ html.mx-native-config .mx-panel {
   pointer-events: none;
 }
 
+/* ---------- Shortcut state toast ---------- */
+.mx-toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 30;
+  max-width: min(280px, calc(100vw - 32px));
+  padding: 9px 13px;
+  color: var(--mx-green);
+  background: var(--mx-panel);
+  border: 1px solid var(--mx-border);
+  border-radius: 6px;
+  box-shadow: 0 0 20px rgb(var(--mx-accent-rgb) / 0.22), inset 0 0 18px rgb(var(--mx-accent-rgb) / 0.05);
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgb(var(--mx-accent-rgb) / 0.55);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.mx-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mx-ui {
+    transition: none;
+  }
+  .mx-toast {
     transition: none;
   }
 }

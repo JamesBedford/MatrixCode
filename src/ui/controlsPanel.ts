@@ -159,7 +159,7 @@ export class ControlsPanel {
     hint.className = "mx-hint";
     hint.innerHTML = options.multiMonitor
       ? "<kbd>H</kbd> panel · <kbd>−</kbd>/<kbd>=</kbd> density · <kbd>Esc</kbd> exit"
-      : "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>N</kbd> toggle msgs · <kbd>C</kbd> countdown · <kbd>−</kbd>/<kbd>=</kbd> density";
+      : "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>N</kbd>/<kbd>Shift+M</kbd> toggle msgs · <kbd>C</kbd> countdown · <kbd>−</kbd>/<kbd>=</kbd> density";
     this.panel.appendChild(hint);
 
     this.el.appendChild(this.panel);

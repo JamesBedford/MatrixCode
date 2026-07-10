@@ -126,6 +126,24 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
     XCTAssertTrue(view.isPaused);
 }
 
+- (void)testSessionPreferredFramePacingOverridesPerDisplayMaximum {
+    NSDictionary *session = @{
+        @"seed": @12345,
+        @"epoch": @1700000000000,
+        @"preferredFramesPerSecond": @60,
+        @"currentScreenId": @"screen-test",
+        @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                        @"width": @320, @"height": @200}],
+    };
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
+                                           session:session
+                                      storedValues:@{}];
+    [view configureFramePacingForScreen:NSScreen.mainScreen];
+
+    XCTAssertEqual(view.preferredFramesPerSecond, 60);
+}
+
 - (void)testDisplayFramePacingDoesNotStickAtThirtyWhenDisplayReportsHigherRefresh {
     XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:30
                                                           displayModeRefreshRate:60
@@ -135,6 +153,10 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
                                                           displayModeRefreshRate:0
                                                           displayLinkRefreshRate:120],
                    120);
+    XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:120
+                                                          displayModeRefreshRate:60
+                                                          displayLinkRefreshRate:60],
+                   60);
     XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:0
                                                           displayModeRefreshRate:0
                                                           displayLinkRefreshRate:0],
@@ -171,21 +193,18 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
 }
 
 - (void)testImageMutationChanceScalesWithFrameTime {
-    const float oneSecondChance = 0.54f;
     float perSixtyHzFrame =
-        [MatrixCodeMetalView diagnosticStepChanceForReferenceRateChance:oneSecondChance
+        [MatrixCodeMetalView diagnosticStepChanceForReferenceRateChance:0.54f
                                                                  elapsed:1.0f / 60.0f
-                                                           referenceRate:1.0f];
+                                                           referenceRate:60.0f];
     float perOneTwentyHzFrame =
-        [MatrixCodeMetalView diagnosticStepChanceForReferenceRateChance:oneSecondChance
+        [MatrixCodeMetalView diagnosticStepChanceForReferenceRateChance:0.54f
                                                                  elapsed:1.0f / 120.0f
-                                                           referenceRate:1.0f];
-    float sixtyHzSecond = 1.0f - powf(1.0f - perSixtyHzFrame, 60.0f);
-    float oneTwentyHzSecond = 1.0f - powf(1.0f - perOneTwentyHzFrame, 120.0f);
+                                                           referenceRate:60.0f];
+    float twoOneTwentyHzFrames = 1.0f - powf(1.0f - perOneTwentyHzFrame, 2.0f);
 
-    XCTAssertEqualWithAccuracy(sixtyHzSecond, oneSecondChance, 0.0001f);
-    XCTAssertEqualWithAccuracy(oneTwentyHzSecond, oneSecondChance, 0.0001f);
-    XCTAssertLessThan(perSixtyHzFrame, 0.02f);
+    XCTAssertEqualWithAccuracy(perSixtyHzFrame, 0.54f, 0.0001f);
+    XCTAssertEqualWithAccuracy(twoOneTwentyHzFrames, perSixtyHzFrame, 0.0001f);
     XCTAssertLessThan(perOneTwentyHzFrame, perSixtyHzFrame);
 }
 
@@ -415,6 +434,60 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
     XCTAssertLessThan([[view valueForKey:@"activeImagePlacementX"] floatValue], 1);
     XCTAssertGreaterThan([[view valueForKey:@"activeImagePlacementY"] floatValue], 0);
     XCTAssertLessThan([[view valueForKey:@"activeImagePlacementY"] floatValue], 1);
+}
+
+- (void)testMultiMonitorImageScheduleUsesSharedFireTime {
+    const uint8_t bytes[] = {0, 96, 180, 255};
+    NSData *mask = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+    NSArray *screens = @[
+        @{@"id": @"left", @"left": @0, @"top": @0, @"width": @420, @"height": @400},
+        @{@"id": @"right", @"left": @420, @"top": @0, @"width": @420, @"height": @400},
+    ];
+    NSDictionary *images = @{
+        @"enabled": @YES,
+        @"images": @[@{@"name": @"Signal", @"width": @2, @"height": @2,
+                       @"data": [mask base64EncodedStringWithOptions:0]}],
+        @"frequencyMs": @500,
+        @"persistenceMs": @10000,
+        @"appearMs": @1000,
+        @"disappearMs": @1000,
+        @"flickerOut": @YES,
+        @"brightnessFade": @YES,
+    };
+    NSDictionary *leftSession = @{
+        @"seed": @13579,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"left",
+        @"screens": screens,
+    };
+    NSDictionary *rightSession = @{
+        @"seed": @13579,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"right",
+        @"screens": screens,
+    };
+    MatrixCodeMetalView *left =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+                                           session:leftSession
+                                      storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
+    MatrixCodeMetalView *right =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+                                           session:rightSession
+                                      storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
+
+    [left updateImageScheduleAtTime:1700000001.0
+                         globalCols:42 globalRows:20 localCols:21 localRows:20];
+    [right updateImageScheduleAtTime:1700000001.0 + 1.0 / 120.0
+                          globalCols:42 globalRows:20 localCols:21 localRows:20];
+
+    XCTAssertNotNil([left valueForKey:@"activeImage"]);
+    XCTAssertNotNil([right valueForKey:@"activeImage"]);
+    XCTAssertEqualWithAccuracy([[left valueForKey:@"activeImageStart"] doubleValue],
+                               [[right valueForKey:@"activeImageStart"] doubleValue],
+                               0.000001);
+    XCTAssertEqualWithAccuracy([[left valueForKey:@"activeImageEnd"] doubleValue],
+                               [[right valueForKey:@"activeImageEnd"] doubleValue],
+                               0.000001);
 }
 
 - (void)testRendererDropsStoredImagesWithInvalidDimensions {

@@ -125,8 +125,15 @@
 @property(nonatomic) double fpsEma;
 @property(nonatomic, strong, nullable) NSStackView *presentationChrome;
 @property(nonatomic, strong, nullable) NSTimer *presentationChromeHideTimer;
+@property(nonatomic, strong, nullable) NSView *shortcutToast;
+@property(nonatomic, strong, nullable) NSTextField *shortcutToastLabel;
+@property(nonatomic, strong, nullable) NSTimer *shortcutToastHideTimer;
+@property(nonatomic, weak, nullable) NSWindow *observedWindow;
+@property(nonatomic) BOOL syncingWindowLayout;
 - (void)ensureMetalView;
+- (void)syncPresentationLayoutToWindow;
 - (void)revealPresentationChromeForPointerActivity;
+- (void)applyShortcutToastStyle;
 @end
 
 @implementation MatrixCodeRainHostView
@@ -208,6 +215,21 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     } mutableCopy];
 }
 
+static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
+    return [@{
+        @"images": [NSMutableArray array],
+        @"enabled": @NO,
+        @"frequencyMs": @14000,
+        @"persistenceMs": @12000,
+        @"appearMs": @4500,
+        @"disappearMs": @4500,
+        @"flickerOut": @YES,
+        @"brightnessFade": @NO,
+        @"imageScale": @0.72,
+        @"imagePlacementJitter": @0.35,
+    } mutableCopy];
+}
+
 + (void)initialize {
     if (self == MatrixCodeRainHostView.class) {
         MatrixCodeClaimedScreenIDs = [NSMutableSet set];
@@ -250,6 +272,11 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
                selector:@selector(previewValuesDidChange:)
                    name:MatrixCodePreviewValuesDidChangeNotification
                  object:nil];
+        [NSNotificationCenter.defaultCenter
+            addObserver:self
+               selector:@selector(applyShortcutToastStyle)
+                   name:MatrixCodeSettingsThemeDidChangeNotification
+                 object:nil];
     }
     return self;
 }
@@ -259,12 +286,109 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     [self.animationTimer invalidate];
     [self.backdropClickTimer invalidate];
     [self.presentationChromeHideTimer invalidate];
+    [self.shortcutToastHideTimer invalidate];
+}
+
+- (NSArray<NSNotificationName> *)windowGeometryNotificationNames {
+    return @[
+        NSWindowDidResizeNotification,
+        NSWindowDidEndLiveResizeNotification,
+        NSWindowDidEnterFullScreenNotification,
+        NSWindowDidExitFullScreenNotification,
+    ];
+}
+
+- (void)observeCurrentWindowGeometry {
+    NSWindow *window = self.window;
+    if (self.observedWindow == window) return;
+    for (NSNotificationName name in [self windowGeometryNotificationNames]) {
+        if (self.observedWindow) {
+            [NSNotificationCenter.defaultCenter removeObserver:self
+                                                          name:name
+                                                        object:self.observedWindow];
+        }
+        if (window) {
+            [NSNotificationCenter.defaultCenter addObserver:self
+                                                   selector:@selector(windowGeometryDidChange:)
+                                                       name:name
+                                                     object:window];
+        }
+    }
+    self.observedWindow = window;
+}
+
+- (void)syncContentViewFrameToWindowIfNeeded {
+    if (!self.window || self.window.contentView != self) return;
+    if (self.syncingWindowLayout) return;
+    NSSize targetSize = self.window.contentLayoutRect.size;
+    NSSize frameContentSize = [self.window contentRectForFrameRect:self.window.frame].size;
+    targetSize.width = fmax(targetSize.width, frameContentSize.width);
+    targetSize.height = fmax(targetSize.height, frameContentSize.height);
+    if (self.window.styleMask & NSWindowStyleMaskFullScreen) {
+        NSScreen *screen = self.window.screen ?: NSScreen.mainScreen;
+        targetSize.width = fmax(targetSize.width, NSWidth(screen.frame));
+        targetSize.height = fmax(targetSize.height, NSHeight(screen.frame));
+    }
+    if (targetSize.width < 1 || targetSize.height < 1) return;
+    NSRect targetFrame = NSMakeRect(0, 0, targetSize.width, targetSize.height);
+    NSRect currentFrame = self.frame;
+    if (fabs(NSMinX(currentFrame) - NSMinX(targetFrame)) <= 0.5 &&
+        fabs(NSMinY(currentFrame) - NSMinY(targetFrame)) <= 0.5 &&
+        fabs(NSWidth(currentFrame) - NSWidth(targetFrame)) <= 0.5 &&
+        fabs(NSHeight(currentFrame) - NSHeight(targetFrame)) <= 0.5) {
+        return;
+    }
+    self.syncingWindowLayout = YES;
+    [super setFrame:targetFrame];
+    self.syncingWindowLayout = NO;
+}
+
+- (void)syncHostedSubviewFrames {
+    NSRect bounds = self.bounds;
+    self.metalView.frame = bounds;
+    self.introOverlay.frame = bounds;
+}
+
+- (void)syncPresentationLayoutToWindow {
+    [self syncContentViewFrameToWindowIfNeeded];
+    [self syncHostedSubviewFrames];
+    [self.configurationController refreshEmbeddedPresentationLayout];
+}
+
+- (void)windowGeometryDidChange:(NSNotification *)notification {
+    (void)notification;
+    [self syncPresentationLayoutToWindow];
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf syncPresentationLayoutToWindow];
+    });
+}
+
+- (void)setFrameSize:(NSSize)newSize {
+    [super setFrameSize:newSize];
+    [self syncHostedSubviewFrames];
+    [self.configurationController refreshEmbeddedPresentationLayout];
+}
+
+- (void)layout {
+    [super layout];
+    [self syncContentViewFrameToWindowIfNeeded];
+    [self syncHostedSubviewFrames];
+    [self.configurationController refreshEmbeddedPresentationLayout];
+}
+
+- (void)layoutSubtreeIfNeeded {
+    [super layoutSubtreeIfNeeded];
+    [self syncPresentationLayoutToWindow];
 }
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
+    [self observeCurrentWindowGeometry];
+    [self syncContentViewFrameToWindowIfNeeded];
     self.window.acceptsMouseMovedEvents = YES;
     [self ensureMetalView];
+    [self syncHostedSubviewFrames];
     [self revealPresentationChromeForPointerActivity];
 }
 
@@ -533,6 +657,94 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     [self setFPSOverlayVisible:!self.fpsOverlayVisible notify:YES];
 }
 
+- (void)ensureShortcutToast {
+    if (self.shortcutToast) return;
+    NSView *toast = [[NSView alloc] initWithFrame:NSZeroRect];
+    toast.translatesAutoresizingMaskIntoConstraints = NO;
+    toast.identifier = @"shortcut-toast";
+    toast.wantsLayer = YES;
+    toast.hidden = YES;
+    toast.alphaValue = 0;
+
+    NSTextField *label = [NSTextField labelWithString:@""];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.identifier = @"shortcut-toast-label";
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    label.maximumNumberOfLines = 1;
+    [toast addSubview:label];
+    [self addSubview:toast positioned:NSWindowAbove relativeTo:nil];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [toast.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
+        [toast.topAnchor constraintEqualToAnchor:self.topAnchor constant:16],
+        [toast.widthAnchor constraintLessThanOrEqualToConstant:280],
+        [toast.heightAnchor constraintGreaterThanOrEqualToConstant:34],
+        [label.leadingAnchor constraintEqualToAnchor:toast.leadingAnchor constant:13],
+        [label.trailingAnchor constraintEqualToAnchor:toast.trailingAnchor constant:-13],
+        [label.topAnchor constraintEqualToAnchor:toast.topAnchor constant:8],
+        [label.bottomAnchor constraintEqualToAnchor:toast.bottomAnchor constant:-8],
+    ]];
+    self.shortcutToast = toast;
+    self.shortcutToastLabel = label;
+    [self applyShortcutToastStyle];
+}
+
+- (void)applyShortcutToastStyle {
+    if (!self.shortcutToast || !self.shortcutToastLabel) return;
+    MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
+    self.shortcutToast.layer.cornerRadius = 6.0;
+    self.shortcutToast.layer.borderWidth = 1.0;
+    self.shortcutToast.layer.borderColor = theme.borderColor.CGColor;
+    self.shortcutToast.layer.backgroundColor = theme.panelColor.CGColor;
+    self.shortcutToast.layer.shadowColor = theme.accentColor.CGColor;
+    self.shortcutToast.layer.shadowOpacity = 0.22;
+    self.shortcutToast.layer.shadowRadius = 20.0;
+    self.shortcutToast.layer.shadowOffset = NSZeroSize;
+
+    NSString *text = self.shortcutToastLabel.stringValue ?: @"";
+    self.shortcutToastLabel.attributedStringValue = [[NSAttributedString alloc]
+        initWithString:text.uppercaseString
+            attributes:@{
+                NSFontAttributeName: [theme monospacedFontOfSize:12 weight:NSFontWeightRegular],
+                NSForegroundColorAttributeName: theme.accentColor,
+                NSKernAttributeName: @(12.0 * 0.08),
+            }];
+}
+
+- (void)hideShortcutToast:(NSTimer *)timer {
+    (void)timer;
+    NSView *toast = self.shortcutToast;
+    if (!toast || toast.hidden) return;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.18;
+        toast.animator.alphaValue = 0;
+    } completionHandler:^{
+        if (toast.alphaValue <= 0.001) toast.hidden = YES;
+    }];
+}
+
+- (void)showShortcutToastForLabel:(NSString *)label enabled:(BOOL)enabled {
+    [self ensureShortcutToast];
+    NSString *state = enabled ? @"enabled" : @"disabled";
+    self.shortcutToastLabel.stringValue =
+        [NSString stringWithFormat:@"%@ %@", label ?: @"", state];
+    [self applyShortcutToastStyle];
+    [self.shortcutToastHideTimer invalidate];
+    self.shortcutToast.hidden = NO;
+    [self addSubview:self.shortcutToast positioned:NSWindowAbove relativeTo:nil];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.18;
+        self.shortcutToast.animator.alphaValue = 1;
+    } completionHandler:nil];
+    __weak typeof(self) weakSelf = self;
+    self.shortcutToastHideTimer =
+        [NSTimer scheduledTimerWithTimeInterval:1.7
+                                        repeats:NO
+                                          block:^(NSTimer *timer) {
+        [weakSelf hideShortcutToast:timer];
+    }];
+}
+
 - (void)updateFPSOverlayAtDate:(NSDate *)date {
     if (!self.fpsOverlayVisible) return;
     NSTimeInterval now = date.timeIntervalSince1970;
@@ -564,6 +776,8 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 
 - (void)startAnimation {
     self.hostActive = YES;
+    [self observeCurrentWindowGeometry];
+    [self syncPresentationLayoutToWindow];
     [self ensureMetalView];
     [self.metalView reloadStoredValues:[self.preferences storedValues]];
     [self.metalView setAnimationActive:[self animationShouldRun]];
@@ -803,6 +1017,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     if ([self isStandaloneMultiMonitorPresentation] && ![self isStandaloneMultiMonitorControlHost]) return;
     [self showSettingsOverlay];
     [self.configurationController openEditorKind:kind];
+    [self syncPresentationLayoutToWindow];
 }
 
 - (NSMutableDictionary<NSString *, NSString *> *)storedValuesForShortcutMutation {
@@ -817,10 +1032,9 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
                     userInfo:@{MatrixCodePreviewValuesKey: values}];
 }
 
-- (void)toggleMessagesShortcut {
+- (BOOL)toggleMessagesShortcut {
     if (self.configurationController) {
-        [self.configurationController toggleMessagesEnabled];
-        return;
+        return [self.configurationController toggleMessagesEnabled];
     }
     NSMutableDictionary<NSString *, NSString *> *values = [self storedValuesForShortcutMutation];
     NSDictionary *stored = MatrixCodeRainHostJSONObject(values[@"mx-messages"], NSDictionary.class);
@@ -835,9 +1049,29 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
         }
     }
     BOOL enabled = MatrixCodeRainHostBool(messages, @"enabled", NO);
-    messages[@"enabled"] = MatrixCodeRainHostBoolObject(!enabled);
+    BOOL nextEnabled = !enabled;
+    messages[@"enabled"] = MatrixCodeRainHostBoolObject(nextEnabled);
     values[@"mx-messages"] = MatrixCodeRainHostJSONString(messages);
     [self commitShortcutValues:values];
+    return nextEnabled;
+}
+
+- (BOOL)toggleImagesShortcut {
+    if (self.configurationController) {
+        return [self.configurationController toggleImagesEnabled];
+    }
+    NSMutableDictionary<NSString *, NSString *> *values = [self storedValuesForShortcutMutation];
+    NSDictionary *stored = MatrixCodeRainHostJSONObject(values[@"mx-images"], NSDictionary.class);
+    NSMutableDictionary *images = MatrixCodeRainHostDefaultImagesDocument();
+    if (stored) {
+        [images addEntriesFromDictionary:stored];
+    }
+    BOOL enabled = MatrixCodeRainHostBool(images, @"enabled", NO);
+    BOOL nextEnabled = !enabled;
+    images[@"enabled"] = MatrixCodeRainHostBoolObject(nextEnabled);
+    values[@"mx-images"] = MatrixCodeRainHostJSONString(images);
+    [self commitShortcutValues:values];
+    return nextEnabled;
 }
 
 - (void)nudgeDensityByFactor:(double)factor {
@@ -869,6 +1103,8 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 - (void)showSettingsOverlay {
     if (self.mode != MatrixCodeRainHostModeStandalone) return;
     if ([self isStandaloneMultiMonitorPresentation] && ![self isStandaloneMultiMonitorControlHost]) return;
+    [self observeCurrentWindowGeometry];
+    [self syncPresentationLayoutToWindow];
     [self revealPresentationChromeForPointerActivity];
     [self ensureMetalView];
     if (!self.configurationController) {
@@ -884,6 +1120,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
         [self.configurationController showSettingsPanel];
     }
     [self raisePresentationChrome];
+    [self syncPresentationLayoutToWindow];
     [self.window makeFirstResponder:self];
 }
 
@@ -1029,6 +1266,10 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
         (deviceIndependentFlags & (NSEventModifierFlagControl | NSEventModifierFlagOption)) == 0;
     BOOL optionOnly = (deviceIndependentFlags & NSEventModifierFlagOption) != 0 &&
         (deviceIndependentFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) == 0;
+    BOOL shiftOnly = (deviceIndependentFlags & NSEventModifierFlagShift) != 0 &&
+        (deviceIndependentFlags & (NSEventModifierFlagCommand |
+                                   NSEventModifierFlagControl |
+                                   NSEventModifierFlagOption)) == 0;
     BOOL bareWebShortcut = !hasCommandControlOrOption;
     BOOL multiMonitorPresentation = [self isStandaloneMultiMonitorPresentation];
     if (multiMonitorPresentation && ![self isStandaloneMultiMonitorControlHost]) {
@@ -1047,14 +1288,21 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
         [self toggleSettingsOverlay];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"i"]) {
         [self openSettingsEditorKind:@"intro"];
+    } else if (!event.isARepeat && shiftOnly && [characters isEqualToString:@"m"]) {
+        BOOL enabled = [self toggleMessagesShortcut];
+        [self showShortcutToastForLabel:@"Messages" enabled:enabled];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"m"]) {
         [self openSettingsEditorKind:@"messages"];
+    } else if (!event.isARepeat && shiftOnly && [characters isEqualToString:@"x"]) {
+        BOOL enabled = [self toggleImagesShortcut];
+        [self showShortcutToastForLabel:@"Images" enabled:enabled];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"x"]) {
         [self openSettingsEditorKind:@"images"];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"c"]) {
         [self openSettingsEditorKind:@"countdown"];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"n"]) {
-        [self toggleMessagesShortcut];
+        BOOL enabled = [self toggleMessagesShortcut];
+        [self showShortcutToastForLabel:@"Messages" enabled:enabled];
     } else if (!event.isARepeat && bareWebShortcut &&
                ([characters isEqualToString:@"-"] || [typedCharacters isEqualToString:@"_"])) {
         [self nudgeDensityByFactor:1.0 / MatrixCodeDensityKeyStep];
