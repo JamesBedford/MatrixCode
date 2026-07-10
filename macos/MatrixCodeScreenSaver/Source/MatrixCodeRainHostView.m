@@ -2,6 +2,7 @@
 
 #import <float.h>
 #import <os/log.h>
+#import <QuartzCore/QuartzCore.h>
 
 #import "MatrixCodeConfigurationController.h"
 #import "MatrixCodeIntroOverlayView.h"
@@ -9,7 +10,90 @@
 #import "MatrixCodePreferences.h"
 #import "MatrixCodeRainLifecycle.h"
 #import "MatrixCodeSession.h"
+#import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeTokenResolver.h"
+
+@interface MatrixCodePresentationButton : NSButton
+@property(nonatomic, strong, nullable) NSTrackingArea *hoverTrackingArea;
+@property(nonatomic) BOOL hovered;
+@end
+
+@implementation MatrixCodePresentationButton
+
+- (instancetype)initWithFrame:(NSRect)frameRect {
+    self = [super initWithFrame:frameRect];
+    if (self) {
+        self.bezelStyle = NSBezelStyleRegularSquare;
+        self.bordered = NO;
+        self.focusRingType = NSFocusRingTypeNone;
+        self.wantsLayer = YES;
+        self.alignment = NSTextAlignmentCenter;
+        [NSNotificationCenter.defaultCenter
+            addObserver:self
+               selector:@selector(applyChromeStyle)
+                   name:MatrixCodeSettingsThemeDidChangeNotification
+                 object:nil];
+        [self applyChromeStyle];
+    }
+    return self;
+}
+
+- (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
+- (void)setTitle:(NSString *)title {
+    [super setTitle:title];
+    [self applyChromeStyle];
+}
+
+- (void)updateTrackingAreas {
+    if (self.hoverTrackingArea) {
+        [self removeTrackingArea:self.hoverTrackingArea];
+    }
+    self.hoverTrackingArea = [[NSTrackingArea alloc]
+        initWithRect:NSZeroRect
+             options:NSTrackingMouseEnteredAndExited |
+                     NSTrackingActiveInKeyWindow |
+                     NSTrackingInVisibleRect
+               owner:self
+            userInfo:nil];
+    [self addTrackingArea:self.hoverTrackingArea];
+    [super updateTrackingAreas];
+}
+
+- (void)mouseEntered:(NSEvent *)event {
+    self.hovered = YES;
+    [self applyChromeStyle];
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    self.hovered = NO;
+    [self applyChromeStyle];
+}
+
+- (void)applyChromeStyle {
+    MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
+    NSString *title = self.title ?: @"";
+    self.attributedTitle = [[NSAttributedString alloc]
+        initWithString:title.uppercaseString
+            attributes:@{
+                NSFontAttributeName: [theme monospacedFontOfSize:12 weight:NSFontWeightRegular],
+                NSForegroundColorAttributeName: theme.accentColor,
+                NSKernAttributeName: @(12.0 * 0.08),
+            }];
+    self.contentTintColor = theme.accentColor;
+    self.layer.cornerRadius = 6.0;
+    self.layer.borderWidth = 1.0;
+    self.layer.borderColor = (self.hovered ? theme.accentColor : theme.borderColor).CGColor;
+    self.layer.backgroundColor = theme.panelColor.CGColor;
+    self.layer.shadowColor = theme.accentColor.CGColor;
+    self.layer.shadowOpacity = self.hovered ? 0.4 : 0.0;
+    self.layer.shadowRadius = self.hovered ? 12.0 : 0.0;
+    self.layer.shadowOffset = NSZeroSize;
+}
+
+@end
 
 @interface MatrixCodeRainHostView ()
 @property(nonatomic) MatrixCodeRainHostMode mode;
@@ -39,6 +123,10 @@
 @property(nonatomic) NSTimeInterval fpsLastFrameTime;
 @property(nonatomic) NSTimeInterval fpsLastDisplayUpdate;
 @property(nonatomic) double fpsEma;
+@property(nonatomic, strong, nullable) NSStackView *presentationChrome;
+@property(nonatomic, strong, nullable) NSTimer *presentationChromeHideTimer;
+- (void)ensureMetalView;
+- (void)revealPresentationChromeForPointerActivity;
 @end
 
 @implementation MatrixCodeRainHostView
@@ -47,9 +135,64 @@ NSString * const MatrixCodeRainHostRequestMultiMonitorNotification =
     @"MatrixCodeRainHostRequestMultiMonitorNotification";
 NSString * const MatrixCodeRainHostRequestExitMultiMonitorNotification =
     @"MatrixCodeRainHostRequestExitMultiMonitorNotification";
+NSString * const MatrixCodeRainHostFPSOverlayVisibilityDidChangeNotification =
+    @"MatrixCodeRainHostFPSOverlayVisibilityDidChangeNotification";
+NSString * const MatrixCodeRainHostFPSOverlayVisibleKey =
+    @"visible";
+
+static const double MatrixCodeDensityKeyStep = 1.2;
+static const NSTimeInterval MatrixCodePresentationChromeHideDelay = 2.8;
 
 static NSMutableSet<NSString *> *MatrixCodeClaimedScreenIDs;
 static NSTimeInterval MatrixCodeLastScreenClaimAt;
+
+static id MatrixCodeRainHostJSONObject(NSString *raw, Class expectedClass) {
+    if (![raw isKindOfClass:NSString.class]) return nil;
+    NSData *data = [raw dataUsingEncoding:NSUTF8StringEncoding];
+    id object = data ? [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:nil] : nil;
+    return [object isKindOfClass:expectedClass] ? object : nil;
+}
+
+static NSString *MatrixCodeRainHostJSONString(id object) {
+    NSData *data = [NSJSONSerialization dataWithJSONObject:object options:0 error:nil];
+    return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
+}
+
+static double MatrixCodeRainHostNumber(NSDictionary *dictionary,
+                                       NSString *key,
+                                       double fallback,
+                                       double minimum,
+                                       double maximum) {
+    id value = dictionary[key];
+    if (![value isKindOfClass:NSNumber.class] ||
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() ||
+        !isfinite([value doubleValue])) {
+        return fallback;
+    }
+    return fmin(maximum, fmax(minimum, [value doubleValue]));
+}
+
+static BOOL MatrixCodeRainHostBool(NSDictionary *dictionary, NSString *key, BOOL fallback) {
+    id value = dictionary[key];
+    return [value isKindOfClass:NSNumber.class] ? [value boolValue] : fallback;
+}
+
+static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
+    return [@{
+        @"messages": [@[@"WAKE UP", @"THE MATRIX HAS YOU", @"FOLLOW THE WHITE RABBIT", @"{countup}"] mutableCopy],
+        @"enabled": @NO,
+        @"frequencyMs": @8000,
+        @"persistenceMs": @10000,
+        @"appearMs": @4000,
+        @"disappearMs": @4000,
+        @"flickerOut": @YES,
+        @"brightnessFade": @NO,
+        @"messageLayout": @"row",
+        @"messageDirection": @"topToBottom",
+        @"verticalPosition": @0.475,
+        @"verticalJitter": @0.25,
+    } mutableCopy];
+}
 
 + (void)initialize {
     if (self == MatrixCodeRainHostView.class) {
@@ -101,12 +244,14 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [self.animationTimer invalidate];
     [self.backdropClickTimer invalidate];
+    [self.presentationChromeHideTimer invalidate];
 }
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     self.window.acceptsMouseMovedEvents = YES;
     [self ensureMetalView];
+    [self revealPresentationChromeForPointerActivity];
 }
 
 - (void)updateTrackingAreas {
@@ -336,14 +481,29 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     self.fpsOverlay = overlay;
 }
 
-- (void)toggleFPSOverlay {
+- (void)setFPSOverlayVisible:(BOOL)visible notify:(BOOL)notify {
     [self ensureFPSOverlay];
-    self.fpsOverlayVisible = !self.fpsOverlayVisible;
+    if (self.fpsOverlayVisible == visible && self.fpsOverlay.hidden == !visible) return;
+    self.fpsOverlayVisible = visible;
     self.fpsOverlay.hidden = !self.fpsOverlayVisible;
     self.fpsLastFrameTime = 0;
     self.fpsLastDisplayUpdate = 0;
     self.fpsEma = 0;
     if (self.fpsOverlayVisible) self.fpsOverlay.stringValue = @"0 FPS";
+    if (notify) {
+        [NSNotificationCenter.defaultCenter
+            postNotificationName:MatrixCodeRainHostFPSOverlayVisibilityDidChangeNotification
+                          object:self
+                        userInfo:@{MatrixCodeRainHostFPSOverlayVisibleKey: @(visible)}];
+    }
+}
+
+- (void)setFPSOverlayVisible:(BOOL)visible {
+    [self setFPSOverlayVisible:visible notify:NO];
+}
+
+- (void)toggleFPSOverlay {
+    [self setFPSOverlayVisible:!self.fpsOverlayVisible notify:YES];
 }
 
 - (void)updateFPSOverlayAtDate:(NSDate *)date {
@@ -450,6 +610,184 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     [self animateOneFrame];
 }
 
+- (BOOL)shouldShowPresentationChrome {
+    return self.mode == MatrixCodeRainHostModeStandalone &&
+        ![self isStandaloneMultiMonitorPresentation];
+}
+
+- (MatrixCodePresentationButton *)presentationButtonWithTitle:(NSString *)title
+                                                       action:(SEL)action
+                                                   identifier:(NSString *)identifier
+                                                      toolTip:(NSString *)toolTip {
+    MatrixCodePresentationButton *button =
+        [[MatrixCodePresentationButton alloc] initWithFrame:NSZeroRect];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    button.title = title;
+    button.target = self;
+    button.action = action;
+    button.identifier = identifier;
+    button.toolTip = toolTip;
+    [button.heightAnchor constraintEqualToConstant:32].active = YES;
+    [button.widthAnchor constraintGreaterThanOrEqualToConstant:
+        [identifier isEqualToString:@"presentation-multimonitor"] ? 148 : 122].active = YES;
+    return button;
+}
+
+- (void)ensurePresentationChrome {
+    if (![self shouldShowPresentationChrome]) {
+        [self.presentationChrome removeFromSuperview];
+        self.presentationChrome = nil;
+        return;
+    }
+    if (self.presentationChrome) return;
+
+    NSButton *fullscreen = [self presentationButtonWithTitle:@"⛶ Fullscreen"
+                                                      action:@selector(toggleStandaloneFullscreen:)
+                                                  identifier:@"presentation-fullscreen"
+                                                     toolTip:@"Fullscreen (F)"];
+    NSButton *multiMonitor = [self presentationButtonWithTitle:@"▦ Multi-monitor"
+                                                        action:@selector(enterStandaloneMultiMonitor:)
+                                                    identifier:@"presentation-multimonitor"
+                                                       toolTip:@"Start multi-monitor mode"];
+    NSStackView *chrome = [NSStackView stackViewWithViews:@[fullscreen, multiMonitor]];
+    chrome.translatesAutoresizingMaskIntoConstraints = NO;
+    chrome.identifier = @"presentation-chrome";
+    chrome.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    chrome.alignment = NSLayoutAttributeCenterY;
+    chrome.spacing = 8;
+    chrome.alphaValue = 0;
+    chrome.hidden = YES;
+    [self addSubview:chrome positioned:NSWindowAbove relativeTo:nil];
+    [NSLayoutConstraint activateConstraints:@[
+        [chrome.topAnchor constraintEqualToAnchor:self.topAnchor constant:16],
+        [chrome.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
+    ]];
+    self.presentationChrome = chrome;
+}
+
+- (void)raisePresentationChrome {
+    if (self.presentationChrome.superview == self) {
+        [self addSubview:self.presentationChrome positioned:NSWindowAbove relativeTo:nil];
+    }
+}
+
+- (void)hidePresentationChrome {
+    if (!self.presentationChrome || self.presentationChrome.hidden) return;
+    NSStackView *chrome = self.presentationChrome;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.24;
+        chrome.animator.alphaValue = 0;
+    } completionHandler:^{
+        if (chrome.alphaValue <= 0.001) chrome.hidden = YES;
+    }];
+}
+
+- (void)schedulePresentationChromeHide {
+    [self.presentationChromeHideTimer invalidate];
+    __weak typeof(self) weakSelf = self;
+    self.presentationChromeHideTimer =
+        [NSTimer scheduledTimerWithTimeInterval:MatrixCodePresentationChromeHideDelay
+                                        repeats:NO
+                                          block:^(NSTimer *timer) {
+        [weakSelf hidePresentationChrome];
+    }];
+}
+
+- (void)revealPresentationChromeForPointerActivity {
+    if (![self shouldShowPresentationChrome]) return;
+    [self ensurePresentationChrome];
+    [self raisePresentationChrome];
+    self.presentationChrome.hidden = NO;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.24;
+        self.presentationChrome.animator.alphaValue = 1;
+    } completionHandler:nil];
+    [self schedulePresentationChromeHide];
+}
+
+- (void)toggleStandaloneFullscreen:(id)sender {
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    if ([self isStandaloneMultiMonitorPresentation]) return;
+    if (!self.window) return;
+    [self.window toggleFullScreen:sender ?: self];
+}
+
+- (void)enterStandaloneMultiMonitor:(id)sender {
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    if ([self isStandaloneMultiMonitorPresentation]) return;
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:MatrixCodeRainHostRequestMultiMonitorNotification
+                      object:self];
+}
+
+- (void)toggleSettingsOverlay {
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    if ([self isStandaloneMultiMonitorPresentation]) return;
+    if (self.configurationController) {
+        [self.configurationController cancelOperation:self];
+        [self hidePresentationChrome];
+    } else {
+        [self showSettingsOverlay];
+    }
+}
+
+- (void)openSettingsEditorKind:(NSString *)kind {
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    if ([self isStandaloneMultiMonitorPresentation]) return;
+    [self showSettingsOverlay];
+    [self.configurationController openEditorKind:kind];
+}
+
+- (NSMutableDictionary<NSString *, NSString *> *)storedValuesForShortcutMutation {
+    return [[self.preferences storedValues] mutableCopy];
+}
+
+- (void)commitShortcutValues:(NSDictionary<NSString *, NSString *> *)values {
+    [self.preferences commitValues:values];
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:MatrixCodePreviewValuesDidChangeNotification
+                      object:self
+                    userInfo:@{MatrixCodePreviewValuesKey: values}];
+}
+
+- (void)toggleMessagesShortcut {
+    if (self.configurationController) {
+        [self.configurationController toggleMessagesEnabled];
+        return;
+    }
+    NSMutableDictionary<NSString *, NSString *> *values = [self storedValuesForShortcutMutation];
+    NSDictionary *stored = MatrixCodeRainHostJSONObject(values[@"mx-messages"], NSDictionary.class);
+    NSMutableDictionary *messages = MatrixCodeRainHostDefaultMessagesDocument();
+    if (stored) {
+        for (NSString *key in stored) {
+            if ([key isEqualToString:@"messages"]) continue;
+            messages[key] = stored[key];
+        }
+        if ([stored[@"messages"] isKindOfClass:NSArray.class]) {
+            messages[@"messages"] = stored[@"messages"];
+        }
+    }
+    BOOL enabled = MatrixCodeRainHostBool(messages, @"enabled", NO);
+    messages[@"enabled"] = @(!enabled);
+    values[@"mx-messages"] = MatrixCodeRainHostJSONString(messages);
+    [self commitShortcutValues:values];
+}
+
+- (void)nudgeDensityByFactor:(double)factor {
+    if (!isfinite(factor) || factor <= 0) return;
+    if (self.configurationController) {
+        [self.configurationController nudgeDensityByFactor:factor];
+        return;
+    }
+    NSMutableDictionary<NSString *, NSString *> *values = [self storedValuesForShortcutMutation];
+    NSDictionary *stored = MatrixCodeRainHostJSONObject(values[@"mx-controls"], NSDictionary.class);
+    NSMutableDictionary *controls = stored ? [stored mutableCopy] : [NSMutableDictionary dictionary];
+    double current = MatrixCodeRainHostNumber(controls, @"density", 2.0, 0.1, 100.0);
+    controls[@"density"] = @(fmin(100.0, fmax(0.1, current * factor)));
+    values[@"mx-controls"] = MatrixCodeRainHostJSONString(controls);
+    [self commitShortcutValues:values];
+}
+
 - (NSWindow *)configureWindow {
     if (!self.configurationController) {
         __weak typeof(self) weakSelf = self;
@@ -464,6 +802,7 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
 - (void)showSettingsOverlay {
     if (self.mode != MatrixCodeRainHostModeStandalone) return;
     if ([self isStandaloneMultiMonitorPresentation]) return;
+    [self revealPresentationChromeForPointerActivity];
     [self ensureMetalView];
     if (!self.configurationController) {
         __weak typeof(self) weakSelf = self;
@@ -477,12 +816,14 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     } else {
         [self.configurationController showSettingsPanel];
     }
+    [self raisePresentationChrome];
     [self.window makeFirstResponder:self];
 }
 
 - (void)revealSettingsOverlayForPointerActivity {
     if (self.mode != MatrixCodeRainHostModeStandalone) return;
     if ([self isStandaloneMultiMonitorPresentation]) return;
+    [self revealPresentationChromeForPointerActivity];
     [self showSettingsOverlay];
 }
 
@@ -555,6 +896,7 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
 }
 
 - (void)mouseDown:(NSEvent *)event {
+    [self revealPresentationChromeForPointerActivity];
     if (self.configurationController && self.mode == MatrixCodeRainHostModeStandalone) {
         [self.configurationController showSettingsPanel];
     } else if (self.introOverlay.playing) {
@@ -576,18 +918,45 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
 
 - (void)keyDown:(NSEvent *)event {
     NSString *characters = event.charactersIgnoringModifiers.lowercaseString;
+    NSString *typedCharacters = event.characters.lowercaseString;
     NSEventModifierFlags deviceIndependentFlags =
         event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
     BOOL hasCommandControlOrOption = (deviceIndependentFlags &
         (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption)) != 0;
     BOOL commandOnly = (deviceIndependentFlags & NSEventModifierFlagCommand) != 0 &&
         (deviceIndependentFlags & (NSEventModifierFlagControl | NSEventModifierFlagOption)) == 0;
+    BOOL optionOnly = (deviceIndependentFlags & NSEventModifierFlagOption) != 0 &&
+        (deviceIndependentFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) == 0;
+    BOOL bareWebShortcut = !hasCommandControlOrOption;
+    if ([self isStandaloneMultiMonitorPresentation]) {
+        if (event.keyCode == 53 && [self exitStandalonePresentationIfNeeded]) return;
+        [super keyDown:event];
+        return;
+    }
     if (!event.isARepeat && commandOnly && [characters isEqualToString:@","] &&
         self.mode == MatrixCodeRainHostModeStandalone) {
         [self showSettingsOverlay];
-    } else if (!event.isARepeat && !hasCommandControlOrOption && [characters isEqualToString:@"f"]) {
+    } else if (!event.isARepeat && optionOnly && [characters isEqualToString:@"f"]) {
         [self toggleFPSOverlay];
-    } else if (!event.isARepeat && !hasCommandControlOrOption && [characters isEqualToString:@"p"]) {
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"f"]) {
+        [self toggleStandaloneFullscreen:event];
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"h"]) {
+        [self toggleSettingsOverlay];
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"i"]) {
+        [self openSettingsEditorKind:@"intro"];
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"m"]) {
+        [self openSettingsEditorKind:@"messages"];
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"c"]) {
+        [self openSettingsEditorKind:@"countdown"];
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"n"]) {
+        [self toggleMessagesShortcut];
+    } else if (!event.isARepeat && bareWebShortcut &&
+               ([characters isEqualToString:@"-"] || [typedCharacters isEqualToString:@"_"])) {
+        [self nudgeDensityByFactor:1.0 / MatrixCodeDensityKeyStep];
+    } else if (!event.isARepeat && bareWebShortcut &&
+               ([characters isEqualToString:@"="] || [typedCharacters isEqualToString:@"+"])) {
+        [self nudgeDensityByFactor:MatrixCodeDensityKeyStep];
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"p"]) {
         [self toggleUserPaused];
     } else if (self.configurationController && event.keyCode == 53) {
         [self.configurationController cancelOperation:self];

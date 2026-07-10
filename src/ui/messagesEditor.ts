@@ -1,4 +1,4 @@
-import type { MessagesDoc } from "../types.ts";
+import type { MessageDirection, MessageLayout, MessagesDoc } from "../types.ts";
 import { MessagesStore, DEFAULT_MESSAGES, cloneMessages } from "../config/messagesStore.ts";
 import { ModalEditor } from "./modalKit.ts";
 import { momentHint } from "../sim/tokens.ts";
@@ -92,7 +92,7 @@ export class MessagesEditor extends ModalEditor {
     hint.tabIndex = 0;
     hint.setAttribute("aria-describedby", "mx-messages-token-tooltip");
     hint.append(
-      "Messages appear scattered inside the rain. Raise Density to make them easier to read. Use {name}, {greeting}, {uptime}, {fps}, {time}, {countdown} or {countup}. ⓘ",
+      "Messages appear inside the rain as a row or inside one falling drop. Raise Density to make them easier to read. Use {name}, {greeting}, {uptime}, {fps}, {time}, {countdown} or {countup}. ⓘ",
     );
 
     const tooltip = document.createElement("span");
@@ -119,12 +119,43 @@ export class MessagesEditor extends ModalEditor {
     const showMessages = this.toggleField("Show messages", this.draft.enabled, (v) => (this.draft.enabled = v));
     showMessages.title = "Show messages (N)";
     behaviour.appendChild(showMessages);
+    behaviour.appendChild(this.choiceField<MessageLayout>(
+      "Message layout",
+      this.draft.messageLayout,
+      [
+        { value: "row", label: "Row across rain" },
+        { value: "drop", label: "Single drop" },
+      ],
+      (v) => {
+        this.draft.messageLayout = v;
+        this.build();
+      },
+    ));
+    behaviour.appendChild(this.choiceField<MessageDirection>(
+      "Drop direction",
+      this.draft.messageDirection,
+      [
+        { value: "topToBottom", label: "Top to bottom" },
+        { value: "bottomToTop", label: "Bottom to top" },
+      ],
+      (v) => (this.draft.messageDirection = v),
+      this.draft.messageLayout !== "drop",
+    ));
     behaviour.appendChild(this.secondsField("Show one every (s)", this.draft.frequencyMs, (ms) => (this.draft.frequencyMs = ms)));
     behaviour.appendChild(this.secondsField("Each stays for (s)", this.draft.persistenceMs, (ms) => (this.draft.persistenceMs = ms)));
     behaviour.appendChild(this.secondsField("Appear over (s)", this.draft.appearMs, (ms) => (this.draft.appearMs = ms)));
     behaviour.appendChild(this.secondsField("Disappear over (s)", this.draft.disappearMs, (ms) => (this.draft.disappearMs = ms)));
-    behaviour.appendChild(this.percentField("Vertical position (0 top–100 bottom)", this.draft.verticalPosition, (f) => (this.draft.verticalPosition = f)));
-    behaviour.appendChild(this.percentField("Vertical randomness (%)", this.draft.verticalJitter, (f) => (this.draft.verticalJitter = f)));
+    const dropLayout = this.draft.messageLayout === "drop";
+    behaviour.appendChild(this.percentField(
+      dropLayout ? "Horizontal position (0 left–100 right)" : "Vertical position (0 top–100 bottom)",
+      this.draft.verticalPosition,
+      (f) => (this.draft.verticalPosition = f),
+    ));
+    behaviour.appendChild(this.percentField(
+      dropLayout ? "Horizontal randomness (%)" : "Vertical randomness (%)",
+      this.draft.verticalJitter,
+      (f) => (this.draft.verticalJitter = f),
+    ));
     behaviour.appendChild(this.toggleField("Flicker dissolve", this.draft.flickerOut, (v) => (this.draft.flickerOut = v)));
     behaviour.appendChild(this.toggleField("Brightness fade", this.draft.brightnessFade, (v) => (this.draft.brightnessFade = v)));
     this.dialog.appendChild(behaviour);
@@ -155,6 +186,31 @@ export class MessagesEditor extends ModalEditor {
         return [text, actions];
       },
     });
+  }
+
+  private choiceField<T extends string>(
+    label: string,
+    value: T,
+    options: readonly { value: T; label: string }[],
+    onChange: (v: T) => void,
+    disabled = false,
+  ): HTMLElement {
+    const field = document.createElement("label");
+    field.className = "mx-field";
+    const span = document.createElement("span");
+    span.textContent = label;
+    const select = document.createElement("select");
+    select.disabled = disabled;
+    for (const option of options) {
+      const item = document.createElement("option");
+      item.value = option.value;
+      item.textContent = option.label;
+      item.selected = option.value === value;
+      select.appendChild(item);
+    }
+    select.addEventListener("change", () => onChange(select.value as T));
+    field.append(span, select);
+    return field;
   }
 
   override destroy(): void {

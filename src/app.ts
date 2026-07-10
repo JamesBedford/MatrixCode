@@ -12,7 +12,7 @@ import { computeLanes, tierCap, seedForLayer, MAX_LANES, type Lane } from "./sim
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
-import { glyphFontFamily } from "./config/glyphFonts.ts";
+import { glyphAtlasFontFamily } from "./config/glyphFonts.ts";
 import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
 import { StateTexture } from "./gl/stateTexture.ts";
 import { Renderer, type ExtraLayer } from "./gl/renderer.ts";
@@ -261,13 +261,23 @@ export async function mountMatrixRain(
     extraActive.fill(false);
   };
 
-  const atlasOptions = (): Parameters<typeof buildGlyphAtlas>[1] => ({
-    chars: glyphSet.chars,
-    mirror: controls.get().mirror,
-    fontFamily: glyphFontFamily(controls.get().glyphFont),
-    cellPx: ATLAS_CELL_PX,
-    mirrorExcludeFrom: glyphSet.ranges.message.start,
-  });
+  const atlasOptions = (): Parameters<typeof buildGlyphAtlas>[1] => {
+    const currentControls = controls.get();
+    const digitMode =
+      currentControls.glyphMode === "binary" || currentControls.glyphMode === "digits"
+        ? currentControls.glyphMode
+        : undefined;
+    return {
+      chars: glyphSet.chars,
+      mirror: currentControls.mirror,
+      fontFamily: glyphAtlasFontFamily(currentControls.glyphFont, currentControls.glyphMode),
+      cellPx: ATLAS_CELL_PX,
+      mirrorExcludeFrom: glyphSet.ranges.message.start,
+      readableDigits: digitMode !== undefined,
+      digitMode,
+      digitStart: glyphSet.ranges.digits.start,
+    };
+  };
 
   const buildGpu = async (): Promise<void> => {
     atlas = await buildGlyphAtlas(gl, atlasOptions());
@@ -1008,7 +1018,7 @@ export async function mountMatrixRain(
     if (changed.has("glyphMode")) {
       glyphSet.setGlyphMode(controls.get().glyphMode);
     }
-    if (changed.has("mirror") || changed.has("glyphFont")) {
+    if (changed.has("mirror") || changed.has("glyphFont") || changed.has("glyphMode")) {
       void buildGlyphAtlas(gl, atlasOptions()).then(
         (a) => {
           const previous = atlas;

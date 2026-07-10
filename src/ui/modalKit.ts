@@ -1,5 +1,5 @@
 /**
- * Shared scaffolding for the app's centered modal editors (intro, messages). Owns the backdrop +
+ * Shared scaffolding for the app's centered modal editors. Owns the backdrop +
  * dialog, the capture-phase keydown/Escape lifecycle, the vanilla-DOM widget factory, the footer
  * builder, and a generic reorderable list — so each editor only supplies its own `build()` body.
  * All styling comes from the global `.mx-modal*` / `.mx-line*` / `.mx-field` classes in styles.css.
@@ -17,7 +17,7 @@ export abstract class ModalEditor {
     this.el.className = "mx-modal-backdrop";
     this.el.style.display = "none";
     this.el.addEventListener("click", (e) => {
-      if (e.target === this.el) this.requestClose();
+      if (e.target === this.el) e.stopPropagation();
     });
 
     this.dialog = document.createElement("div");
@@ -36,7 +36,7 @@ export abstract class ModalEditor {
   /** Render the dialog body. Called by the subclass on open and on internal re-renders. */
   protected abstract build(): void;
 
-  /** Invoked by Escape and click-outside; subclasses implement as their cancel(). */
+  /** Invoked by Escape; subclasses implement as their cancel/done behavior. */
   protected abstract requestClose(): void;
 
   protected onKeyDownCapture = (e: KeyboardEvent): void => {

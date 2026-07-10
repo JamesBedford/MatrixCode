@@ -1,5 +1,6 @@
 #import "MatrixCodeAppDelegate.h"
 
+#import "MatrixCodePreferences.h"
 #import "MatrixCodeRainHostView.h"
 #import "MatrixCodeSession.h"
 
@@ -22,10 +23,19 @@
 
 @end
 
+NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior(void) {
+    return NSWindowCollectionBehaviorCanJoinAllSpaces |
+        NSWindowCollectionBehaviorMoveToActiveSpace |
+        NSWindowCollectionBehaviorStationary |
+        NSWindowCollectionBehaviorFullScreenAuxiliary |
+        NSWindowCollectionBehaviorIgnoresCycle;
+}
+
 @interface MatrixCodeAppDelegate () <NSMenuItemValidation>
 @property(nonatomic, strong) NSMutableArray<NSWindow *> *windows;
 @property(nonatomic, strong) NSMutableArray<NSWindow *> *multiMonitorWindows;
 @property(nonatomic, weak, nullable) NSWindow *preMultiMonitorKeyWindow;
+@property(nonatomic) BOOL applicationIsTerminating;
 @end
 
 @implementation MatrixCodeAppDelegate
@@ -47,6 +57,11 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
                selector:@selector(exitMultiMonitor:)
                    name:MatrixCodeRainHostRequestExitMultiMonitorNotification
                  object:nil];
+        [NSNotificationCenter.defaultCenter
+            addObserver:self
+               selector:@selector(fpsOverlayVisibilityDidChange:)
+                   name:MatrixCodeRainHostFPSOverlayVisibilityDidChangeNotification
+                 object:nil];
     }
     return self;
 }
@@ -58,6 +73,22 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [self buildMenuBar];
     [self newWindow:nil];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self restoreSavedPresentationMode];
+    });
+}
+
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    self.applicationIsTerminating = YES;
+    [self persistCurrentPresentationMode];
+    return NSTerminateNow;
+}
+
+- (void)applicationWillTerminate:(NSNotification *)notification {
+    if (!self.applicationIsTerminating) {
+        self.applicationIsTerminating = YES;
+        [self persistCurrentPresentationMode];
+    }
 }
 
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
@@ -99,6 +130,50 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
     [NSApp activateIgnoringOtherApps:YES];
 }
 
+- (void)restoreSavedPresentationMode {
+    MatrixCodeAppPresentationMode mode = [MatrixCodePreferences savedAppPresentationMode];
+    if ([mode isEqualToString:MatrixCodeAppPresentationModeMultiMonitor]) {
+        [self enterMultiMonitorFromHost:[self hostViewForSettings]];
+        return;
+    }
+    if ([mode isEqualToString:MatrixCodeAppPresentationModeFullScreen]) {
+        MatrixCodeRainHostView *hostView = [self hostViewForSettings];
+        NSWindow *window = hostView.window;
+        if (window && !(window.styleMask & NSWindowStyleMaskFullScreen)) {
+            [window toggleFullScreen:self];
+        }
+    }
+}
+
+- (void)persistPresentationMode:(MatrixCodeAppPresentationMode)mode {
+    [MatrixCodePreferences setSavedAppPresentationMode:mode];
+}
+
+- (MatrixCodeAppPresentationMode)presentationModeForWindow:(NSWindow *)window {
+    return window && (window.styleMask & NSWindowStyleMaskFullScreen)
+        ? MatrixCodeAppPresentationModeFullScreen
+        : MatrixCodeAppPresentationModeWindowed;
+}
+
+- (BOOL)hasFullScreenMainWindow {
+    for (NSWindow *window in self.windows) {
+        if (window.styleMask & NSWindowStyleMaskFullScreen) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (void)persistCurrentPresentationMode {
+    if (self.multiMonitorWindows.count > 0) {
+        [self persistPresentationMode:MatrixCodeAppPresentationModeMultiMonitor];
+    } else if ([self hasFullScreenMainWindow]) {
+        [self persistPresentationMode:MatrixCodeAppPresentationModeFullScreen];
+    } else {
+        [self persistPresentationMode:MatrixCodeAppPresentationModeWindowed];
+    }
+}
+
 - (IBAction)showSettings:(id)sender {
     MatrixCodeRainHostView *hostView = [self hostViewForSettings];
     [hostView showSettingsOverlay];
@@ -134,6 +209,7 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
         if (window && !(window.styleMask & NSWindowStyleMaskFullScreen)) {
             [window toggleFullScreen:requestingHost ?: self];
         }
+        [self persistPresentationMode:MatrixCodeAppPresentationModeFullScreen];
         return;
     }
 
@@ -141,6 +217,7 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
     self.preMultiMonitorKeyWindow = requestingHost.window ?: NSApp.keyWindow;
     [NSApp activateIgnoringOtherApps:YES];
     NSDictionary<NSString *, id> *sharedSession = [MatrixCodeSession sessionForScreen:screens.firstObject];
+    BOOL showFPSOverlay = requestingHost.fpsOverlayVisible;
 
     for (NSScreen *screen in screens) {
         NSRect frame = screen.frame;
@@ -158,10 +235,7 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
         window.releasedWhenClosed = NO;
         window.delegate = self;
         window.level = NSScreenSaverWindowLevel;
-        window.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
-            NSWindowCollectionBehaviorStationary |
-            NSWindowCollectionBehaviorFullScreenAuxiliary |
-            NSWindowCollectionBehaviorIgnoresCycle;
+        window.collectionBehavior = MatrixCodeMultiMonitorWindowCollectionBehavior();
         [window setFrame:frame display:NO];
 
         NSMutableDictionary<NSString *, id> *screenSession = [sharedSession mutableCopy];
@@ -174,16 +248,47 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
         hostView.usesInternalAnimationTimer = YES;
         window.contentView = hostView;
         [hostView startAnimation];
+        if (showFPSOverlay) {
+            [hostView setFPSOverlayVisible:YES];
+        }
 
         [self.multiMonitorWindows addObject:window];
+        [window makeKeyAndOrderFront:nil];
         [window orderFrontRegardless];
         [window makeFirstResponder:hostView];
     }
 
     [self.multiMonitorWindows.firstObject makeKeyAndOrderFront:nil];
+    [self persistPresentationMode:MatrixCodeAppPresentationModeMultiMonitor];
+}
+
+- (NSArray<MatrixCodeRainHostView *> *)multiMonitorHostViews {
+    NSMutableArray<MatrixCodeRainHostView *> *hostViews = [NSMutableArray array];
+    for (NSWindow *window in self.multiMonitorWindows) {
+        MatrixCodeRainHostView *hostView = [self hostViewInWindow:window];
+        if (hostView) [hostViews addObject:hostView];
+    }
+    return hostViews;
+}
+
+- (void)setFPSOverlayVisible:(BOOL)visible
+                forHostViews:(NSArray<MatrixCodeRainHostView *> *)hostViews {
+    for (MatrixCodeRainHostView *hostView in hostViews) {
+        [hostView setFPSOverlayVisible:visible];
+    }
+}
+
+- (void)fpsOverlayVisibilityDidChange:(NSNotification *)notification {
+    if (self.multiMonitorWindows.count == 0) return;
+    NSNumber *visible = notification.userInfo[MatrixCodeRainHostFPSOverlayVisibleKey];
+    if (![visible isKindOfClass:NSNumber.class]) return;
+    [self setFPSOverlayVisible:visible.boolValue
+                  forHostViews:[self multiMonitorHostViews]];
 }
 
 - (IBAction)exitMultiMonitor:(id)sender {
+    if (self.multiMonitorWindows.count == 0) return;
+    NSWindow *restoreWindow = self.preMultiMonitorKeyWindow;
     NSArray<NSWindow *> *windows = [self.multiMonitorWindows copy];
     [self.multiMonitorWindows removeAllObjects];
     for (NSWindow *window in windows) {
@@ -193,8 +298,9 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
         window.delegate = nil;
         [window close];
     }
-    [self.preMultiMonitorKeyWindow makeKeyAndOrderFront:nil];
+    [restoreWindow makeKeyAndOrderFront:nil];
     self.preMultiMonitorKeyWindow = nil;
+    [self persistPresentationMode:[self presentationModeForWindow:restoreWindow]];
 }
 
 - (MatrixCodeRainHostView *)hostViewForSettings {
@@ -238,6 +344,20 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
         return YES;
     }
     return YES;
+}
+
+- (void)windowDidEnterFullScreen:(NSNotification *)notification {
+    if (self.applicationIsTerminating) return;
+    if ([self.windows containsObject:notification.object] && self.multiMonitorWindows.count == 0) {
+        [self persistPresentationMode:MatrixCodeAppPresentationModeFullScreen];
+    }
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+    if (self.applicationIsTerminating) return;
+    if ([self.windows containsObject:notification.object] && self.multiMonitorWindows.count == 0) {
+        [self persistPresentationMode:MatrixCodeAppPresentationModeWindowed];
+    }
 }
 
 - (void)windowWillClose:(NSNotification *)notification {

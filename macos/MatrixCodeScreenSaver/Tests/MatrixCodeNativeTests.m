@@ -1,7 +1,16 @@
 #import <XCTest/XCTest.h>
 
+#import "../AppSource/MatrixCodeAppDelegate.h"
 #import "MatrixCodePreferences.h"
+#import "MatrixCodeRainHostView.h"
 #import "MatrixCodeSession.h"
+
+@interface MatrixCodeAppDelegate (Testing)
+- (void)setFPSOverlayVisible:(BOOL)visible
+                forHostViews:(NSArray<MatrixCodeRainHostView *> *)hostViews;
+@end
+
+extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior(void);
 
 @interface MatrixCodeNativeTests : XCTestCase
 @end
@@ -13,6 +22,89 @@
     XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-intro-seen"]);
     XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"unknown"]);
     XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"MatrixCodeNativeSession"]);
+    XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"MatrixCodeAppPresentationMode"]);
+}
+
+- (NSUserDefaults *)isolatedDefaultsWithSuiteName:(NSString **)suiteName {
+    NSString *name = [@"com.matrixcode.tests." stringByAppendingString:NSUUID.UUID.UUIDString];
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:name];
+    [defaults removePersistentDomainForName:name];
+    if (suiteName) *suiteName = name;
+    return defaults;
+}
+
+- (void)testAppPresentationModeDefaultsToWindowed {
+    NSString *suiteName = nil;
+    NSUserDefaults *defaults = [self isolatedDefaultsWithSuiteName:&suiteName];
+
+    XCTAssertEqualObjects([MatrixCodePreferences savedAppPresentationModeInDefaults:defaults],
+                          MatrixCodeAppPresentationModeWindowed);
+
+    [defaults removePersistentDomainForName:suiteName];
+}
+
+- (void)testAppPresentationModePersistsFullscreenAndMultiMonitor {
+    NSString *suiteName = nil;
+    NSUserDefaults *defaults = [self isolatedDefaultsWithSuiteName:&suiteName];
+
+    [MatrixCodePreferences setSavedAppPresentationMode:MatrixCodeAppPresentationModeFullScreen
+                                            inDefaults:defaults];
+    XCTAssertEqualObjects([MatrixCodePreferences savedAppPresentationModeInDefaults:defaults],
+                          MatrixCodeAppPresentationModeFullScreen);
+
+    [MatrixCodePreferences setSavedAppPresentationMode:MatrixCodeAppPresentationModeMultiMonitor
+                                            inDefaults:defaults];
+    XCTAssertEqualObjects([MatrixCodePreferences savedAppPresentationModeInDefaults:defaults],
+                          MatrixCodeAppPresentationModeMultiMonitor);
+
+    [defaults removePersistentDomainForName:suiteName];
+}
+
+- (void)testInvalidAppPresentationModeFallsBackToWindowed {
+    NSString *suiteName = nil;
+    NSUserDefaults *defaults = [self isolatedDefaultsWithSuiteName:&suiteName];
+    [defaults setObject:@"sideways" forKey:@"MatrixCodeAppPresentationMode"];
+
+    XCTAssertEqualObjects([MatrixCodePreferences savedAppPresentationModeInDefaults:defaults],
+                          MatrixCodeAppPresentationModeWindowed);
+
+    [MatrixCodePreferences setSavedAppPresentationMode:@"also-sideways" inDefaults:defaults];
+    XCTAssertEqualObjects([MatrixCodePreferences savedAppPresentationModeInDefaults:defaults],
+                          MatrixCodeAppPresentationModeWindowed);
+
+    [defaults removePersistentDomainForName:suiteName];
+}
+
+- (void)testFPSOverlayVisibilityPropagatesAcrossMultiMonitorHosts {
+    MatrixCodeAppDelegate *delegate = [[MatrixCodeAppDelegate alloc] init];
+    MatrixCodeRainHostView *leftHost =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    MatrixCodeRainHostView *rightHost =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+
+    [delegate setFPSOverlayVisible:YES forHostViews:@[leftHost, rightHost]];
+    XCTAssertTrue(leftHost.fpsOverlayVisible);
+    XCTAssertTrue(rightHost.fpsOverlayVisible);
+
+    [delegate setFPSOverlayVisible:NO forHostViews:@[leftHost, rightHost]];
+    XCTAssertFalse(leftHost.fpsOverlayVisible);
+    XCTAssertFalse(rightHost.fpsOverlayVisible);
+}
+
+- (void)testMultiMonitorWindowsJoinFullscreenSpacesAndMoveActive {
+    NSWindowCollectionBehavior behavior = MatrixCodeMultiMonitorWindowCollectionBehavior();
+
+    XCTAssertTrue((behavior & NSWindowCollectionBehaviorCanJoinAllSpaces) != 0);
+    XCTAssertTrue((behavior & NSWindowCollectionBehaviorMoveToActiveSpace) != 0);
+    XCTAssertTrue((behavior & NSWindowCollectionBehaviorFullScreenAuxiliary) != 0);
+    XCTAssertTrue((behavior & NSWindowCollectionBehaviorStationary) != 0);
+    XCTAssertTrue((behavior & NSWindowCollectionBehaviorIgnoresCycle) != 0);
 }
 
 - (void)testAppKitCoordinatesConvertToTopLeftCoordinates {

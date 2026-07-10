@@ -394,12 +394,14 @@ html.mx-native-config .mx-panel {
   width: 4.75rem;
   text-align: right;
 }
-.mx-modal input:focus {
+.mx-modal input:focus,
+.mx-modal select:focus {
   outline: none;
   border-color: var(--mx-green);
   box-shadow: 0 0 8px rgb(var(--mx-accent-rgb) / 0.35);
 }
-.mx-modal input:disabled {
+.mx-modal input:disabled,
+.mx-modal select:disabled {
   opacity: 0.35;
 }
 .mx-field--stacked {

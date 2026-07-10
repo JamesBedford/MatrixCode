@@ -11,6 +11,7 @@ struct MatrixCodeGlyphInstance {
     float brightness;
     float isHead;
     float whiteHead;
+    float digitValue;
 };
 
 struct MatrixCodeUniforms {
@@ -39,7 +40,56 @@ struct MatrixCodeVertexOut {
     float brightness;
     float isHead;
     float whiteHead;
+    float digitValue;
+    float2 glyphUV;
 };
+
+static float rectCoverage(float2 uv, float2 center, float2 halfSize, float feather) {
+    float2 delta = abs(uv - center) - halfSize;
+    float outside = length(max(delta, float2(0.0)));
+    float inside = min(max(delta.x, delta.y), 0.0);
+    float signedDistance = outside + inside;
+    return 1.0 - smoothstep(0.0, feather, signedDistance);
+}
+
+static bool digitSegmentEnabled(int digit, int segment) {
+    constexpr bool segments[10][7] = {
+        {true,  true,  true,  true,  true,  true,  false},
+        {false, true,  true,  false, false, false, false},
+        {true,  true,  false, true,  true,  false, true },
+        {true,  true,  true,  true,  false, false, true },
+        {false, true,  true,  false, false, true,  true },
+        {true,  false, true,  true,  false, true,  true },
+        {true,  false, true,  true,  true,  true,  true },
+        {true,  true,  true,  false, false, false, false},
+        {true,  true,  true,  true,  true,  true,  true },
+        {true,  true,  true,  true,  false, true,  true },
+    };
+    return digit >= 0 && digit <= 9 && segment >= 0 && segment < 7
+        ? segments[digit][segment]
+        : false;
+}
+
+static float proceduralDigitCoverage(float2 uv, float digitValue, float expansion) {
+    int digit = clamp((int)round(digitValue), 0, 9);
+    float thickness = 0.12 + expansion;
+    float feather = 0.018 + expansion * 0.5;
+    float alpha = 0.0;
+    constexpr float2 segmentCenters[7] = {
+        float2(0.5, 0.2), float2(0.75, 0.35), float2(0.75, 0.65),
+        float2(0.5, 0.8), float2(0.25, 0.65), float2(0.25, 0.35),
+        float2(0.5, 0.5),
+    };
+    for (int segment = 0; segment < 7; segment++) {
+        if (!digitSegmentEnabled(digit, segment)) continue;
+        bool horizontal = segment == 0 || segment == 3 || segment == 6;
+        float2 halfSize = horizontal
+            ? float2(0.24, thickness * 0.5)
+            : float2(thickness * 0.5, 0.18);
+        alpha = max(alpha, rectCoverage(uv, segmentCenters[segment], halfSize, feather));
+    }
+    return clamp(alpha, 0.0, 1.0);
+}
 
 vertex MatrixCodeVertexOut matrixVertex(
     uint vertexID [[vertex_id]],
@@ -67,6 +117,8 @@ vertex MatrixCodeVertexOut matrixVertex(
     out.brightness = instance.brightness;
     out.isHead = instance.isHead;
     out.whiteHead = instance.whiteHead;
+    out.digitValue = instance.digitValue;
+    out.glyphUV = corner;
     return out;
 }
 
@@ -76,21 +128,33 @@ fragment half4 matrixFragment(
     constant MatrixCodeUniforms &uniforms [[buffer(1)]]
 ) {
     constexpr sampler atlasSampler(filter::linear, address::clamp_to_edge);
-    half newCenter = atlas.sample(atlasSampler, in.uv).r;
-    half oldCenter = atlas.sample(atlasSampler, in.oldUV).r;
-    half center = mix(oldCenter, newCenter, half(in.crossfade));
-    float2 texel = 1.0 / float2(atlas.get_width(), atlas.get_height());
-    float radius = max(1.0, uniforms.glowRadius);
+    constexpr float noProceduralDigitThreshold = -0.5;
+    bool proceduralDigit = in.digitValue >= noProceduralDigitThreshold;
+    half center = proceduralDigit
+        ? half(proceduralDigitCoverage(in.glyphUV, in.digitValue, 0.0))
+        : atlas.sample(atlasSampler, in.uv).r;
+    if (!proceduralDigit && in.crossfade < 0.999) {
+        half oldCenter = atlas.sample(atlasSampler, in.oldUV).r;
+        center = mix(oldCenter, center, half(in.crossfade));
+    }
     half glowAlpha = 0.0h;
-    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius, 0)).r;
-    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius, 0)).r;
-    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(0,  radius)).r;
-    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(0, -radius)).r;
-    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius,  radius)).r * 0.7h;
-    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius,  radius)).r * 0.7h;
-    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius, -radius)).r * 0.7h;
-    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius, -radius)).r * 0.7h;
-    glowAlpha *= half(0.105 * uniforms.glow);
+    if (uniforms.glow > 0.001) {
+        if (proceduralDigit) {
+            glowAlpha = half(proceduralDigitCoverage(in.glyphUV, in.digitValue, 0.05) * 0.18 * uniforms.glow);
+        } else {
+            float2 texel = 1.0 / float2(atlas.get_width(), atlas.get_height());
+            float radius = max(1.0, uniforms.glowRadius);
+            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius, 0)).r;
+            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius, 0)).r;
+            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(0,  radius)).r;
+            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(0, -radius)).r;
+            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius,  radius)).r * 0.7h;
+            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius,  radius)).r * 0.7h;
+            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius, -radius)).r * 0.7h;
+            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius, -radius)).r * 0.7h;
+            glowAlpha *= half(0.105 * uniforms.glow);
+        }
+    }
     half alpha = max(center, glowAlpha);
 
     float brightness = clamp(in.brightness, 0.0, 1.6);
@@ -105,17 +169,22 @@ fragment half4 matrixFragment(
                     clamp((brightness - 0.35) / 0.65, 0.0, 1.0));
     }
 
-    float2 screenUV = in.position.xy / uniforms.viewport;
-    float2 edge = screenUV * (1.0 - screenUV) * 4.0;
-    float vignette = mix(1.0, pow(clamp(edge.x * edge.y, 0.0, 1.0), 0.28),
-                         uniforms.vignette);
+    float vignette = 1.0;
+    if (uniforms.vignette > 0.001) {
+        float2 screenUV = in.position.xy / uniforms.viewport;
+        float2 edge = screenUV * (1.0 - screenUV) * 4.0;
+        vignette = mix(1.0, pow(clamp(edge.x * edge.y, 0.0, 1.0), 0.28),
+                       uniforms.vignette);
+    }
     float scanline = uniforms.scanlines > 0.5
         ? mix(0.88, 1.0, step(0.5, fract(in.position.y / 3.0)))
         : 1.0;
     float headBoost = in.isHead > 0.5
         ? 1.6 + (in.whiteHead > 0.5 ? uniforms.leadBrightness : 0.0)
         : 1.0;
-    float glowBoost = center > 0.01h ? 1.0 : (1.0 + uniforms.glow * 0.45);
+    float glowBoost = (uniforms.glow > 0.001 && center <= 0.01h)
+        ? (1.0 + uniforms.glow * 0.45)
+        : 1.0;
     return half4(
         half3(color * max(brightness, 0.12) * headBoost * vignette * scanline * glowBoost),
         alpha * half(clamp(brightness * 1.25, 0.0, 1.0))

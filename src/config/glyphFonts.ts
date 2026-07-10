@@ -1,4 +1,4 @@
-import type { GlyphFont } from "../types.ts";
+import type { GlyphFont, GlyphMode } from "../types.ts";
 
 export const GLYPH_FONT_OPTIONS: [GlyphFont, string][] = [
   ["matrix", "Movie Gothic"],
@@ -20,6 +20,13 @@ const WEB_FONT_STACKS: Record<GlyphFont, string> = {
   mincho: '"Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", serif',
 };
 
+const READABLE_DIGIT_FONT_STACK = '"SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace';
+
 export function glyphFontFamily(font: GlyphFont): string {
   return WEB_FONT_STACKS[font] ?? WEB_FONT_STACKS.matrix;
+}
+
+export function glyphAtlasFontFamily(font: GlyphFont, glyphMode: GlyphMode): string {
+  if (glyphMode === "binary" || glyphMode === "digits") return READABLE_DIGIT_FONT_STACK;
+  return glyphFontFamily(font);
 }

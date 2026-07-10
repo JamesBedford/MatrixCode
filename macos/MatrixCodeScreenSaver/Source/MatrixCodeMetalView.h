@@ -26,6 +26,20 @@ typedef void (^MatrixCodeMetalFrameHandler)(MatrixCodeMetalView *view,
 + (float)diagnosticEffectiveTrailLength:(float)trailLength
                                   rows:(float)rows
                           speedControl:(float)speedControl;
++ (NSInteger)diagnosticFramesPerSecondForScreenMaximum:(NSInteger)screenMaximum
+                                displayModeRefreshRate:(double)displayModeRefreshRate
+                                displayLinkRefreshRate:(double)displayLinkRefreshRate;
++ (NSString *)diagnosticAtlasPrimaryFontNameForGlyph:(NSString *)glyph
+                                            controls:(NSDictionary<NSString *, id> *)controls;
++ (BOOL)diagnosticDrawsReadableDigitGlyph:(NSString *)glyph
+                                 controls:(NSDictionary<NSString *, id> *)controls;
++ (NSString *)diagnosticAtlasDisplayGlyphForGlyph:(NSString *)glyph
+                                            index:(NSUInteger)index
+                                   rainGlyphCount:(NSUInteger)rainGlyphCount
+                                         controls:(NSDictionary<NSString *, id> *)controls;
++ (float)diagnosticProceduralDigitValueForGlyphIndex:(NSInteger)glyph
+                                      rainGlyphCount:(NSInteger)rainGlyphCount
+                                            controls:(NSDictionary<NSString *, id> *)controls;
 - (nullable NSData *)diagnosticBGRAFrameWithWidth:(NSUInteger)width height:(NSUInteger)height;
 - (NSArray<NSNumber *> *)diagnosticGlyphStateSnapshotWithWidth:(NSUInteger)width height:(NSUInteger)height;
 #endif

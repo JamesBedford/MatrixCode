@@ -34,10 +34,16 @@ export interface MessageSchedulerDeps {
   resolveText?: (raw: string) => string;
 }
 
-/** One renderable glyph of a laid-out message, at a column offset from the message's start column. */
+/** One renderable glyph of a laid-out message, at an offset from its start cell. */
 interface PlacedGlyph {
   offset: number;
   glyph: number;
+}
+
+interface ActivePlacement {
+  region: MessageRegion;
+  row: number;
+  col: number;
 }
 
 /**
@@ -62,9 +68,9 @@ export class MessageScheduler {
   private lastRows = -1;
   // The active message, tracked so a ticking placeholder ({time}/{countdown}) can re-lay-out live:
   // `activeRaw` is the unresolved template, `activeDisplay` its last resolved+rendered value, and
-  // `activePlacements` holds the independently-jittered row chosen inside each target region.
+  // `activePlacements` holds the independently-jittered row/column chosen inside each target region.
   private activeRaw: string | null = null;
-  private activePlacements: Array<{ region: MessageRegion; row: number }> = [];
+  private activePlacements: ActivePlacement[] = [];
   private activeDisplay = "";
   private placementKey = "";
 
@@ -124,7 +130,7 @@ export class MessageScheduler {
       this.choosePlacements(placementRegions);
       const display = this.activeRaw === null ? this.activeDisplay : this.resolveText(this.activeRaw);
       if (!this.applyMessage(display, sim, false)) {
-        // A narrower grid may no longer fit the message. End this activation cleanly and try
+        // A resized grid may no longer fit the message. End this activation cleanly and try
         // another configured message after the usual gap.
         this.activeRaw = null;
         this.activeStart = null;
@@ -190,18 +196,15 @@ export class MessageScheduler {
     return this.cfg!.frequencyMs * (JITTER_MIN + JITTER_SPAN * this.rng());
   }
 
-  /**
-   * Pick the message's row from the configured vertical anchor plus random jitter. The jitter band is
-   * clamped to the grid so the (single-row) message always lands on screen, whatever the anchor/jitter.
-   */
-  private pickRow(rows: number): number {
-    const maxRow = rows - 1;
-    if (maxRow <= 0) return 0;
+  /** Pick a row/column from the configured axis anchor plus random jitter, clamped on-screen. */
+  private pickAxisIndex(size: number): number {
+    const maxIndex = size - 1;
+    if (maxIndex <= 0) return 0;
     const cfg = this.cfg!;
-    const anchor = Math.round(cfg.verticalPosition * maxRow);
-    const halfSpan = Math.round((cfg.verticalJitter * maxRow) / 2);
+    const anchor = Math.round(cfg.verticalPosition * maxIndex);
+    const halfSpan = Math.round((cfg.verticalJitter * maxIndex) / 2);
     const lo = Math.max(0, anchor - halfSpan);
-    const hi = Math.min(maxRow, anchor + halfSpan);
+    const hi = Math.min(maxIndex, anchor + halfSpan);
     return lo + Math.floor(this.rng() * (hi - lo + 1));
   }
 
@@ -229,19 +232,21 @@ export class MessageScheduler {
     return regions.map((r) => `${r.colStart},${r.rowStart},${r.cols},${r.rows}`).join(";");
   }
 
-  /** Pick vertical placement independently inside every target region. */
+  /** Pick placement independently inside every target region. */
   private choosePlacements(regions: readonly MessageRegion[]): void {
-    this.activePlacements = regions.map((region) => ({
-      region,
-      row: region.rowStart + this.pickRow(region.rows),
-    }));
+    const dropLayout = this.cfg?.messageLayout === "drop";
+    this.activePlacements = regions.map((region) => (
+      dropLayout
+        ? { region, row: region.rowStart, col: region.colStart + this.pickAxisIndex(region.cols) }
+        : { region, row: region.rowStart + this.pickAxisIndex(region.rows), col: region.colStart }
+    ));
   }
 
   private computeHasRenderable(cfg: MessagesDoc): boolean {
     return cfg.messages.some((m) => this.layout(this.resolveText(m)).glyphs.length > 0);
   }
 
-  /** Resolve a message to its renderable glyphs (unsupported chars/spaces become gaps) and its width. */
+  /** Resolve a message to its renderable glyphs (unsupported chars/spaces become gaps) and length. */
   private layout(message: string): { glyphs: PlacedGlyph[]; width: number } {
     const chars = [...message.trim()];
     const glyphs: PlacedGlyph[] = [];
@@ -260,18 +265,28 @@ export class MessageScheduler {
    */
   private applyMessage(display: string, sim: MessageSink, isUpdate: boolean): boolean {
     const { glyphs, width } = this.layout(display);
+    const dropLayout = this.cfg?.messageLayout === "drop";
     if (
       glyphs.length === 0 ||
       this.activePlacements.length === 0 ||
-      this.activePlacements.some(({ region }) => width > region.cols)
+      this.activePlacements.some(({ region }) => width > (dropLayout ? region.rows : region.cols))
     ) return false;
 
     const targets = new Map<number, number>();
-    for (const { region, row } of this.activePlacements) {
-      const startCol = region.colStart + Math.floor((region.cols - width) / 2);
-      for (const { offset, glyph } of glyphs) {
-        const col = startCol + offset;
-        targets.set(row * sim.cols + col, glyph);
+    for (const { region, row, col } of this.activePlacements) {
+      if (dropLayout) {
+        const startRow = region.rowStart + Math.floor((region.rows - width) / 2);
+        const bottomToTop = this.cfg?.messageDirection === "bottomToTop";
+        for (const { offset, glyph } of glyphs) {
+          const targetRow = bottomToTop ? startRow + width - 1 - offset : startRow + offset;
+          targets.set(targetRow * sim.cols + col, glyph);
+        }
+      } else {
+        const startCol = region.colStart + Math.floor((region.cols - width) / 2);
+        for (const { offset, glyph } of glyphs) {
+          const targetCol = startCol + offset;
+          targets.set(row * sim.cols + targetCol, glyph);
+        }
       }
     }
     if (targets.size === 0) return false;
@@ -292,7 +307,7 @@ export class MessageScheduler {
     }
 
     const raw = candidates[Math.floor(this.rng() * candidates.length)]!;
-    this.choosePlacements(regions); // rows are picked once and reused for live token re-layout
+    this.choosePlacements(regions); // placements are picked once and reused for live token re-layout
     const display = this.resolveText(raw);
     if (!this.applyMessage(display, sim, false)) {
       this.activePlacements = [];

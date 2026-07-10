@@ -26,6 +26,8 @@ export type PresetName =
 export type QualityTier = "low" | "med" | "high";
 export type GlyphMode = "matrix" | "katakana" | "binary" | "digits" | "latin" | "symbols";
 export type GlyphFont = "matrix" | "gothic" | "mono" | "terminal" | "rounded" | "mincho";
+export type MessageLayout = "row" | "drop";
+export type MessageDirection = "topToBottom" | "bottomToTop";
 
 /** Live, user-facing tunables bound to the controls panel + localStorage. */
 export interface Controls {
@@ -83,9 +85,13 @@ export interface MessagesDoc {
   flickerOut: boolean;
   /** Fade the message in/out via brightness (transparency) over the appear/disappear times. */
   brightnessFade: boolean;
-  /** Vertical anchor for messages: 0 = top of the screen, 1 = bottom, 0.5 = centre. */
+  /** Message placement mode: a horizontal row across the rain, or a vertical single-drop message. */
+  messageLayout: MessageLayout;
+  /** Reading direction for single-drop messages. */
+  messageDirection: MessageDirection;
+  /** Axis anchor for messages: vertical in row mode, horizontal in drop mode. */
   verticalPosition: number;
-  /** How much the vertical position varies randomly, as a fraction of screen height (0 = fixed). */
+  /** Axis jitter for messages: vertical in row mode, horizontal in drop mode. */
   verticalJitter: number;
 }
 

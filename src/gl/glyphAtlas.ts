@@ -24,10 +24,17 @@ export interface AtlasOptions {
   mirrorExcludeFrom?: number;
   /** Font weight. */
   weight?: number;
+  /** Draw digit cells with explicit segment geometry instead of font outlines. */
+  readableDigits?: boolean;
+  /** Digit-only rain mode; remaps every ambient rain cell so old glyph states cannot leak through. */
+  digitMode?: "binary" | "digits";
+  /** Index where rain digit glyphs begin; supplied by the glyph set so atlas logic follows its order. */
+  digitStart?: number;
 }
 
 const DEFAULT_FONT_STACK =
   '"Hiragino Kaku Gothic ProN", "Hiragino Kaku Gothic Pro", "Yu Gothic", "Meiryo", "MS Gothic", "Noto Sans JP", monospace';
+const DEFAULT_DIGIT_START = 0xff9d - 0xff66 + 1;
 
 /** Wait for fonts to be ready so the first draw isn't a fallback face. */
 async function fontsReady(): Promise<void> {
@@ -74,12 +81,19 @@ export async function buildGlyphAtlas(gl: WebGL2RenderingContext, opts: AtlasOpt
   };
 
   const mirrorExcludeFrom = opts.mirrorExcludeFrom ?? n; // by default nothing is excluded
+  const digitMode = opts.digitMode;
+  const digitStart = opts.digitStart ?? DEFAULT_DIGIT_START;
   const drawGlyph = (ch: string, i: number): void => {
+    const displayChar = atlasDisplayCharForGlyphMode(ch, i, mirrorExcludeFrom, digitMode, digitStart);
     const [cx, cy] = cellCenter(i);
     ctx.save();
     ctx.translate(cx, cy);
     if (opts.mirror && i < mirrorExcludeFrom) ctx.scale(-1, 1); // message glyphs (>= cutoff) stay readable
-    ctx.fillText(ch, 0, 0);
+    if ((opts.readableDigits || digitMode) && i < mirrorExcludeFrom && isDigit(displayChar)) {
+      drawReadableDigit(ctx, displayChar, cellPx);
+    } else {
+      ctx.fillText(displayChar, 0, 0);
+    }
     ctx.restore();
   };
 
@@ -138,3 +152,82 @@ export async function buildGlyphAtlas(gl: WebGL2RenderingContext, opts: AtlasOpt
 
   return { texture, atlasCols, atlasRows, cellPx, glyphCount: n };
 }
+
+function isDigit(ch: string): boolean {
+  return ch.length === 1 && ch >= "0" && ch <= "9";
+}
+
+export function atlasDisplayCharForGlyphMode(
+  ch: string,
+  index: number,
+  rainGlyphCount: number,
+  digitMode?: "binary" | "digits",
+  digitStart = DEFAULT_DIGIT_START,
+): string {
+  if (index < 0 || index >= rainGlyphCount) return ch;
+  const offset = index - digitStart;
+  if (digitMode === "binary") return String(((offset % 2) + 2) % 2);
+  if (digitMode === "digits") return String(((offset % 10) + 10) % 10);
+  return ch;
+}
+
+function drawReadableDigit(ctx: CanvasRenderingContext2D, ch: string, cellPx: number): void {
+  const digit = ch.charCodeAt(0) - 48;
+  const segments = DIGIT_SEGMENTS[digit];
+  if (!segments) return;
+
+  const margin = cellPx * 0.2;
+  const thickness = Math.max(3, cellPx * 0.12);
+  const half = cellPx / 2;
+  const left = -half + margin;
+  const right = half - margin;
+  const top = -half + margin;
+  const bottom = half - margin;
+  const middle = 0;
+  const capInset = thickness * 0.5;
+
+  const hSegment = (y: number): void =>
+    ctx.fillRect(left + capInset, y - thickness / 2, right - left - capInset * 2, thickness);
+  const vSegment = (x: number, y0: number, y1: number): void =>
+    ctx.fillRect(x - thickness / 2, y0 + capInset, thickness, y1 - y0 - capInset * 2);
+
+  if (digit === 0) {
+    ctx.save();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = thickness;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, half - margin - thickness / 2, half - margin - thickness / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (digit === 1) {
+    const centerX = 0;
+    ctx.fillRect(centerX - thickness / 2, top, thickness, bottom - top);
+    ctx.fillRect(centerX - thickness * 1.2, top, thickness * 1.7, thickness);
+    ctx.fillRect(centerX - thickness * 1.4, bottom - thickness, thickness * 2.8, thickness);
+    return;
+  }
+
+  if (segments[0]) hSegment(top);
+  if (segments[1]) vSegment(right, top, middle);
+  if (segments[2]) vSegment(right, middle, bottom);
+  if (segments[3]) hSegment(bottom);
+  if (segments[4]) vSegment(left, middle, bottom);
+  if (segments[5]) vSegment(left, top, middle);
+  if (segments[6]) hSegment(middle);
+}
+
+const DIGIT_SEGMENTS: readonly (readonly boolean[])[] = [
+  [true, true, true, true, true, true, false],
+  [false, true, true, false, false, false, false],
+  [true, true, false, true, true, false, true],
+  [true, true, true, true, false, false, true],
+  [false, true, true, false, false, true, true],
+  [true, false, true, true, false, true, true],
+  [true, false, true, true, true, true, true],
+  [true, true, true, false, false, false, false],
+  [true, true, true, true, true, true, true],
+  [true, true, true, true, false, true, true],
+];

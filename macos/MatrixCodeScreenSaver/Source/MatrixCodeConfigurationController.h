@@ -10,6 +10,9 @@ FOUNDATION_EXPORT NSString * const MatrixCodePreviewValuesKey;
 - (instancetype)initEmbeddedInView:(NSView *)hostView closeHandler:(dispatch_block_t)closeHandler;
 - (instancetype)init NS_UNAVAILABLE;
 - (void)showSettingsPanel;
+- (void)openEditorKind:(NSString *)kind;
+- (void)toggleMessagesEnabled;
+- (void)nudgeDensityByFactor:(double)factor;
 @end
 
 NS_ASSUME_NONNULL_END

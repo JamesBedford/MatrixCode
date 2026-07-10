@@ -1,6 +1,17 @@
 #import <XCTest/XCTest.h>
 
 #import "MatrixCodeMetalView.h"
+#import "MatrixCodeRainLifecycle.h"
+
+@interface MatrixCodeMetalView (MessageTesting)
+- (void)updateMessageScheduleAtTime:(NSTimeInterval)now
+                        globalCols:(NSInteger)globalCols
+                        globalRows:(NSInteger)globalRows
+                         localCols:(NSInteger)localCols
+                         localRows:(NSInteger)localRows;
+- (void)updateActiveMessageFrameStateAtTime:(NSTimeInterval)now
+                            framesPerSecond:(double)framesPerSecond;
+@end
 
 @interface MatrixCodeMetalViewTests : XCTestCase
 @end
@@ -20,6 +31,12 @@ static NSUInteger MatrixCodeGreenPixelCount(NSData *frame) {
         if (green > 18 && green > red * 2 && green > blue * 2) greenPixels++;
     }
     return greenPixels;
+}
+
+static NSInteger MatrixCodeMessageTargetAt(MatrixCodeMetalView *view, NSInteger offset) {
+    NSData *data = [view valueForKey:@"messageTargetGlyphData"];
+    const NSInteger *targets = data.bytes;
+    return targets[offset];
 }
 
 - (void)testTrailSliderUsesExponentialScale {
@@ -72,6 +89,33 @@ static NSUInteger MatrixCodeGreenPixelCount(NSData *frame) {
     XCTAssertTrue(view.isPaused);
 }
 
+- (void)testDisplayFramePacingDoesNotStickAtThirtyWhenDisplayReportsHigherRefresh {
+    XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:30
+                                                          displayModeRefreshRate:60
+                                                          displayLinkRefreshRate:0],
+                   60);
+    XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:30
+                                                          displayModeRefreshRate:0
+                                                          displayLinkRefreshRate:120],
+                   120);
+    XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:0
+                                                          displayModeRefreshRate:0
+                                                          displayLinkRefreshRate:0],
+                   60);
+    XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:30
+                                                          displayModeRefreshRate:0
+                                                          displayLinkRefreshRate:0],
+                   60);
+    XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:24
+                                                          displayModeRefreshRate:0
+                                                          displayLinkRefreshRate:0],
+                   60);
+    XCTAssertEqual([MatrixCodeMetalView diagnosticFramesPerSecondForScreenMaximum:300
+                                                          displayModeRefreshRate:0
+                                                          displayLinkRefreshRate:0],
+                   240);
+}
+
 - (void)testNativeRendererProducesVisibleGreenGlyphPixels {
     NSDictionary *session = @{
         @"seed": @12345,
@@ -87,6 +131,83 @@ static NSUInteger MatrixCodeGreenPixelCount(NSData *frame) {
     NSData *frame = [view diagnosticBGRAFrameWithWidth:640 height:480];
     XCTAssertNotNil(frame);
     XCTAssertGreaterThan(MatrixCodeGreenPixelCount(frame), (NSUInteger)100);
+}
+
+- (void)testBinaryAndDigitModesUseReadableAtlasDigits {
+    NSDictionary *binaryControls = @{@"glyphMode": @"binary", @"glyphFont": @"matrix"};
+    NSDictionary *digitControls = @{@"glyphMode": @"digits", @"glyphFont": @"rounded"};
+    NSDictionary *matrixControls = @{@"glyphMode": @"matrix", @"glyphFont": @"matrix"};
+
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasPrimaryFontNameForGlyph:@"0"
+                                                                             controls:binaryControls],
+                          @"Menlo-Bold");
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasPrimaryFontNameForGlyph:@"1"
+                                                                             controls:digitControls],
+                          @"Menlo-Bold");
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasPrimaryFontNameForGlyph:@"A"
+                                                                             controls:binaryControls],
+                          @"HiraginoSans-W6");
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasPrimaryFontNameForGlyph:@"0"
+                                                                             controls:matrixControls],
+                          @"HiraginoSans-W6");
+    XCTAssertTrue([MatrixCodeMetalView diagnosticDrawsReadableDigitGlyph:@"0"
+                                                                controls:binaryControls]);
+    XCTAssertTrue([MatrixCodeMetalView diagnosticDrawsReadableDigitGlyph:@"1"
+                                                                controls:digitControls]);
+    XCTAssertFalse([MatrixCodeMetalView diagnosticDrawsReadableDigitGlyph:@"A"
+                                                                 controls:binaryControls]);
+    XCTAssertFalse([MatrixCodeMetalView diagnosticDrawsReadableDigitGlyph:@"0"
+                                                                 controls:matrixControls]);
+}
+
+- (void)testDigitOnlyModesRemapEveryRainAtlasCell {
+    NSDictionary *binaryControls = @{@"glyphMode": @"binary"};
+    NSDictionary *digitControls = @{@"glyphMode": @"digits"};
+    NSDictionary *matrixControls = @{@"glyphMode": @"matrix"};
+    const NSUInteger rainGlyphCount = (NSUInteger)MatrixCodeRainGlyphCount();
+
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasDisplayGlyphForGlyph:@"ｦ"
+                                                                             index:0
+                                                                    rainGlyphCount:rainGlyphCount
+                                                                          controls:binaryControls],
+                          @"0");
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasDisplayGlyphForGlyph:@"M"
+                                                                             index:57
+                                                                    rainGlyphCount:rainGlyphCount
+                                                                          controls:binaryControls],
+                          @"1");
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasDisplayGlyphForGlyph:@"ｦ"
+                                                                             index:64
+                                                                    rainGlyphCount:rainGlyphCount
+                                                                          controls:digitControls],
+                          @"8");
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasDisplayGlyphForGlyph:@"M"
+                                                                             index:57
+                                                                    rainGlyphCount:rainGlyphCount
+                                                                          controls:matrixControls],
+                          @"M");
+    XCTAssertEqualObjects([MatrixCodeMetalView diagnosticAtlasDisplayGlyphForGlyph:@"M"
+                                                                             index:rainGlyphCount
+                                                                    rainGlyphCount:rainGlyphCount
+                                                                          controls:binaryControls],
+                          @"M");
+
+    XCTAssertEqual([MatrixCodeMetalView diagnosticProceduralDigitValueForGlyphIndex:78
+                                                                    rainGlyphCount:rainGlyphCount
+                                                                          controls:binaryControls],
+                   0);
+    XCTAssertEqual([MatrixCodeMetalView diagnosticProceduralDigitValueForGlyphIndex:87
+                                                                    rainGlyphCount:rainGlyphCount
+                                                                          controls:binaryControls],
+                   1);
+    XCTAssertEqual([MatrixCodeMetalView diagnosticProceduralDigitValueForGlyphIndex:64
+                                                                    rainGlyphCount:rainGlyphCount
+                                                                          controls:digitControls],
+                   8);
+    XCTAssertLessThan([MatrixCodeMetalView diagnosticProceduralDigitValueForGlyphIndex:rainGlyphCount
+                                                                        rainGlyphCount:rainGlyphCount
+                                                                              controls:binaryControls],
+                      0);
 }
 
 - (void)testHighDensityOverlapVisualFrameRemainsPopulatedAfterStreamCaching {
@@ -113,6 +234,32 @@ static NSUInteger MatrixCodeGreenPixelCount(NSData *frame) {
     XCTAssertNotNil(frame);
     XCTAssertGreaterThan(MatrixCodeGreenPixelCount(frame), (NSUInteger)1000,
                          @"High-density overlap render should remain visibly populated");
+}
+
+- (void)testLowPowerShaderPathRemainsVisibleWithOptionalEffectsDisabled {
+    NSDictionary *session = @{
+        @"seed": @4242,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"screen-test",
+        @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                        @"width": @640, @"height": @360}],
+    };
+    NSDictionary *controls = @{
+        @"density": @40,
+        @"quality": @"low",
+        @"glow": @0,
+        @"vignette": @0,
+        @"scanlines": @NO,
+    };
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+                                           session:session
+                                      storedValues:@{@"mx-controls": MatrixCodeJSONString(controls)}];
+    [view setDensityScale:1 rainElapsed:9.0];
+    NSData *frame = [view diagnosticBGRAFrameWithWidth:640 height:360];
+    XCTAssertNotNil(frame);
+    XCTAssertGreaterThan(MatrixCodeGreenPixelCount(frame), (NSUInteger)250,
+                         @"Low-power shader branch should keep glyphs visible");
 }
 
 - (void)testActiveMessageVisualFrameStillRendersWithOptimizedMessageLookup {
@@ -153,6 +300,80 @@ static NSUInteger MatrixCodeGreenPixelCount(NSData *frame) {
     XCTAssertNotNil([view valueForKey:@"activeMessageTemplate"]);
     XCTAssertGreaterThan(MatrixCodeGreenPixelCount(frame), (NSUInteger)500,
                          @"Message-enabled render should remain visibly populated");
+}
+
+- (void)testSingleDropMessageMapsCharactersTopToBottomInOneColumn {
+    NSDictionary *session = @{
+        @"seed": @13579,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"screen-test",
+        @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                        @"width": @420, @"height": @400}],
+    };
+    NSDictionary *messages = @{
+        @"enabled": @YES,
+        @"messages": @[@"ABC"],
+        @"frequencyMs": @500,
+        @"persistenceMs": @10000,
+        @"appearMs": @0,
+        @"disappearMs": @0,
+        @"verticalPosition": @0.5,
+        @"verticalJitter": @0,
+        @"flickerOut": @NO,
+        @"brightnessFade": @NO,
+        @"messageLayout": @"drop",
+        @"messageDirection": @"topToBottom",
+    };
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+                                           session:session
+                                      storedValues:@{@"mx-messages": MatrixCodeJSONString(messages)}];
+    NSTimeInterval now = 1700000001.0;
+    [view updateMessageScheduleAtTime:now globalCols:21 globalRows:20 localCols:21 localRows:20];
+    [view updateActiveMessageFrameStateAtTime:now framesPerSecond:60];
+    NSDictionary *glyphs = [view valueForKey:@"messageGlyphs"];
+    XCTAssertEqual([[view valueForKey:@"activeMessageColumn"] integerValue], 10);
+    XCTAssertEqual([[view valueForKey:@"activeMessageStartRow"] integerValue], 8);
+    XCTAssertEqual([[view valueForKey:@"messageTargetGlyphCount"] integerValue], 3);
+    XCTAssertEqual(MatrixCodeMessageTargetAt(view, 0), [glyphs[@"A"] integerValue]);
+    XCTAssertEqual(MatrixCodeMessageTargetAt(view, 1), [glyphs[@"B"] integerValue]);
+    XCTAssertEqual(MatrixCodeMessageTargetAt(view, 2), [glyphs[@"C"] integerValue]);
+}
+
+- (void)testSingleDropMessageCanReadBottomToTop {
+    NSDictionary *session = @{
+        @"seed": @13579,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"screen-test",
+        @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                        @"width": @420, @"height": @400}],
+    };
+    NSDictionary *messages = @{
+        @"enabled": @YES,
+        @"messages": @[@"ABC"],
+        @"frequencyMs": @500,
+        @"persistenceMs": @10000,
+        @"appearMs": @0,
+        @"disappearMs": @0,
+        @"verticalPosition": @0.5,
+        @"verticalJitter": @0,
+        @"flickerOut": @NO,
+        @"brightnessFade": @NO,
+        @"messageLayout": @"drop",
+        @"messageDirection": @"bottomToTop",
+    };
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+                                           session:session
+                                      storedValues:@{@"mx-messages": MatrixCodeJSONString(messages)}];
+    NSTimeInterval now = 1700000001.0;
+    [view updateMessageScheduleAtTime:now globalCols:21 globalRows:20 localCols:21 localRows:20];
+    [view updateActiveMessageFrameStateAtTime:now framesPerSecond:60];
+    NSDictionary *glyphs = [view valueForKey:@"messageGlyphs"];
+    XCTAssertEqual([[view valueForKey:@"activeMessageColumn"] integerValue], 10);
+    XCTAssertEqual([[view valueForKey:@"activeMessageStartRow"] integerValue], 8);
+    XCTAssertEqual(MatrixCodeMessageTargetAt(view, 0), [glyphs[@"A"] integerValue]);
+    XCTAssertEqual(MatrixCodeMessageTargetAt(view, 2), [glyphs[@"C"] integerValue]);
 }
 
 - (void)testTShapedMultiMonitorWarmStartRendersLeftDisplay {

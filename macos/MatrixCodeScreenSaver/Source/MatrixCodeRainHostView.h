@@ -11,6 +11,7 @@ typedef NS_ENUM(NSInteger, MatrixCodeRainHostMode) {
 @interface MatrixCodeRainHostView : NSView
 
 @property(nonatomic) BOOL usesInternalAnimationTimer;
+@property(nonatomic, readonly) BOOL fpsOverlayVisible;
 
 - (instancetype)initWithFrame:(NSRect)frame mode:(MatrixCodeRainHostMode)mode;
 - (instancetype)initWithFrame:(NSRect)frame
@@ -22,10 +23,13 @@ typedef NS_ENUM(NSInteger, MatrixCodeRainHostMode) {
 - (void)animateOneFrame;
 - (NSWindow *)configureWindow;
 - (void)showSettingsOverlay;
+- (void)setFPSOverlayVisible:(BOOL)visible;
 
 @end
 
 extern NSString * const MatrixCodeRainHostRequestMultiMonitorNotification;
 extern NSString * const MatrixCodeRainHostRequestExitMultiMonitorNotification;
+extern NSString * const MatrixCodeRainHostFPSOverlayVisibilityDidChangeNotification;
+extern NSString * const MatrixCodeRainHostFPSOverlayVisibleKey;
 
 NS_ASSUME_NONNULL_END

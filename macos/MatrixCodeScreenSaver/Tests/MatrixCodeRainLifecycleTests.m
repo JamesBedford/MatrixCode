@@ -21,10 +21,10 @@
     for (uint32_t key = 0; key < samples; key++) {
         NSInteger glyph = MatrixCodeRainGlyphIndex(key, @"matrix");
         XCTAssertGreaterThanOrEqual(glyph, 0);
-        XCTAssertLessThan(glyph, 99);
-        if (glyph < 56) groups[0]++;
-        else if (glyph < 66) groups[1]++;
-        else if (glyph < 92) groups[2]++;
+        XCTAssertLessThan(glyph, MatrixCodeRainGlyphCount());
+        if (glyph < MatrixCodeRainDigitStartIndex()) groups[0]++;
+        else if (glyph < MatrixCodeRainLatinStartIndex()) groups[1]++;
+        else if (glyph < MatrixCodeRainSymbolsStartIndex()) groups[2]++;
         else groups[3]++;
     }
     const double expected[4] = {0.80, 0.11, 0.05, 0.04};
@@ -37,11 +37,24 @@
     NSMutableSet<NSNumber *> *glyphs = [NSMutableSet set];
     for (uint32_t key = 0; key < 10000; key++) {
         NSInteger glyph = MatrixCodeRainGlyphIndex(key, @"binary");
-        XCTAssertGreaterThanOrEqual(glyph, 56);
-        XCTAssertLessThanOrEqual(glyph, 57);
+        XCTAssertGreaterThanOrEqual(glyph, MatrixCodeRainDigitStartIndex());
+        XCTAssertLessThanOrEqual(glyph, MatrixCodeRainDigitStartIndex() + 1);
         [glyphs addObject:@(glyph)];
     }
     XCTAssertEqual(glyphs.count, (NSUInteger)2);
+}
+
+- (void)testDigitValueMappingUsesSharedGlyphRanges {
+    XCTAssertEqual(MatrixCodeRainDigitStartIndex(), 56);
+    XCTAssertEqual(MatrixCodeRainLatinStartIndex(), 66);
+    XCTAssertEqual(MatrixCodeRainSymbolsStartIndex(), 92);
+    XCTAssertEqual(MatrixCodeRainGlyphCount(), 99);
+    XCTAssertEqual(MatrixCodeRainDigitValueForGlyphIndex(78, @"binary"), 0);
+    XCTAssertEqual(MatrixCodeRainDigitValueForGlyphIndex(87, @"binary"), 1);
+    XCTAssertEqual(MatrixCodeRainDigitValueForGlyphIndex(64, @"digits"), 8);
+    XCTAssertEqual(MatrixCodeRainDigitValueForGlyphIndex(-1, @"binary"), NSNotFound);
+    XCTAssertEqual(MatrixCodeRainDigitValueForGlyphIndex(99, @"binary"), NSNotFound);
+    XCTAssertEqual(MatrixCodeRainDigitValueForGlyphIndex(56, @"matrix"), NSNotFound);
 }
 
 - (void)testTrailVariationPreservesCurrentDefaultAndCanNormalizeLengths {

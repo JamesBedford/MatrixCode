@@ -44,6 +44,7 @@ targets:
         NSPrincipalClass: MatrixCodeScreenSaverView
     dependencies:
       - sdk: AppKit.framework
+      - sdk: CoreVideo.framework
       - sdk: Metal.framework
       - sdk: MetalKit.framework
       - sdk: ScreenSaver.framework
@@ -81,6 +82,7 @@ targets:
         NSPrincipalClass: NSApplication
     dependencies:
       - sdk: AppKit.framework
+      - sdk: CoreVideo.framework
       - sdk: Metal.framework
       - sdk: MetalKit.framework
       - sdk: ScreenSaver.framework
@@ -96,6 +98,7 @@ targets:
     platform: macOS
     sources:
       - path: Tests
+      - path: AppSource/MatrixCodeAppDelegate.m
       - path: Source/MatrixCodeConfigurationController.m
       - path: Source/MatrixCodeConstants.m
       - path: Source/MatrixCodeIntroOverlayView.m
@@ -110,6 +113,7 @@ targets:
         buildPhase: resources
     dependencies:
       - sdk: AppKit.framework
+      - sdk: CoreVideo.framework
       - sdk: Metal.framework
       - sdk: MetalKit.framework
       - sdk: ScreenSaver.framework

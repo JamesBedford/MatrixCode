@@ -50,12 +50,15 @@ const doc = (over: Partial<MessagesDoc> = {}): MessagesDoc => ({
   disappearMs: 0,
   flickerOut: false,
   brightnessFade: true,
+  messageLayout: "row",
+  messageDirection: "topToBottom",
   verticalPosition: 0.475,
   verticalJitter: 0.25,
   ...over,
 });
 const sched = (seed = 1): MessageScheduler => new MessageScheduler({ glyphSet, rng: createRng(seed) });
 const rowOf = (m: Map<number, number>, cols: number): number => Math.floor([...m.keys()][0]! / cols);
+const colOf = (m: Map<number, number>, cols: number): number => [...m.keys()][0]! % cols;
 
 describe("MessageScheduler.fire (via previewOne)", () => {
   it("centers a message horizontally and maps chars to glyph indices", () => {
@@ -130,6 +133,90 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     const bottom = sched(); const simBottom = new FakeSim(20, 40);
     bottom.previewOne(0, simBottom, doc({ messages: ["AB"], verticalPosition: 1, verticalJitter: 0 }));
     expect(rowOf(simBottom.last!, 20)).toBe(39);
+  });
+
+  it("can lay out a message inside a single drop from top to bottom", () => {
+    const s = sched();
+    const sim = new FakeSim(21, 20);
+    s.previewOne(0, sim, doc({
+      messages: ["ABC"],
+      messageLayout: "drop",
+      messageDirection: "topToBottom",
+      verticalPosition: 0.5,
+      verticalJitter: 0,
+    }));
+    expect(sim.last!.size).toBe(3);
+    const col = colOf(sim.last!, 21);
+    expect(col).toBe(10);
+    // height 3 in 20 rows -> startRow = floor((20 - 3) / 2) = 8
+    expect(sim.last!.get(8 * 21 + col)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(9 * 21 + col)).toBe(glyphSet.charToGlyphIndex("B"));
+    expect(sim.last!.get(10 * 21 + col)).toBe(glyphSet.charToGlyphIndex("C"));
+  });
+
+  it("can lay out a single-drop message from bottom to top", () => {
+    const s = sched();
+    const sim = new FakeSim(21, 20);
+    s.previewOne(0, sim, doc({
+      messages: ["ABC"],
+      messageLayout: "drop",
+      messageDirection: "bottomToTop",
+      verticalPosition: 0.5,
+      verticalJitter: 0,
+    }));
+    const col = colOf(sim.last!, 21);
+    expect(sim.last!.get(8 * 21 + col)).toBe(glyphSet.charToGlyphIndex("C"));
+    expect(sim.last!.get(9 * 21 + col)).toBe(glyphSet.charToGlyphIndex("B"));
+    expect(sim.last!.get(10 * 21 + col)).toBe(glyphSet.charToGlyphIndex("A"));
+  });
+
+  it("uses the position and jitter as a horizontal band in single-drop mode", () => {
+    const s = sched(8);
+    const sim = new FakeSim(60, 30);
+    const regions = [
+      { colStart: 0, rowStart: 0, cols: 30, rows: 30 },
+      { colStart: 30, rowStart: 0, cols: 30, rows: 30 },
+    ];
+    s.previewOne(0, sim, doc({
+      messages: ["A"],
+      messageLayout: "drop",
+      verticalPosition: 0.5,
+      verticalJitter: 0.5,
+    }), regions);
+    const cols = [...sim.last!.keys()].map((idx) => idx % sim.cols);
+    expect(cols[0]).toBeGreaterThanOrEqual(7);
+    expect(cols[0]).toBeLessThanOrEqual(22);
+    expect(cols[1]).toBeGreaterThanOrEqual(37);
+    expect(cols[1]).toBeLessThanOrEqual(52);
+  });
+
+  it("honours the horizontal anchor in single-drop mode with no jitter", () => {
+    const left = sched(); const simLeft = new FakeSim(20, 40);
+    left.previewOne(0, simLeft, doc({ messages: ["AB"], messageLayout: "drop", verticalPosition: 0, verticalJitter: 0 }));
+    expect(colOf(simLeft.last!, 20)).toBe(0);
+
+    const right = sched(); const simRight = new FakeSim(20, 40);
+    right.previewOne(0, simRight, doc({ messages: ["AB"], messageLayout: "drop", verticalPosition: 1, verticalJitter: 0 }));
+    expect(colOf(simRight.last!, 20)).toBe(19);
+  });
+
+  it("leaves vertical gaps for spaces in single-drop mode", () => {
+    const s = sched();
+    const sim = new FakeSim(20, 11);
+    s.previewOne(0, sim, doc({ messages: ["A B"], messageLayout: "drop", verticalPosition: 0.5, verticalJitter: 0 }));
+    const col = colOf(sim.last!, 20);
+    expect(sim.last!.size).toBe(2);
+    expect(sim.last!.get(4 * 20 + col)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(5 * 20 + col)).toBeUndefined();
+    expect(sim.last!.get(6 * 20 + col)).toBe(glyphSet.charToGlyphIndex("B"));
+  });
+
+  it("skips a single-drop message taller than the grid without setting targets", () => {
+    const s = sched();
+    const sim = new FakeSim(20, 4);
+    s.previewOne(0, sim, doc({ messages: ["TOOLONG"], messageLayout: "drop" }));
+    expect(sim.sets).toBe(0);
+    expect(sim.last).toBeNull();
   });
 
   it("keeps the message on screen even at the extremes with full jitter", () => {

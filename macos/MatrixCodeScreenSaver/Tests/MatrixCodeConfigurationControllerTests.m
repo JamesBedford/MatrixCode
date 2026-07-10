@@ -3,11 +3,15 @@
 #import "MatrixCodeConfigurationController.h"
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodePreferences.h"
+#import "MatrixCodeRainLifecycle.h"
 
 @interface MatrixCodeConfigurationController (Testing)
 - (void)controlChanged:(id)sender;
+- (void)messageChoiceChanged:(NSPopUpButton *)sender;
 - (void)openEditor:(NSButton *)sender;
+- (NSDictionary<NSString *, NSString *> *)serializedValues;
 - (void)setSettingsPanelVisible:(BOOL)visible immediate:(BOOL)immediate;
+- (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message;
 @end
 
 static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identifier) {
@@ -27,6 +31,28 @@ static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *val
         }
     }
     XCTFail(@"Missing represented value %@ in %@", value, popup.identifier);
+}
+
+static NSDictionary *MatrixCodeJSONDictionary(NSString *raw) {
+    NSData *data = [raw dataUsingEncoding:NSUTF8StringEncoding];
+    id object = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    return [object isKindOfClass:NSDictionary.class] ? object : nil;
+}
+
+static NSString *MatrixCodeJSONString(NSDictionary *object) {
+    NSData *data = [NSJSONSerialization dataWithJSONObject:object options:0 error:nil];
+    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+}
+
+static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
+    if ([view isKindOfClass:NSTextField.class] &&
+        [[[(NSTextField *)view stringValue] uppercaseString] isEqualToString:label.uppercaseString]) {
+        return YES;
+    }
+    for (NSView *subview in view.subviews) {
+        if (MatrixCodeContainsLabel(subview, label)) return YES;
+    }
+    return NO;
 }
 
 @interface MatrixCodeConfigurationControllerTests : XCTestCase
@@ -75,6 +101,29 @@ static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *val
                                                     @"ambient-title"));
 }
 
+- (void)testSettingsBackdropUsesMetalDisplayLinkWithoutDuplicateTimer {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    MatrixCodeMetalView *background = [controller valueForKey:@"settingsMetalView"];
+    XCTAssertTrue([background isKindOfClass:MatrixCodeMetalView.class]);
+    XCTAssertFalse(background.isPaused);
+    XCTAssertNil([controller valueForKey:@"settingsAnimationTimer"]);
+}
+
+- (void)testStandalonePreviewUsesMetalDisplayLinkWithoutDuplicateTimer {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller showPreviewWithIntro:YES message:NO];
+    NSWindowController *previewController = [controller valueForKey:@"previewController"];
+    MatrixCodeMetalView *metalView = [previewController valueForKey:@"metalView"];
+    XCTAssertTrue([metalView isKindOfClass:MatrixCodeMetalView.class]);
+    XCTAssertFalse(metalView.isPaused);
+    XCTAssertNil([previewController valueForKey:@"timer"]);
+    XCTAssertNotNil(metalView.frameHandler);
+
+    [previewController close];
+}
+
 - (void)testSettingsPanelFadesAsHoverHudInsteadOfPermanentModalSurface {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
@@ -119,6 +168,36 @@ static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *val
         else XCTAssertNotNil(cancel);
         XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
                                                            @"editor-save"));
+    }
+}
+
+- (void)testEditorBackdropClicksDoNotDismissCustomCards {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    for (NSString *kind in @[@"characters", @"intro", @"messages", @"countdowns"]) {
+        NSButton *button = (NSButton *)MatrixCodeDescendantWithIdentifier(
+            controller.window.contentView, kind);
+        [controller openEditor:button];
+        NSView *backdrop = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                              @"settings-editor-backdrop");
+        XCTAssertNotNil(backdrop);
+        NSEvent *event = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+                                           location:NSMakePoint(1, 1)
+                                      modifierFlags:0
+                                          timestamp:0
+                                       windowNumber:controller.window.windowNumber
+                                            context:nil
+                                        eventNumber:0
+                                         clickCount:1
+                                           pressure:1];
+
+        [backdrop mouseDown:event];
+
+        XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                           @"settings-editor-backdrop"));
+        XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(
+            controller.window.contentView,
+            [@"settings-editor-card-" stringByAppendingString:kind]));
     }
 }
 
@@ -185,6 +264,54 @@ static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *val
     XCTAssertEqualWithAccuracy(hold.doubleValue, 2.8, 0.001);
 }
 
+- (void)testMessagesEditorPersistsDropLayoutAndRelabelsAxisControls {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSButton *messages = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"messages");
+    [controller openEditor:messages];
+    NSView *card = MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"settings-editor-card-messages");
+    NSPopUpButton *layout = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(card, @"messageLayout");
+    NSPopUpButton *direction = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(card, @"messageDirection");
+    XCTAssertTrue([layout isKindOfClass:NSPopUpButton.class]);
+    XCTAssertTrue([direction isKindOfClass:NSPopUpButton.class]);
+    XCTAssertEqualObjects([layout.itemArray valueForKey:@"representedObject"], (@[@"row", @"drop"]));
+    XCTAssertFalse(direction.enabled);
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (%)"));
+
+    MatrixCodeSelectRepresentedValue(layout, @"drop");
+    [controller messageChoiceChanged:layout];
+    card = MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"settings-editor-card-messages");
+    direction = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(card, @"messageDirection");
+    XCTAssertTrue(direction.enabled);
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Horizontal position (%)"));
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Horizontal randomness (%)"));
+
+    MatrixCodeSelectRepresentedValue(direction, @"bottomToTop");
+    [controller messageChoiceChanged:direction];
+    NSDictionary *stored = MatrixCodeJSONDictionary([controller serializedValues][@"mx-messages"]);
+    XCTAssertEqualObjects(stored[@"messageLayout"], @"drop");
+    XCTAssertEqualObjects(stored[@"messageDirection"], @"bottomToTop");
+}
+
+- (void)testMessagesEditorSanitizesInvalidLayoutChoicesToWebDefaults {
+    NSDictionary *messages = @{
+        @"enabled": @YES,
+        @"messages": @[@"NEO"],
+        @"messageLayout": @"diagonal",
+        @"messageDirection": @"sideways",
+    };
+    [self.preferences commitValues:@{@"mx-messages": MatrixCodeJSONString(messages)}];
+
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSDictionary *stored = MatrixCodeJSONDictionary([controller serializedValues][@"mx-messages"]);
+    XCTAssertEqualObjects(stored[@"messageLayout"], @"row");
+    XCTAssertEqualObjects(stored[@"messageDirection"], @"topToBottom");
+}
+
 - (void)testCharacterTabContainsGlyphSettings {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
@@ -233,9 +360,10 @@ static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *val
         [background diagnosticGlyphStateSnapshotWithWidth:420 height:260];
     XCTAssertGreaterThan(matrixSnapshot.count, (NSUInteger)0);
     BOOL sawNonBinaryGlyph = NO;
+    NSInteger binaryStart = MatrixCodeRainDigitStartIndex();
     for (NSNumber *glyph in matrixSnapshot) {
         NSInteger value = glyph.integerValue;
-        if (value != 56 && value != 57) {
+        if (value < binaryStart || value > binaryStart + 1) {
             sawNonBinaryGlyph = YES;
             break;
         }
@@ -257,7 +385,8 @@ static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *val
     XCTAssertEqual(binarySnapshot.count, matrixSnapshot.count);
     for (NSNumber *glyph in binarySnapshot) {
         NSInteger value = glyph.integerValue;
-        XCTAssertTrue(value == 56 || value == 57, @"Unexpected binary glyph index %@", glyph);
+        XCTAssertTrue(value >= binaryStart && value <= binaryStart + 1,
+                      @"Unexpected binary glyph index %@", glyph);
     }
 }
 

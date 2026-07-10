@@ -95,7 +95,14 @@ typography, palette, and interaction model match the web UI.
 In the standalone app, double-click the rain to toggle native
 fullscreen and triple-click it to start the continuous multi-monitor
 presentation. Press `P` to pause or resume the animation; the presentation
-commands are also available from the **View** menu.
+commands are also available from the **View** menu. The standalone app restores
+the saved window frame on launch and, if quit while presenting, re-enters
+fullscreen or multi-monitor mode on the next launch. The browser build cannot
+mirror that launch restoration because browsers require a fresh user gesture
+before entering fullscreen or the Window Management API. Native multi-monitor
+windows join every Space and move to the active Space before presenting, so a
+display currently showing another fullscreen app is taken over instead of
+leaving the Matrix window hidden on a different Space.
 During normal screen-saver playback, macOS treats mouse and keyboard input as an
 exit request, so fullscreen and multi-display presentation are automatic rather
 than gesture-driven.

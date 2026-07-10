@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00D12CF355FFA169D3810855 /* MatrixCodeConfigurationController.m in Sources */ = {isa = PBXBuildFile; fileRef = EA1738AB9C295C5F1D693185 /* MatrixCodeConfigurationController.m */; };
+		0B9351B63B0FA20DFE764628 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 20370CEB19DD3AE671565DB4 /* CoreVideo.framework */; };
 		0DE98B514F7518DFD3ADF002 /* MatrixCodeScreenSaverView.m in Sources */ = {isa = PBXBuildFile; fileRef = E858B41358185A811FE160A1 /* MatrixCodeScreenSaverView.m */; };
 		0F27DED51AE95F1974CCE3BC /* MatrixCodeNativeTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 8A7AD3A887C65066A0556D22 /* MatrixCodeNativeTests.m */; };
 		126833FF63A5C64FCFC6C8AB /* MatrixCodeIntroOverlayView.m in Sources */ = {isa = PBXBuildFile; fileRef = 64AB896A897642C183770CD9 /* MatrixCodeIntroOverlayView.m */; };
@@ -26,6 +27,7 @@
 		42C8725B8C54ADC74347C960 /* MatrixCodeRainHostView.m in Sources */ = {isa = PBXBuildFile; fileRef = E72D76D033D97F47275497B9 /* MatrixCodeRainHostView.m */; };
 		4420F9171369C9BD94B43A4A /* MatrixCodeRainLifecycleTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A29C58EE68EF96732324BB68 /* MatrixCodeRainLifecycleTests.m */; };
 		464B6687AD9118FEA18087D3 /* MatrixCodeSettingsTheme.m in Sources */ = {isa = PBXBuildFile; fileRef = ED10EAE0B1701BE1D79BF358 /* MatrixCodeSettingsTheme.m */; };
+		4C425670403B3556B53E4271 /* MatrixCodeAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 5863B0D5B7B75F26B525393A /* MatrixCodeAppDelegate.m */; };
 		4DEE9683D557EA766322305C /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3CE22739F1AF715A44184DF /* MetalKit.framework */; };
 		4F9C97109029EB284BB364DF /* MatrixCodeTokenResolver.m in Sources */ = {isa = PBXBuildFile; fileRef = 865F9239EC01EAFD1DD11142 /* MatrixCodeTokenResolver.m */; };
 		5054A5B6921AFCF3D4826A7F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C090124F0DF8A7DCBEDEC974 /* Metal.framework */; };
@@ -66,7 +68,9 @@
 		D8E434095A6303EA6F397F18 /* MatrixCodeIntroOverlayViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = B7FB66B2F1DA00F3EAD79399 /* MatrixCodeIntroOverlayViewTests.m */; };
 		DDE43AE261604E346612D178 /* MatrixCodeConfigurationController.m in Sources */ = {isa = PBXBuildFile; fileRef = EA1738AB9C295C5F1D693185 /* MatrixCodeConfigurationController.m */; };
 		E1F82588B8411012578A538E /* MatrixCodeScreenSaverView.m in Sources */ = {isa = PBXBuildFile; fileRef = E858B41358185A811FE160A1 /* MatrixCodeScreenSaverView.m */; };
+		E2E62EDC4B1207CEB6515C0B /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 20370CEB19DD3AE671565DB4 /* CoreVideo.framework */; };
 		F13A01FED1D4E217C4012F6A /* MatrixCodeRainLifecycle.m in Sources */ = {isa = PBXBuildFile; fileRef = A5B0B13FCBACEE256E710004 /* MatrixCodeRainLifecycle.m */; };
+		F9F27C5B6E53776E28D1EEB9 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 20370CEB19DD3AE671565DB4 /* CoreVideo.framework */; };
 		FD4D9DBC0D99EF497A0CBDEC /* MatrixCodeSession.m in Sources */ = {isa = PBXBuildFile; fileRef = DCACD09200F763B25BE37D6E /* MatrixCodeSession.m */; };
 		FF4B61FA6203600EC601BD32 /* MatrixCodeConstants.m in Sources */ = {isa = PBXBuildFile; fileRef = AEF98B97E178759EDA759445 /* MatrixCodeConstants.m */; };
 /* End PBXBuildFile section */
@@ -75,6 +79,7 @@
 		01E45C83FEBB6CE0C1121552 /* MatrixCodeShaders.msl */ = {isa = PBXFileReference; path = MatrixCodeShaders.msl; sourceTree = "<group>"; };
 		0D51BC0EFE837288DF1C2724 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		1BE41C2AB066ADD07F2BAE0D /* MatrixCodeSettingsVisualTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeSettingsVisualTests.m; sourceTree = "<group>"; };
+		20370CEB19DD3AE671565DB4 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
 		2B4086277E4FEDD05E4B385F /* MatrixCodeMetalView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeMetalView.h; sourceTree = "<group>"; };
 		2EA50F20D5F9B425761B7ED5 /* MatrixCodeSettingsThemeTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeSettingsThemeTests.m; sourceTree = "<group>"; };
 		2FF117CB5349A98517AC2867 /* MatrixCode.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = MatrixCode.icns; sourceTree = "<group>"; };
@@ -125,6 +130,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				18C28FC04EA4D80D8D9E4CDD /* AppKit.framework in Frameworks */,
+				E2E62EDC4B1207CEB6515C0B /* CoreVideo.framework in Frameworks */,
 				5054A5B6921AFCF3D4826A7F /* Metal.framework in Frameworks */,
 				4DEE9683D557EA766322305C /* MetalKit.framework in Frameworks */,
 				A9F2B696D7B1329CC247B7C8 /* ScreenSaver.framework in Frameworks */,
@@ -136,6 +142,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				335C251C3017D95DAE62357E /* AppKit.framework in Frameworks */,
+				F9F27C5B6E53776E28D1EEB9 /* CoreVideo.framework in Frameworks */,
 				30EAAC6B0CFF66A31327FC8C /* Metal.framework in Frameworks */,
 				B4100EC065BDDB9AAB5588E2 /* MetalKit.framework in Frameworks */,
 				65E011B6645B21B030E6BE31 /* ScreenSaver.framework in Frameworks */,
@@ -147,6 +154,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9221281F824C6BACA8AB6804 /* AppKit.framework in Frameworks */,
+				0B9351B63B0FA20DFE764628 /* CoreVideo.framework in Frameworks */,
 				37B06F876941E29275769CDA /* Metal.framework in Frameworks */,
 				6C92607D7B723A0B265CCCDA /* MetalKit.framework in Frameworks */,
 				19355D616D58FDB65B8A7FBD /* ScreenSaver.framework in Frameworks */,
@@ -248,6 +256,7 @@
 			isa = PBXGroup;
 			children = (
 				85F61ABB0D4A223369D6DEFF /* AppKit.framework */,
+				20370CEB19DD3AE671565DB4 /* CoreVideo.framework */,
 				C090124F0DF8A7DCBEDEC974 /* Metal.framework */,
 				A3CE22739F1AF715A44184DF /* MetalKit.framework */,
 				D95B4AD4E624D11550055918 /* ScreenSaver.framework */,
@@ -412,6 +421,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4C425670403B3556B53E4271 /* MatrixCodeAppDelegate.m in Sources */,
 				DDE43AE261604E346612D178 /* MatrixCodeConfigurationController.m in Sources */,
 				76504B3702DE7A1DBF571ED1 /* MatrixCodeConfigurationControllerTests.m in Sources */,
 				B413DB23B40D4C5D4893D378 /* MatrixCodeConstants.m in Sources */,
