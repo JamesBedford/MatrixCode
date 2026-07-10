@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { RainSim, packCell, unpackCell, decayBrightness } from "../src/sim/rainSim.ts";
+import {
+  RainSim,
+  packCell,
+  unpackCell,
+  decayBrightness,
+  effectiveTrailLength,
+  effectiveTrailSpeed,
+} from "../src/sim/rainSim.ts";
 import { createGlyphSet } from "../src/sim/glyphSet.ts";
 import { DEFAULT_SIM_CONFIG } from "../src/config/simConfig.ts";
 import { DEFAULT_CONTROLS } from "../src/config/controls.ts";
@@ -9,6 +16,7 @@ import type { Controls } from "../src/types.ts";
 const CONTROLS: Controls = {
   speed: 1,
   trailLength: 0.08,
+  trailVariation: 1,
   density: 1,
   rampUpMs: 0,
   glyphRate: 1,
@@ -60,6 +68,59 @@ describe("decayBrightness", () => {
     expect(decayBrightness(1, 0.1, 0)).toBe(1);
     expect(decayBrightness(1, 0.1, 1)).toBeCloseTo(0.1, 6);
     expect(decayBrightness(1, 0.1, 2)).toBeCloseTo(0.01, 6);
+  });
+});
+
+describe("effectiveTrailLength", () => {
+  const visibleRowsFor = (trailLength: number, controls: Controls): number => {
+    const averageSpeed = (DEFAULT_SIM_CONFIG.minSpeed + DEFAULT_SIM_CONFIG.speedRange * 0.5) * controls.speed;
+    return averageSpeed * DEFAULT_SIM_CONFIG.trailLengthScale * Math.log(0.004) / Math.log(trailLength);
+  };
+
+  it("maps 0% to roughly one window height", () => {
+    const rows = 72;
+    const controls = { ...CONTROLS, trailLength: 0.01, speed: 1 };
+    const trail = effectiveTrailLength(controls, rows, DEFAULT_SIM_CONFIG);
+    expect(visibleRowsFor(trail, controls)).toBeCloseTo(rows, 5);
+  });
+
+  it("maps 100% to a visibly longer maximum on common viewport heights", () => {
+    const rows = 72;
+    const controls = { ...CONTROLS, trailLength: 0.5, speed: 1 };
+    const trail = effectiveTrailLength(controls, rows, DEFAULT_SIM_CONFIG);
+    expect(visibleRowsFor(trail, controls)).toBeCloseTo(rows * 3, 5);
+  });
+
+  it("uses an exponential scale with finer control over shorter trails", () => {
+    const rows = 72;
+    const controls = { ...CONTROLS, trailLength: 0.255, speed: 1 };
+    const trail = effectiveTrailLength(controls, rows, DEFAULT_SIM_CONFIG);
+    expect(visibleRowsFor(trail, controls)).toBeCloseTo(rows * Math.sqrt(3), 5);
+  });
+
+  it("keeps the slider increasing across viewport sizes", () => {
+    for (const rows of [36, 72, 160]) {
+      const shortest = effectiveTrailLength({ ...CONTROLS, trailLength: 0.01 }, rows, DEFAULT_SIM_CONFIG);
+      const middle = effectiveTrailLength({ ...CONTROLS, trailLength: 0.255 }, rows, DEFAULT_SIM_CONFIG);
+      const longest = effectiveTrailLength({ ...CONTROLS, trailLength: 0.5 }, rows, DEFAULT_SIM_CONFIG);
+      expect(visibleRowsFor(shortest, CONTROLS)).toBeLessThan(visibleRowsFor(middle, CONTROLS));
+      expect(visibleRowsFor(middle, CONTROLS)).toBeLessThan(visibleRowsFor(longest, CONTROLS));
+    }
+  });
+});
+
+describe("effectiveTrailSpeed", () => {
+  it("preserves the current full speed-driven variation by default", () => {
+    expect(DEFAULT_CONTROLS.trailVariation).toBe(1);
+    expect(effectiveTrailSpeed(3.5, 1, DEFAULT_CONTROLS.trailVariation, DEFAULT_SIM_CONFIG)).toBe(3.5);
+    expect(effectiveTrailSpeed(11.5, 1, DEFAULT_CONTROLS.trailVariation, DEFAULT_SIM_CONFIG)).toBe(11.5);
+  });
+
+  it("can normalize all streams to the same visible trail length", () => {
+    expect(effectiveTrailSpeed(3.5, 1, 0, DEFAULT_SIM_CONFIG)).toBe(7.5);
+    expect(effectiveTrailSpeed(11.5, 1, 0, DEFAULT_SIM_CONFIG)).toBe(7.5);
+    expect(effectiveTrailSpeed(11.5, 1, 0.5, DEFAULT_SIM_CONFIG)).toBe(9.5);
+    expect(effectiveTrailSpeed(23, 2, 0.5, DEFAULT_SIM_CONFIG)).toBe(19);
   });
 });
 

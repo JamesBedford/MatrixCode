@@ -105,6 +105,11 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     [self setNeedsDisplay:YES];
 }
 
+- (void)shiftTimelineBy:(NSTimeInterval)interval {
+    if (!self.startDate || !isfinite(interval) || interval <= 0) return;
+    self.startDate = [self.startDate dateByAddingTimeInterval:interval];
+}
+
 - (void)finish {
     if (!self.playing) return;
     self.playing = NO;

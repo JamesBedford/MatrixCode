@@ -140,9 +140,9 @@ describe("native host payload", () => {
     expect(config).toMatchObject({
       seed: 123,
       epoch: 456,
-      vCols: 213,
+      vCols: 214,
       vRows: 60,
-      slice: { colStart: 107, rowStart: 0, cols: 107, rows: 60 },
+      slice: { colStart: 106, rowStart: 0, cols: 108, rows: 60, originX: -12, originY: 0 },
     });
   });
 

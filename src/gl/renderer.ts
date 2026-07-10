@@ -27,6 +27,15 @@ export interface ExtraLayer {
   colOffset: number;
 }
 
+/** Pixel-space grid placement used when a monitor begins partway through a shared cell. */
+export interface GridViewport {
+  cell: number;
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+}
+
 export class Renderer {
   private gl: WebGL2RenderingContext;
   private atlas: GlyphAtlas;
@@ -135,8 +144,16 @@ export class Renderer {
   }
 
   /** Draw one glyph layer's state texture into the currently-bound framebuffer at a horizontal cell offset. */
-  private drawGlyphLayer(texture: WebGLTexture, colOffset: number, grid: Grid, params: RenderParams): void {
+  private drawGlyphLayer(
+    texture: WebGLTexture,
+    colOffset: number,
+    grid: Grid,
+    params: RenderParams,
+    viewport?: GridViewport,
+  ): void {
     const preset = params.preset;
+    const width = viewport?.width ?? 1;
+    const height = viewport?.height ?? 1;
     drawFullscreen(this.gl, this.glyphProg, this.tri, {
       uState: texture,
       uAtlas: this.atlas.texture,
@@ -148,10 +165,18 @@ export class Renderer {
       uHead: preset.head,
       uLeadBrightness: params.leadBrightness,
       uColOffset: colOffset,
+      uViewport: [width, height],
+      uCell: viewport ? [viewport.cell, viewport.cell] : [width / grid.cols, height / grid.rows],
+      uGridOrigin: [viewport?.originX ?? 0, viewport?.originY ?? 0],
     });
   }
 
-  renderFrame(params: RenderParams, grid: Grid, extraLayers?: readonly ExtraLayer[]): void {
+  renderFrame(
+    params: RenderParams,
+    grid: Grid,
+    extraLayers?: readonly ExtraLayer[],
+    viewport?: GridViewport,
+  ): void {
     const gl = this.gl;
     if (params.quality !== this.quality) {
       this.resize(this.deviceW, this.deviceH, params.quality);
@@ -164,11 +189,11 @@ export class Renderer {
     // 1. Glyph pass -> HDR scene. The base layer (offset 0) overwrites the frame (no glClear); any
     //    overlap layers then add on top so overlapping trails/heads accumulate emissively.
     twgl.bindFramebufferInfo(gl, this.scene);
-    this.drawGlyphLayer(this.state.texture, 0, grid, params);
+    this.drawGlyphLayer(this.state.texture, 0, grid, params, viewport);
     if (extraLayers && extraLayers.length > 0) {
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE);
-      for (const layer of extraLayers) this.drawGlyphLayer(layer.texture, layer.colOffset, grid, params);
+      for (const layer of extraLayers) this.drawGlyphLayer(layer.texture, layer.colOffset, grid, params, viewport);
       gl.disable(gl.BLEND);
     }
 

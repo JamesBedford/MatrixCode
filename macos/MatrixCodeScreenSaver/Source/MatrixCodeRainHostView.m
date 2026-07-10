@@ -31,6 +31,8 @@
 @property(nonatomic) NSUInteger backdropClickCount;
 @property(nonatomic, strong, nullable) NSTimer *backdropClickTimer;
 @property(nonatomic, strong, nullable) NSDate *deferredRainStartDate;
+@property(nonatomic) BOOL userPaused;
+@property(nonatomic, strong, nullable) NSDate *pauseStartedDate;
 @end
 
 @implementation MatrixCodeRainHostView
@@ -270,35 +272,49 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     [self.metalView draw];
 }
 
-- (void)startAnimation {
-    self.hostActive = YES;
-    [self ensureMetalView];
-    [self.metalView reloadStoredValues:[self.preferences storedValues]];
-    [self.metalView setAnimationActive:!self.reducedMotion];
-    self.introScheduled = self.introOverlay.hasIntro;
-    if (!self.reducedMotion && self.introOverlay) {
-        [self.introOverlay startAtDate:self.runStartDate];
-    } else {
-        [self animateOneFrame];
-    }
-    if (self.usesInternalAnimationTimer && !self.animationTimer && !self.reducedMotion) {
-        __weak typeof(self) weakSelf = self;
-        self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
-                                                              repeats:YES
-                                                                block:^(NSTimer *timer) {
-            [weakSelf animateOneFrame];
-        }];
-    }
+- (BOOL)animationShouldRun {
+    return self.hostActive && !self.reducedMotion && !self.userPaused;
 }
 
-- (void)stopAnimation {
-    self.hostActive = NO;
-    [self.metalView setAnimationActive:NO];
+- (void)startInternalAnimationTimerIfNeeded {
+    if (!self.usesInternalAnimationTimer || self.animationTimer || ![self animationShouldRun]) return;
+    __weak typeof(self) weakSelf = self;
+    self.animationTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+                                                          repeats:YES
+                                                            block:^(NSTimer *timer) {
+        [weakSelf animateOneFrame];
+    }];
+}
+
+- (void)stopInternalAnimationTimer {
     [self.animationTimer invalidate];
     self.animationTimer = nil;
 }
 
+- (void)startAnimation {
+    self.hostActive = YES;
+    [self ensureMetalView];
+    [self.metalView reloadStoredValues:[self.preferences storedValues]];
+    [self.metalView setAnimationActive:[self animationShouldRun]];
+    self.introScheduled = self.introOverlay.hasIntro;
+    if ([self animationShouldRun] && self.introOverlay) {
+        [self.introOverlay startAtDate:self.runStartDate];
+    } else {
+        [self animateOneFrame];
+    }
+    [self startInternalAnimationTimerIfNeeded];
+}
+
+- (void)stopAnimation {
+    self.hostActive = NO;
+    self.userPaused = NO;
+    self.pauseStartedDate = nil;
+    [self.metalView setAnimationActive:NO];
+    [self stopInternalAnimationTimer];
+}
+
 - (void)animateOneFrame {
+    if (self.userPaused) return;
     if (!self.metalView || !self.runStartDate) return;
     NSDate *now = self.reducedMotion ? self.runStartDate : [NSDate date];
     [self.introOverlay updateAtDate:now framesPerSecond:60];
@@ -315,6 +331,30 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     float densityScale = MatrixCodeRainRampEase(linearDensityScale);
     [self.metalView setDensityScale:densityScale rainElapsed:elapsed];
     [self.metalView draw];
+}
+
+- (void)toggleUserPaused {
+    if (!self.hostActive || self.reducedMotion) return;
+    if (!self.userPaused) {
+        self.pauseStartedDate = [NSDate date];
+        self.userPaused = YES;
+        [self stopInternalAnimationTimer];
+        [self.metalView draw];
+        return;
+    }
+
+    NSDate *resumeDate = [NSDate date];
+    NSTimeInterval pausedDuration = [resumeDate timeIntervalSinceDate:self.pauseStartedDate];
+    if (isfinite(pausedDuration) && pausedDuration > 0) {
+        self.runStartDate = [self.runStartDate dateByAddingTimeInterval:pausedDuration];
+        self.deferredRainStartDate = [self.deferredRainStartDate dateByAddingTimeInterval:pausedDuration];
+        [self.introOverlay shiftTimelineBy:pausedDuration];
+    }
+    self.pauseStartedDate = nil;
+    self.userPaused = NO;
+    [self.metalView setAnimationActive:[self animationShouldRun]];
+    [self startInternalAnimationTimerIfNeeded];
+    [self animateOneFrame];
 }
 
 - (NSWindow *)configureWindow {
@@ -336,6 +376,26 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     NSArray *screens = [self.standaloneSession[@"screens"] isKindOfClass:NSArray.class]
         ? self.standaloneSession[@"screens"] : @[];
     return self.mode == MatrixCodeRainHostModeStandalone && screens.count > 1;
+}
+
+- (BOOL)isStandaloneFullScreenPresentation {
+    return self.mode == MatrixCodeRainHostModeStandalone &&
+        self.window &&
+        (self.window.styleMask & NSWindowStyleMaskFullScreen);
+}
+
+- (BOOL)exitStandalonePresentationIfNeeded {
+    if ([self isStandaloneMultiMonitorPresentation]) {
+        [NSNotificationCenter.defaultCenter
+            postNotificationName:MatrixCodeRainHostRequestExitMultiMonitorNotification
+                          object:self];
+        return YES;
+    }
+    if ([self isStandaloneFullScreenPresentation]) {
+        [self.window toggleFullScreen:self];
+        return YES;
+    }
+    return NO;
 }
 
 - (NSTimeInterval)backdropClickInterval {
@@ -387,24 +447,25 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
 }
 
 - (void)keyDown:(NSEvent *)event {
-    if (self.introOverlay.playing && event.keyCode == 53) {
+    NSString *characters = event.charactersIgnoringModifiers.lowercaseString;
+    NSEventModifierFlags deviceIndependentFlags =
+        event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+    BOOL hasCommandControlOrOption = (deviceIndependentFlags &
+        (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption)) != 0;
+    if (!event.isARepeat && !hasCommandControlOrOption && [characters isEqualToString:@"p"]) {
+        [self toggleUserPaused];
+    } else if (event.keyCode == 53 && [self exitStandalonePresentationIfNeeded]) {
+        return;
+    } else if (self.introOverlay.playing && event.keyCode == 53) {
         [self.introOverlay skip];
-    } else if ([self isStandaloneMultiMonitorPresentation] && event.keyCode == 53) {
-        [NSNotificationCenter.defaultCenter
-            postNotificationName:MatrixCodeRainHostRequestExitMultiMonitorNotification
-                          object:self];
     } else {
         [super keyDown:event];
     }
 }
 
 - (void)cancelOperation:(id)sender {
+    if ([self exitStandalonePresentationIfNeeded]) return;
     if (self.introOverlay.playing) [self.introOverlay skip];
-    else if ([self isStandaloneMultiMonitorPresentation]) {
-        [NSNotificationCenter.defaultCenter
-            postNotificationName:MatrixCodeRainHostRequestExitMultiMonitorNotification
-                          object:self];
-    }
     else [super cancelOperation:sender];
 }
 

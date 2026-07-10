@@ -19,6 +19,9 @@ uniform vec3 uBright;
 uniform vec3 uHead;
 uniform float uLeadBrightness; // extra HDR for white-hot heads
 uniform float uColOffset;      // horizontal shift in cells; base layer = 0.0, overlap layers land between columns
+uniform vec2 uViewport;        // viewport size in CSS pixels
+uniform vec2 uCell;            // shared cell size in CSS pixels
+uniform vec2 uGridOrigin;      // local position of cell (0,0), possibly negative at a monitor seam
 
 // Gradients of the atlas UV taken from the *continuous* cell coordinate, so the
 // fract() seam between cells doesn't blow up the implicit LOD (which would force
@@ -33,8 +36,9 @@ float sampleGlyph(float gi, vec2 cellUv, vec2 duvdx, vec2 duvdy) {
 void main() {
   // Pixel -> cell. Row 0 is the top of the screen. uColOffset shifts this layer horizontally so
   // overlap layers fall between the base columns; the column index wraps so the shift tiles seamlessly.
-  float colF = vUv.x * uGrid.x - uColOffset;
-  float rowF = (1.0 - vUv.y) * uGrid.y;
+  vec2 pixel = vec2(vUv.x * uViewport.x, (1.0 - vUv.y) * uViewport.y);
+  float colF = (pixel.x - uGridOrigin.x) / uCell.x - uColOffset;
+  float rowF = (pixel.y - uGridOrigin.y) / uCell.y;
   vec2 cellId = vec2(mod(floor(colF), uGrid.x), floor(rowF));
   vec2 cellUv = vec2(fract(colF), fract(rowF));
   vec2 stUv = (cellId + 0.5) / uGrid;

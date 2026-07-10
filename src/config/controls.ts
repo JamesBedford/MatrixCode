@@ -7,6 +7,7 @@ import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 export const DEFAULT_CONTROLS: Controls = {
   speed: 1,
   trailLength: 0.255,
+  trailVariation: 1,
   density: 2,
   rampUpMs: 8000,
   glyphRate: 1,
@@ -31,6 +32,7 @@ const GLYPH_MODES: GlyphMode[] = ["matrix", "katakana", "binary", "digits", "lat
 const URL_PARAMS = {
   speed: "speed",
   trailLength: "trail",
+  trailVariation: "trailvar",
   density: "density",
   rampUpMs: "ramp",
   glyphRate: "glyphrate",
@@ -66,6 +68,7 @@ function sanitize(input: Partial<Controls>): Partial<Controls> {
   const out: Partial<Controls> = {};
   if (finiteNum(input.speed)) out.speed = clamp(input.speed, 0.1, 3);
   if (finiteNum(input.trailLength)) out.trailLength = clamp(input.trailLength, 0.01, 0.5);
+  if (finiteNum(input.trailVariation)) out.trailVariation = clamp(input.trailVariation, 0, 1);
   if (finiteNum(input.density)) out.density = clamp(input.density, 0.1, 100);
   if (finiteNum(input.rampUpMs)) out.rampUpMs = clamp(input.rampUpMs, 0, 60000);
   if (finiteNum(input.glyphRate)) out.glyphRate = clamp(input.glyphRate, 0, 5);

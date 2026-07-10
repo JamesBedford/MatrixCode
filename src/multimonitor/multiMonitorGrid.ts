@@ -21,6 +21,9 @@ export interface GridSlice {
   rowStart: number;
   cols: number;
   rows: number;
+  /** Local CSS-pixel position of colStart/rowStart; non-positive when the first cell is clipped. */
+  originX?: number;
+  originY?: number;
 }
 
 export interface VirtualGrid {
@@ -55,19 +58,28 @@ export function computeVirtualGrid(screens: ScreenRect[], cell: number): Virtual
   }
   const originX = minL;
   const originY = minT;
-  const vCols = Math.max(1, Math.round((maxR - minL) / cell));
-  const vRows = Math.max(1, Math.round((maxB - minT) / cell));
+  const safeCell = Math.max(Number.EPSILON, cell);
+  const vCols = Math.max(1, Math.ceil((maxR - minL) / safeCell));
+  const vRows = Math.max(1, Math.ceil((maxB - minT) / safeCell));
 
   const slices: Record<string, GridSlice> = {};
   for (const s of screens) {
+    const offsetX = s.left - originX;
+    const offsetY = s.top - originY;
+    const colStart = Math.floor(offsetX / safeCell);
+    const rowStart = Math.floor(offsetY / safeCell);
+    const localOriginX = colStart * safeCell - offsetX;
+    const localOriginY = rowStart * safeCell - offsetY;
     slices[s.id] = {
-      colStart: Math.round((s.left - originX) / cell),
-      rowStart: Math.round((s.top - originY) / cell),
-      cols: Math.max(1, Math.round(s.width / cell)),
-      rows: Math.max(1, Math.round(s.height / cell)),
+      colStart,
+      rowStart,
+      cols: Math.max(1, Math.ceil((s.width - localOriginX) / safeCell)),
+      rows: Math.max(1, Math.ceil((s.height - localOriginY) / safeCell)),
+      originX: localOriginX,
+      originY: localOriginY,
     };
   }
-  return { originX, originY, cell, vCols, vRows, slices };
+  return { originX, originY, cell: safeCell, vCols, vRows, slices };
 }
 
 /**

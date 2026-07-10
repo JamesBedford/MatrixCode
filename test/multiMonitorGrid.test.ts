@@ -67,7 +67,26 @@ describe("computeVirtualGrid", () => {
     const one = computeVirtualGrid([{ id: "only", left: 0, top: 0, width: W, height: H }], CELL);
     expect(one.vCols).toBe(COLS);
     expect(one.vRows).toBe(ROWS);
-    expect(one.slices.only).toEqual({ colStart: 0, rowStart: 0, cols: COLS, rows: ROWS });
+    expect(one.slices.only).toEqual({
+      colStart: 0, rowStart: 0, cols: COLS, rows: ROWS, originX: 0, originY: 0,
+    });
+  });
+
+  it("clips partial cells instead of stretching differently sized displays", () => {
+    const realLayout: ScreenRect[] = [
+      { id: "center", left: 0, top: 1200, width: 1710, height: 1112 },
+      { id: "top", left: -112, top: 0, width: 1920, height: 1200 },
+      { id: "left", left: -1920, top: 1200, width: 1920, height: 1200 },
+      { id: "right", left: 1710, top: 1200, width: 1920, height: 1200 },
+    ];
+    const real = computeVirtualGrid(realLayout, 18);
+
+    expect(real.slices.top).toMatchObject({ colStart: 100, rowStart: 0, originX: -8, originY: 0 });
+    expect(real.slices.center).toMatchObject({ colStart: 106, rowStart: 66, originX: -12, originY: -12 });
+
+    // Global column 106 appears at virtual x=-12 on both displays.
+    expect(real.slices.top!.originX! + (106 - real.slices.top!.colStart) * 18 - 112).toBe(-12);
+    expect(real.slices.center!.originX).toBe(-12);
   });
 
   it("uses negative virtual coordinates correctly (screen left of primary)", () => {

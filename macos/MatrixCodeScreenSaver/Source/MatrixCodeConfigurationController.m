@@ -213,13 +213,15 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSDictionary *storedControls =
         MatrixCodeJSONObject(self.stagedValues[@"mx-controls"], NSDictionary.class) ?: @{};
     NSMutableDictionary *controls = [@{
-        @"speed": @1, @"trailLength": @0.255, @"density": @2, @"rampUpMs": @8000,
+        @"speed": @1, @"trailLength": @0.255, @"trailVariation": @1,
+        @"density": @2, @"rampUpMs": @8000,
         @"glyphRate": @1, @"glyphScale": @1, @"glow": @0.9, @"leadBrightness": @1.6,
         @"glyphMode": @"matrix", @"glyphFont": @"matrix", @"preset": @"classic", @"mirror": @YES, @"scanlines": @NO, @"vignette": @0,
         @"allowOverlap": @YES, @"quality": @"high",
     } mutableCopy];
     NSArray *controlNumbers = @[
         @[@"speed", @0.1, @3], @[@"trailLength", @0.01, @0.5],
+        @[@"trailVariation", @0, @1],
         @[@"density", @0.1, @100], @[@"rampUpMs", @0, @60000],
         @[@"glyphRate", @0, @5], @[@"glyphScale", @0.5, @10],
         @[@"glow", @0, @2.5], @[@"leadBrightness", @0, @3],
@@ -438,7 +440,11 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         return [NSString stringWithFormat:@"%.0f", slider.doubleValue];
     }
     if ([slider.identifier isEqualToString:@"trailLength"]) {
-        return [NSString stringWithFormat:@"%.3f", slider.doubleValue];
+        double percent = (slider.doubleValue - 0.01) / 0.49 * 100.0;
+        return [NSString stringWithFormat:@"%.0f%%", fmin(100, fmax(0, percent))];
+    }
+    if ([slider.identifier isEqualToString:@"trailVariation"]) {
+        return [NSString stringWithFormat:@"%.0f%%", slider.doubleValue * 100.0];
     }
     return [NSString stringWithFormat:@"%.2f", slider.doubleValue];
 }
@@ -488,7 +494,9 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [stack addArrangedSubview:[self rowWithLabel:@"Viewer name" control:name]];
     NSArray *specs = @[
         @[@"Density", @"density", @0.1, @100], @[@"Ramp-up (ms)", @"rampUpMs", @0, @60000],
-        @[@"Trail decay", @"trailLength", @0.01, @0.5], @[@"Speed", @"speed", @0.1, @3],
+        @[@"Trail length", @"trailLength", @0.01, @0.5],
+        @[@"Trail variation", @"trailVariation", @0, @1],
+        @[@"Speed", @"speed", @0.1, @3],
         @[@"Glyph size", @"glyphScale", @0.5, @10],
         @[@"Glow", @"glow", @0, @2.5], @[@"Lead glow", @"leadBrightness", @0, @3],
         @[@"Vignette", @"vignette", @0, @1],

@@ -66,7 +66,7 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
     }
     NSView *rain = tabs.tabViewItems.firstObject.view;
     NSArray<NSString *> *keys = @[
-        @"density", @"rampUpMs", @"trailLength", @"speed", @"glyphScale",
+        @"density", @"rampUpMs", @"trailLength", @"trailVariation", @"speed", @"glyphScale",
         @"glow", @"leadBrightness", @"vignette",
     ];
     for (NSString *key in keys) {
@@ -84,6 +84,22 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
     speed.doubleValue = 2.25;
     [speed sendAction:speed.action to:speed.target];
     XCTAssertEqualObjects(speedReadout.stringValue, @"2.25");
+
+    NSSlider *trail = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"trailLength");
+    NSTextField *trailReadout = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        rain, @"trailLength-value");
+    XCTAssertEqualObjects(trailReadout.stringValue, @"50%");
+    trail.doubleValue = 0.5;
+    [trail sendAction:trail.action to:trail.target];
+    XCTAssertEqualObjects(trailReadout.stringValue, @"100%");
+
+    NSSlider *variation = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"trailVariation");
+    NSTextField *variationReadout = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        rain, @"trailVariation-value");
+    XCTAssertEqualObjects(variationReadout.stringValue, @"100%");
+    variation.doubleValue = 0.35;
+    [variation sendAction:variation.action to:variation.target];
+    XCTAssertEqualObjects(variationReadout.stringValue, @"35%");
 }
 
 - (void)testCharacterTabContainsGlyphSettings {

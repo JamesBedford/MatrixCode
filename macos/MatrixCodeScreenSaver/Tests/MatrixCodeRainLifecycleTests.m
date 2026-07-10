@@ -44,6 +44,15 @@
     XCTAssertEqual(glyphs.count, (NSUInteger)2);
 }
 
+- (void)testTrailVariationPreservesCurrentDefaultAndCanNormalizeLengths {
+    XCTAssertEqualWithAccuracy(MatrixCodeRainEffectiveTrailSpeed(3.5f, 1, 1), 3.5f, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeRainEffectiveTrailSpeed(11.5f, 1, 1), 11.5f, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeRainEffectiveTrailSpeed(3.5f, 1, 0), 7.5f, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeRainEffectiveTrailSpeed(11.5f, 1, 0), 7.5f, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeRainEffectiveTrailSpeed(11.5f, 1, 0.5f), 9.5f, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeRainEffectiveTrailSpeed(23.0f, 2, 0.5f), 19.0f, 0.0001);
+}
+
 - (void)testNewlyAdmittedStreamsEnterAboveVirtualDesktop {
     const float rampDuration = 8;
     for (uint32_t key = 1; key < 5000; key++) {

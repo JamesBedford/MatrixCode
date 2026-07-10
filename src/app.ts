@@ -549,7 +549,22 @@ export async function mountMatrixRain(
     } else {
       stateTex.upload(sim.state);
     }
-    renderer.renderFrame(paramsOf(controls.get()), grid, multiMonitorState ? undefined : activeExtraLayers());
+    const slice = multiMonitorState?.config.slice;
+    const viewport = multiMonitorState && slice
+      ? {
+          cell: multiMonitorState.config.cell,
+          originX: slice.originX ?? 0,
+          originY: slice.originY ?? 0,
+          width: cssW,
+          height: cssH,
+        }
+      : undefined;
+    renderer.renderFrame(
+      paramsOf(controls.get()),
+      grid,
+      multiMonitorState ? undefined : activeExtraLayers(),
+      viewport,
+    );
   };
   const renderStatic = paint;
 

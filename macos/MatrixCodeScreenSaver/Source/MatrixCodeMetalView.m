@@ -20,6 +20,16 @@ typedef struct {
 } MatrixCodeGlyphInstance;
 
 typedef struct {
+    uint32_t identity;
+    uint32_t randomCounter;
+    uint8_t glyphNew;
+    uint8_t glyphOld;
+    uint8_t wasHead;
+    uint8_t initialized;
+    float phase;
+} MatrixCodeGlyphCellState;
+
+typedef struct {
     vector_float2 viewport;
     vector_float3 tailColor;
     float padding0;
@@ -58,6 +68,17 @@ static float MatrixCodeVanDerCorput(NSUInteger value) {
         value /= 2;
     }
     return result;
+}
+
+static uint32_t MatrixCodeCellIdentity(uint32_t laneSeed, NSInteger globalColumn, NSInteger globalRow) {
+    uint32_t column = (uint32_t)(int32_t)globalColumn;
+    uint32_t row = (uint32_t)(int32_t)globalRow;
+    return MatrixCodeHash(laneSeed ^ column * 73856093U ^ row * 19349663U);
+}
+
+static uint32_t MatrixCodeNextGlyphEventKey(MatrixCodeGlyphCellState *state) {
+    state->randomCounter = MatrixCodeHash(state->randomCounter + 0x9e3779b9U);
+    return state->randomCounter;
 }
 
 static float MatrixCodeNumber(NSDictionary *dictionary, NSString *key, float fallback, float minimum, float maximum) {
@@ -122,6 +143,22 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     };
 }
 
+static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float speedControl) {
+    const float controlMin = 0.01f;
+    const float controlMax = 0.5f;
+    const float maxTrailViewports = 3.0f;
+    float percent = fminf(1, fmaxf(0, (trailLength - controlMin) / (controlMax - controlMin)));
+
+    float averageSpeed = (3.5f + 8.0f * 0.5f) * fmaxf(speedControl, 0.1f);
+    float viewportRows = fmaxf(1, rows);
+    float previousMaxRows = averageSpeed * 1.2f * logf(0.004f) / logf(controlMax);
+    float minRows = viewportRows;
+    float maxRows = fmaxf(fmaxf(viewportRows * maxTrailViewports, previousMaxRows), minRows + 1);
+    float targetRows = minRows * powf(maxRows / minRows, percent);
+
+    return expf(logf(0.004f) * 1.2f * averageSpeed / fmaxf(1, targetRows));
+}
+
 @interface MatrixCodeMetalView () <MTKViewDelegate>
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipeline;
@@ -162,9 +199,23 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
 @property(nonatomic) NSInteger activeMessagePlacementColumns;
 @property(nonatomic, strong) NSMutableSet<NSNumber *> *claimedMessageCells;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *messageTargetGlyphs;
+@property(nonatomic, strong) NSMutableData *glyphStateData;
+@property(nonatomic) NSInteger glyphStateColumns;
+@property(nonatomic) NSInteger glyphStateRows;
+@property(nonatomic) NSInteger glyphStateLaneCount;
+@property(nonatomic) NSTimeInterval lastGlyphStateTime;
+@property(nonatomic) BOOL hasGlyphStateTime;
 @end
 
 @implementation MatrixCodeMetalView
+
+#if DEBUG
++ (float)diagnosticEffectiveTrailLength:(float)trailLength
+                                  rows:(float)rows
+                          speedControl:(float)speedControl {
+    return MatrixCodeEffectiveTrailLength(trailLength, rows, speedControl);
+}
+#endif
 
 - (instancetype)initWithFrame:(NSRect)frame
                       session:(NSDictionary<NSString *,id> *)session
@@ -212,6 +263,15 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     [self setDensityScale:densityScale];
     self.rainElapsed = rainElapsed;
     self.usesExternalRainTimeline = YES;
+}
+
+- (void)resetGlyphState {
+    self.glyphStateData = nil;
+    self.glyphStateColumns = 0;
+    self.glyphStateRows = 0;
+    self.glyphStateLaneCount = 0;
+    self.hasGlyphStateTime = NO;
+    self.lastGlyphStateTime = 0;
 }
 
 - (void)reloadStoredValues:(NSDictionary<NSString *,NSString *> *)storedValues {
@@ -263,6 +323,43 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     if (self.atlas && (previousMirror != nextMirror || ![previousFont isEqualToString:nextFont])) {
         [self buildAtlas];
     }
+}
+
+- (MatrixCodeGlyphCellState *)glyphStatesForColumns:(NSInteger)columns
+                                               rows:(NSInteger)rows
+                                          laneCount:(NSInteger)laneCount {
+    NSUInteger cellCount = (NSUInteger)MAX(1, columns) * (NSUInteger)MAX(1, rows) *
+        (NSUInteger)MAX(1, laneCount);
+    NSUInteger length = cellCount * sizeof(MatrixCodeGlyphCellState);
+    if (!self.glyphStateData ||
+        self.glyphStateColumns != columns ||
+        self.glyphStateRows != rows ||
+        self.glyphStateLaneCount != laneCount ||
+        self.glyphStateData.length != length) {
+        self.glyphStateData = [NSMutableData dataWithLength:length];
+        self.glyphStateColumns = columns;
+        self.glyphStateRows = rows;
+        self.glyphStateLaneCount = laneCount;
+    }
+    return (MatrixCodeGlyphCellState *)self.glyphStateData.mutableBytes;
+}
+
+- (float)advanceGlyphStateClockToTime:(NSTimeInterval)time {
+    if (!isfinite(time)) time = 0;
+    if (!self.hasGlyphStateTime) {
+        self.lastGlyphStateTime = time;
+        self.hasGlyphStateTime = YES;
+        return 1.0f / 60.0f;
+    }
+    if (time < self.lastGlyphStateTime) {
+        [self resetGlyphState];
+        self.lastGlyphStateTime = time;
+        self.hasGlyphStateTime = YES;
+        return 1.0f / 60.0f;
+    }
+    float dt = (float)(time - self.lastGlyphStateTime);
+    self.lastGlyphStateTime = time;
+    return fminf(fmaxf(dt, 0), 1.0f / 15.0f);
 }
 
 - (void)resolveDesktopGeometry {
@@ -623,7 +720,9 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     [self ensureInstanceCapacity:(NSUInteger)(columns * rows * laneCount)];
 
     float speedControl = MatrixCodeNumber(self.controls, @"speed", 1, 0.1, 3);
-    float trail = MatrixCodeNumber(self.controls, @"trailLength", 0.255, 0.01, 0.5);
+    float rawTrail = MatrixCodeNumber(self.controls, @"trailLength", 0.255, 0.01, 0.5);
+    float trailVariation = MatrixCodeNumber(self.controls, @"trailVariation", 1, 0, 1);
+    float trail = MatrixCodeEffectiveTrailLength(rawTrail, (float)rows, speedControl);
     float glyphRate = MatrixCodeNumber(self.controls, @"glyphRate", 1, 0, 5);
     NSString *glyphMode = MatrixCodeGlyphMode(self.controls);
     NSArray *sessionScreens = [self.session[@"screens"] isKindOfClass:NSArray.class]
@@ -653,6 +752,15 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                           globalRows:(NSInteger)virtualRows
                            localCols:columns
                            localRows:rows];
+    float glyphDt = [self advanceGlyphStateClockToTime:rainElapsed];
+    MatrixCodeGlyphCellState *glyphStates = [self glyphStatesForColumns:columns
+                                                                   rows:rows
+                                                              laneCount:laneCount];
+    float sync = fmaxf(0, 1 + 0.35f * sinf(rainElapsed * 1.7f * 2.0f * (float)M_PI));
+    float mutationChance = glyphRate > 0
+        ? 1 - expf(-1.6f * glyphRate * sync * glyphDt)
+        : 0;
+    float crossfadeStep = glyphDt / 0.09f;
     MatrixCodeGlyphInstance *instances = self.instanceBuffer.contents;
     NSUInteger count = 0;
     NSMutableSet<NSNumber *> *currentMessageTargets =
@@ -682,7 +790,9 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                     if (!streamSample.active) continue;
                     float distance = streamSample.headRow - globalRow;
                     if (distance < 0) continue;
-                    float age = distance / fmaxf(streamSample.speed, 0.1f);
+                    float trailSpeed = MatrixCodeRainEffectiveTrailSpeed(
+                        streamSample.speed, speedControl, trailVariation);
+                    float age = distance / fmaxf(trailSpeed, 0.1f);
                     float value = powf(trail, age / 1.2f);
                     if (value < 0.004f) continue;
                     if (distance < 1.05f) {
@@ -692,29 +802,34 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                     }
                     brightness = fmaxf(brightness, value);
                 }
-                float mutationClock = elapsed * glyphRate * 1.6f;
-                uint32_t mutationTick = (uint32_t)floorf(mutationClock);
-                uint32_t glyphBaseKey = laneSeed ^ (uint32_t)(globalColumn * 73856093) ^
-                    (uint32_t)(globalRow * 19349663);
-                uint32_t glyphKey = glyphBaseKey ^ mutationTick;
-                NSInteger glyph = MatrixCodeRainGlyphIndex(glyphKey, glyphMode);
-                NSInteger oldGlyph = glyphRate > 0
-                    ? MatrixCodeRainGlyphIndex(glyphBaseKey ^ (mutationTick - 1), glyphMode)
-                    : glyph;
-                float crossfade = glyphRate > 0
-                    ? fminf(1, (mutationClock - floorf(mutationClock)) /
-                        fmaxf(0.001f, glyphRate * 1.6f * 0.09f))
-                    : 1;
+                NSUInteger stateIndex = ((NSUInteger)lane * (NSUInteger)rows + (NSUInteger)row) *
+                    (NSUInteger)columns + (NSUInteger)column;
+                MatrixCodeGlyphCellState *glyphState = &glyphStates[stateIndex];
+                uint32_t identity = MatrixCodeCellIdentity(laneSeed, globalColumn, globalRow);
+                if (!glyphState->initialized || glyphState->identity != identity) {
+                    NSInteger initialGlyph = MatrixCodeRainGlyphIndex(identity ^ 0x68e31da4U, glyphMode);
+                    glyphState->identity = identity;
+                    glyphState->randomCounter = MatrixCodeHash(identity ^ self.seed ^ 0x3c6ef372U);
+                    glyphState->glyphNew = (uint8_t)initialGlyph;
+                    glyphState->glyphOld = (uint8_t)initialGlyph;
+                    glyphState->wasHead = 0;
+                    glyphState->initialized = 1;
+                    glyphState->phase = 1;
+                }
+                if (glyphState->phase < 1) {
+                    glyphState->phase = fminf(1, glyphState->phase + crossfadeStep);
+                }
+                float messageIntensity = 1;
+                float messageScramble = 0;
+                NSInteger messageGlyph = NSNotFound;
                 if (lane == 0) {
-                    float messageIntensity = 1;
-                    float messageScramble = 0;
-                    NSInteger messageGlyph = [self messageGlyphAtGlobalColumn:globalColumn
-                                                                    globalRow:globalRow
-                                                                  localColumn:column
-                                                                     localRow:row
-                                                                         time:now
-                                                                    intensity:&messageIntensity
-                                                                     scramble:&messageScramble];
+                    messageGlyph = [self messageGlyphAtGlobalColumn:globalColumn
+                                                          globalRow:globalRow
+                                                        localColumn:column
+                                                           localRow:row
+                                                               time:now
+                                                          intensity:&messageIntensity
+                                                           scramble:&messageScramble];
                     if (messageGlyph != NSNotFound) {
                         uint64_t packedCell = ((uint64_t)(uint32_t)globalRow << 32) |
                             (uint32_t)globalColumn;
@@ -726,18 +841,62 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                             [self.claimedMessageCells removeObject:cellKey];
                         }
                         self.messageTargetGlyphs[cellKey] = target;
-                        if (brightness > 0.05f) [self.claimedMessageCells addObject:cellKey];
-                        if ([self.claimedMessageCells containsObject:cellKey]) {
-                            uint32_t scrambleKey = MatrixCodeHash(glyphKey ^ (uint32_t)floor(now * 24));
-                            if (MatrixCodeUnit(scrambleKey) < messageScramble) {
-                                glyph = MatrixCodeRainGlyphIndex(scrambleKey, glyphMode);
-                            } else {
-                                glyph = messageGlyph;
-                            }
-                            oldGlyph = glyph;
-                            crossfade = 1;
-                            brightness = fmaxf(brightness, 0.45f) * messageIntensity;
+                    }
+                }
+                BOOL headArrival = head && !glyphState->wasHead;
+                if (headArrival) {
+                    NSInteger randomGlyph = MatrixCodeRainGlyphIndex(
+                        MatrixCodeNextGlyphEventKey(glyphState), glyphMode);
+                    glyphState->glyphOld = glyphState->glyphNew;
+                    if (messageGlyph != NSNotFound) {
+                        uint64_t packedCell = ((uint64_t)(uint32_t)globalRow << 32) |
+                            (uint32_t)globalColumn;
+                        [self.claimedMessageCells addObject:@(packedCell)];
+                        if (messageScramble > 0 &&
+                            MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState)) < messageScramble) {
+                            glyphState->glyphNew = (uint8_t)randomGlyph;
+                        } else {
+                            glyphState->glyphNew = (uint8_t)messageGlyph;
                         }
+                    } else {
+                        glyphState->glyphNew = (uint8_t)randomGlyph;
+                    }
+                    glyphState->phase = 1;
+                } else if (!head && brightness > 0.05f && mutationChance > 0) {
+                    float roll = MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState));
+                    if (roll < mutationChance) {
+                        NSInteger randomGlyph = MatrixCodeRainGlyphIndex(
+                            MatrixCodeNextGlyphEventKey(glyphState), glyphMode);
+                        if (messageGlyph != NSNotFound) {
+                            uint64_t packedCell = ((uint64_t)(uint32_t)globalRow << 32) |
+                                (uint32_t)globalColumn;
+                            [self.claimedMessageCells addObject:@(packedCell)];
+                            NSInteger nextGlyph = randomGlyph;
+                            if (messageScramble <= 0 ||
+                                MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState)) >= messageScramble) {
+                                nextGlyph = messageGlyph;
+                            }
+                            if (nextGlyph != glyphState->glyphNew) {
+                                glyphState->glyphOld = glyphState->glyphNew;
+                                glyphState->glyphNew = (uint8_t)nextGlyph;
+                                glyphState->phase = 0;
+                            }
+                        } else {
+                            glyphState->glyphOld = glyphState->glyphNew;
+                            glyphState->glyphNew = (uint8_t)randomGlyph;
+                            glyphState->phase = 0;
+                        }
+                    }
+                }
+                glyphState->wasHead = head ? 1 : 0;
+                NSInteger glyph = glyphState->glyphNew;
+                NSInteger oldGlyph = glyphState->glyphOld;
+                float crossfade = glyphState->phase;
+                if (messageGlyph != NSNotFound) {
+                    uint64_t packedCell = ((uint64_t)(uint32_t)globalRow << 32) |
+                        (uint32_t)globalColumn;
+                    if ([self.claimedMessageCells containsObject:@(packedCell)]) {
+                        brightness = fmaxf(brightness, 0.45f) * messageIntensity;
                     }
                 }
                 if (brightness < 0.004f) continue;
@@ -841,6 +1000,18 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     [target getBytes:data.mutableBytes bytesPerRow:width * 4
           fromRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0];
     return data;
+}
+
+- (NSArray<NSNumber *> *)diagnosticGlyphStateSnapshotWithWidth:(NSUInteger)width height:(NSUInteger)height {
+    if (width == 0 || height == 0) return @[];
+    [self updateInstancesForDrawableSize:CGSizeMake(width, height)];
+    NSUInteger cellCount = self.glyphStateData.length / sizeof(MatrixCodeGlyphCellState);
+    MatrixCodeGlyphCellState *states = (MatrixCodeGlyphCellState *)self.glyphStateData.bytes;
+    NSMutableArray<NSNumber *> *snapshot = [NSMutableArray arrayWithCapacity:cellCount];
+    for (NSUInteger index = 0; index < cellCount; index++) {
+        [snapshot addObject:@(states[index].glyphNew)];
+    }
+    return snapshot;
 }
 #endif
 

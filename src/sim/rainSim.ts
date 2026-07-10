@@ -6,6 +6,9 @@ import { clamp } from "../util/math.ts";
 
 const TWO_PI = Math.PI * 2;
 const MIN_BRIGHT = 0.004; // below this a cell is considered dark
+const TRAIL_CONTROL_MIN = 0.01;
+const TRAIL_CONTROL_MAX = 0.5;
+const MAX_TRAIL_VIEWPORTS = 3;
 // Density control is scaled down so the same slider value produces roughly half the
 // on-screen rain it used to — keeps the numeric range but halves the visual effect per unit.
 const DENSITY_SCALE = 0.5;
@@ -59,6 +62,7 @@ export class RainSim {
 
   // Per-cell state.
   private bright!: Float32Array;
+  private trailSpeed!: Float32Array;
   private glyphNew!: Uint8Array;
   private glyphOld!: Uint8Array;
   private phase!: Float32Array;
@@ -95,6 +99,7 @@ export class RainSim {
     this.respawnTimer = new Float32Array(cols);
     this.headMark = new Uint8Array(rows);
     this.bright = new Float32Array(cols * rows);
+    this.trailSpeed = new Float32Array(cols * rows);
     this.glyphNew = new Uint8Array(cols * rows);
     this.glyphOld = new Uint8Array(cols * rows);
     this.phase = new Float32Array(cols * rows);
@@ -125,11 +130,12 @@ export class RainSim {
   }
 
   /** Illuminate a cell as the head arrives: full brightness, fresh glyph, no crossfade. */
-  private lightHeadCell(col: number, row: number): void {
+  private lightHeadCell(col: number, row: number, trailSpeed: number): void {
     const idx = row * this.cols + col;
     const g = this.glyph.randomGlyphIndex(this.rng); // always drawn so the rng stream is message-independent
     const target = this.messageTargets !== null ? this.messageTargets[idx]! : -1; // -1 = not a message cell
     this.bright[idx] = 1;
+    this.trailSpeed[idx] = trailSpeed;
     this.glyphOld[idx] = this.glyphNew[idx]!;
     // A passing head delivers the message letter; otherwise a random glyph. During a flicker dissolve
     // the head may stamp a random glyph instead (the extra rng draw only happens while scrambling).
@@ -185,6 +191,7 @@ export class RainSim {
     const minY = -this.cfg.startRowsAbove;
     const spanY = this.rows + this.cfg.tailMargin - minY;
     const speedMul = Math.max(controls.speed, 0.1);
+    const trailLength = effectiveTrailLength(controls, this.rows, this.cfg);
 
     for (let col = 0; col < this.cols; col++) {
       if (this.rng() > activeChance) continue;
@@ -199,13 +206,21 @@ export class RainSim {
         // Reconstruct the still-visible stationary trail behind this head.
         const headRow = Math.min(Math.floor(stream.y), this.rows - 1);
         for (let row = headRow; row >= 0; row--) {
-          const ageSeconds = (stream.y - row) / (stream.speed * speedMul);
-          const brightness = Math.pow(controls.trailLength, ageSeconds / this.cfg.trailLengthScale);
+          const variedSpeed = effectiveTrailSpeed(
+            stream.speed * speedMul,
+            speedMul,
+            controls.trailVariation,
+            this.cfg,
+          );
+          const ageSeconds = (stream.y - row) / variedSpeed;
+          const brightness = Math.pow(trailLength, ageSeconds / this.cfg.trailLengthScale);
           if (brightness < MIN_BRIGHT) break;
           const idx = row * this.cols + col;
           const previous = this.bright[idx]!;
-          this.lightHeadCell(col, row);
+          const previousTrailSpeed = this.trailSpeed[idx]!;
+          this.lightHeadCell(col, row, stream.speed);
           this.bright[idx] = Math.max(previous, brightness);
+          if (previous > brightness) this.trailSpeed[idx] = previousTrailSpeed;
         }
       }
     }
@@ -218,6 +233,7 @@ export class RainSim {
   /** Return the sim to its empty initial state (as just after construction, before any update). */
   reset(): void {
     this.bright.fill(0);
+    this.trailSpeed.fill(0);
     this.glyphNew.fill(0);
     this.glyphOld.fill(0);
     this.phase.fill(0);
@@ -318,7 +334,10 @@ export class RainSim {
     this.time += dt;
     const { cols, rows, cfg } = this;
 
-    const decayMul = Math.pow(controls.trailLength, dt / cfg.trailLengthScale);
+    const trailLength = effectiveTrailLength(controls, rows, cfg);
+    const decayMul = Math.pow(trailLength, dt / cfg.trailLengthScale);
+    const trailVariation = clamp(controls.trailVariation, 0, 1);
+    const averageSpeed = cfg.minSpeed + cfg.speedRange * 0.5;
     const crossfadeStep = dt / cfg.crossfadeDuration;
     // Global mutation-sync: swaps cluster loosely in time (a film tell). The glyphRate control scales
     // how often trail glyphs change, independent of fall speed (glyphRate 0 = trail cells never mutate).
@@ -355,7 +374,7 @@ export class RainSim {
         stream.y += stream.speed * speedMul * dt;
         const newRow = Math.floor(stream.y);
         for (let r = Math.max(prevRow + 1, 0); r <= newRow; r++) {
-          if (r < rows) this.lightHeadCell(col, r);
+          if (r < rows) this.lightHeadCell(col, r, stream.speed);
         }
         if (stream.y - cfg.tailMargin > rows) streams.splice(s, 1);
       }
@@ -373,7 +392,13 @@ export class RainSim {
         const target = targets !== null ? targets[idx]! : -1; // -1 = not a message cell
         let b = this.bright[idx]!;
         if (b > MIN_BRIGHT) {
-          b *= decayMul;
+          if (trailVariation === 1) {
+            b *= decayMul;
+          } else {
+            const streamSpeed = (this.trailSpeed[idx] || averageSpeed) * speedMul;
+            const variedSpeed = effectiveTrailSpeed(streamSpeed, speedMul, trailVariation, cfg);
+            b *= Math.pow(trailLength, dt * streamSpeed / variedSpeed / cfg.trailLengthScale);
+          }
           if (b < MIN_BRIGHT) b = 0;
           this.bright[idx] = b;
         } else if (b !== 0) {
@@ -431,6 +456,35 @@ export class RainSim {
 
 export function decayBrightness(b: number, decayPerSecond: number, dt: number): number {
   return b * Math.pow(decayPerSecond, dt);
+}
+
+export function effectiveTrailLength(controls: Controls, rows: number, cfg: SimConfig): number {
+  const percent = clamp((controls.trailLength - TRAIL_CONTROL_MIN) / (TRAIL_CONTROL_MAX - TRAIL_CONTROL_MIN), 0, 1);
+  const averageSpeed = (cfg.minSpeed + cfg.speedRange * 0.5) * Math.max(controls.speed, 0.1);
+  const viewportRows = Math.max(1, rows);
+  const previousMaxRows = visibleTrailRows(TRAIL_CONTROL_MAX, averageSpeed, cfg.trailLengthScale);
+  const minRows = viewportRows;
+  const maxRows = Math.max(viewportRows * MAX_TRAIL_VIEWPORTS, previousMaxRows, minRows + 1);
+  const targetRows = minRows * Math.pow(maxRows / minRows, percent);
+  return trailLengthForVisibleRows(targetRows, averageSpeed, cfg.trailLengthScale);
+}
+
+export function effectiveTrailSpeed(
+  streamSpeed: number,
+  speedControl: number,
+  variation: number,
+  cfg: SimConfig,
+): number {
+  const averageSpeed = (cfg.minSpeed + cfg.speedRange * 0.5) * Math.max(speedControl, 0.1);
+  return averageSpeed + (streamSpeed - averageSpeed) * clamp(variation, 0, 1);
+}
+
+function visibleTrailRows(trailLength: number, speedRowsPerSecond: number, scale: number): number {
+  return (speedRowsPerSecond * scale * Math.log(MIN_BRIGHT)) / Math.log(trailLength);
+}
+
+function trailLengthForVisibleRows(rows: number, speedRowsPerSecond: number, scale: number): number {
+  return Math.exp((Math.log(MIN_BRIGHT) * scale * speedRowsPerSecond) / Math.max(1, rows));
 }
 
 export interface UnpackedCell {

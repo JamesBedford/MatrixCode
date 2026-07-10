@@ -17,6 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
                 tokenResolver:(MatrixCodeTokenResolver *)tokenResolver
                    completion:(dispatch_block_t)completion;
 - (void)startAtDate:(NSDate *)date;
+- (void)shiftTimelineBy:(NSTimeInterval)interval;
 - (void)updateAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond;
 - (void)skip;
 

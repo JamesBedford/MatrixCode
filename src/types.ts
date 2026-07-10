@@ -31,8 +31,10 @@ export type GlyphFont = "matrix" | "gothic" | "mono" | "terminal" | "rounded" | 
 export interface Controls {
   /** Global fall-speed multiplier. */
   speed: number;
-  /** Brightness decay per second — lower = longer trail (0.01 long … 0.5 short). */
+  /** User-facing trail-length control: 0.01 = shortest, 0.5 = longest. */
   trailLength: number;
+  /** How strongly stream speed varies visible trail length: 0 = uniform, 1 = current full variation. */
+  trailVariation: number;
   /** Stream spawn density multiplier. */
   density: number;
   /** How long (ms) the rain takes to build up to the configured density when it first starts, on load (0 = instant). */

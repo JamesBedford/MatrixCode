@@ -53,11 +53,16 @@ export class ControlsPanel {
 
     this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =. Turn up past 20 (with Allow overlap on) to make raindrops overlap between columns.");
     this.range("Ramp-up", "rampUpMs", 0, 30000, 500, (v) => controls.set({ rampUpMs: v }), (v) => (v === 0 ? "off" : `${(v / 1000).toFixed(1)}s`), undefined, "How long the rain builds up to full density when it first starts, on load (0 = instant)");
-    // Slider is inverted: right = longer trail. Map slider [0.01,0.5] → stored decay [0.5,0.01].
     this.range("Trail length", "trailLength", 0.01, 0.5, 0.01,
-      (v) => controls.set({ trailLength: 0.51 - v }),
+      (v) => controls.set({ trailLength: v }),
       (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`,
-      (c) => 0.51 - c.trailLength);
+      undefined,
+      "Trail length: 0% is the shortest trail, 100% is the longest trail.");
+    this.range("Trail variation", "trailVariation", 0, 1, 0.01,
+      (v) => controls.set({ trailVariation: v }),
+      (v) => `${Math.round(v * 100)}%`,
+      undefined,
+      "How much individual stream lengths vary: 0% is uniform, 100% preserves the full natural variation.");
     this.range("Speed", "speed", 0.2, 3, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
     this.range("Glyph size", "glyphScale", 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
     this.range("Glow", "glow", 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));

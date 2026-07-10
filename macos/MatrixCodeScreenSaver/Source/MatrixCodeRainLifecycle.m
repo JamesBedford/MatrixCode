@@ -46,6 +46,16 @@ NSInteger MatrixCodeRainGlyphIndex(uint32_t key, NSString *glyphMode) {
     return start + (NSInteger)(pick * count);
 }
 
+float MatrixCodeRainEffectiveTrailSpeed(
+    float streamSpeed,
+    float speedControl,
+    float trailVariation
+) {
+    float averageSpeed = (3.5f + 8.0f * 0.5f) * fmaxf(speedControl, 0.1f);
+    float variation = fminf(1, fmaxf(0, trailVariation));
+    return averageSpeed + (streamSpeed - averageSpeed) * variation;
+}
+
 static float MatrixCodeRainInverseRampEase(float value) {
     float y = fminf(1, fmaxf(0, value));
     const float edge = 0.2f;

@@ -33,6 +33,7 @@
 		58C8788EDF516B77CE4DB5C9 /* MatrixCodeTokenResolver.m in Sources */ = {isa = PBXBuildFile; fileRef = 865F9239EC01EAFD1DD11142 /* MatrixCodeTokenResolver.m */; };
 		61088DEB9C4ACA50BA120F31 /* MatrixCodeMetalView.m in Sources */ = {isa = PBXBuildFile; fileRef = E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */; };
 		65E011B6645B21B030E6BE31 /* ScreenSaver.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D95B4AD4E624D11550055918 /* ScreenSaver.framework */; };
+		6AA6226B3931CE63E040A4D1 /* MatrixCodeRainHostViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = C0324A580D7D065983EF7C15 /* MatrixCodeRainHostViewTests.m */; };
 		6C92607D7B723A0B265CCCDA /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3CE22739F1AF715A44184DF /* MetalKit.framework */; };
 		703C04614988F378E5BE12F8 /* MatrixCodeConstants.m in Sources */ = {isa = PBXBuildFile; fileRef = AEF98B97E178759EDA759445 /* MatrixCodeConstants.m */; };
 		71CC9A7D8240B92F1863FDBE /* MatrixCodeMetalView.m in Sources */ = {isa = PBXBuildFile; fileRef = E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */; };
@@ -93,6 +94,7 @@
 		AFA8600626CA1476652EB7A7 /* MatrixCodeTokenResolverTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeTokenResolverTests.m; sourceTree = "<group>"; };
 		B7FB66B2F1DA00F3EAD79399 /* MatrixCodeIntroOverlayViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeIntroOverlayViewTests.m; sourceTree = "<group>"; };
 		BC608A3472B9FC260A92BA60 /* MatrixCodeIntroOverlayView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeIntroOverlayView.h; sourceTree = "<group>"; };
+		C0324A580D7D065983EF7C15 /* MatrixCodeRainHostViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeRainHostViewTests.m; sourceTree = "<group>"; };
 		C090124F0DF8A7DCBEDEC974 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		C399F51C20C229C8CC8C510C /* MatrixCodeRainLifecycle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeRainLifecycle.h; sourceTree = "<group>"; };
 		CDDE3AB2E91574CD2D47ECAF /* MatrixCodeAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeAppDelegate.h; sourceTree = "<group>"; };
@@ -165,6 +167,7 @@
 				B7FB66B2F1DA00F3EAD79399 /* MatrixCodeIntroOverlayViewTests.m */,
 				CF3191B1E876A0C0A2D3BA47 /* MatrixCodeMetalViewTests.m */,
 				8A7AD3A887C65066A0556D22 /* MatrixCodeNativeTests.m */,
+				C0324A580D7D065983EF7C15 /* MatrixCodeRainHostViewTests.m */,
 				A29C58EE68EF96732324BB68 /* MatrixCodeRainLifecycleTests.m */,
 				AFA8600626CA1476652EB7A7 /* MatrixCodeTokenResolverTests.m */,
 			);
@@ -405,6 +408,7 @@
 				0F27DED51AE95F1974CCE3BC /* MatrixCodeNativeTests.m in Sources */,
 				910E9B2D12D4D456646720B0 /* MatrixCodePreferences.m in Sources */,
 				42C8725B8C54ADC74347C960 /* MatrixCodeRainHostView.m in Sources */,
+				6AA6226B3931CE63E040A4D1 /* MatrixCodeRainHostViewTests.m in Sources */,
 				7F26EE1F1B377D9615E207DB /* MatrixCodeRainLifecycle.m in Sources */,
 				4420F9171369C9BD94B43A4A /* MatrixCodeRainLifecycleTests.m in Sources */,
 				76D37A9783BF54B369885E51 /* MatrixCodeSession.m in Sources */,

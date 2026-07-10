@@ -12,7 +12,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setDensityScale:(float)densityScale rainElapsed:(NSTimeInterval)rainElapsed;
 - (void)reloadStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues;
 #if DEBUG
++ (float)diagnosticEffectiveTrailLength:(float)trailLength
+                                  rows:(float)rows
+                          speedControl:(float)speedControl;
 - (nullable NSData *)diagnosticBGRAFrameWithWidth:(NSUInteger)width height:(NSUInteger)height;
+- (NSArray<NSNumber *> *)diagnosticGlyphStateSnapshotWithWidth:(NSUInteger)width height:(NSUInteger)height;
 #endif
 
 @end

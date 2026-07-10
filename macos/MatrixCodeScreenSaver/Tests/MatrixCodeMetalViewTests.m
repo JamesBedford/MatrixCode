@@ -7,6 +7,16 @@
 
 @implementation MatrixCodeMetalViewTests
 
+- (void)testTrailSliderUsesExponentialScale {
+    const float rows = 72.0f;
+    const float averageSpeed = 3.5f + 8.0f * 0.5f;
+    float trail = [MatrixCodeMetalView diagnosticEffectiveTrailLength:0.255f
+                                                                rows:rows
+                                                        speedControl:1.0f];
+    float visibleRows = averageSpeed * 1.2f * logf(0.004f) / logf(trail);
+    XCTAssertEqualWithAccuracy(visibleRows, rows * sqrtf(3.0f), 0.001f);
+}
+
 - (void)testNativeRendererCompilesAndCreatesMetalSurface {
     NSDictionary *session = @{
         @"seed": @12345,
@@ -84,6 +94,41 @@
     }
     XCTAssertGreaterThan(greenPixels, (NSUInteger)100,
                          @"The left display must not start as an empty virtual-grid slice");
+}
+
+- (void)testGlyphMutationsDoNotAdvanceInGlobalLockstep {
+    NSDictionary *session = @{
+        @"seed": @12345,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"screen-test",
+        @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                        @"width": @640, @"height": @480}],
+    };
+    NSDictionary *controls = @{
+        @"density": @100,
+        @"glyphRate": @5,
+        @"allowOverlap": @YES,
+        @"quality": @"high",
+    };
+    NSData *json = [NSJSONSerialization dataWithJSONObject:controls options:0 error:nil];
+    NSString *controlsJSON = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+                                           session:session
+                                      storedValues:@{@"mx-controls": controlsJSON}];
+    [view setDensityScale:1 rainElapsed:10.0];
+    NSArray<NSNumber *> *before = [view diagnosticGlyphStateSnapshotWithWidth:640 height:480];
+    [view setDensityScale:1 rainElapsed:10.2];
+    NSArray<NSNumber *> *after = [view diagnosticGlyphStateSnapshotWithWidth:640 height:480];
+
+    XCTAssertEqual(before.count, after.count);
+    XCTAssertGreaterThan(before.count, (NSUInteger)100);
+    NSUInteger changed = 0;
+    for (NSUInteger index = 0; index < before.count; index++) {
+        if (![before[index] isEqualToNumber:after[index]]) changed++;
+    }
+    XCTAssertGreaterThan(changed, (NSUInteger)0);
+    XCTAssertLessThan(changed, before.count * 3 / 4);
 }
 
 @end

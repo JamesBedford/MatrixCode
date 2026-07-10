@@ -77,7 +77,8 @@ and countdown/countup moments.
 The Options sheet is transactional: **OK** saves all changes and **Cancel**
 discards them. In the standalone app, double-click the rain to toggle native
 fullscreen and triple-click it to start the continuous multi-monitor
-presentation; the same commands are also available from the **View** menu.
+presentation. Press `P` to pause or resume the animation; the presentation
+commands are also available from the **View** menu.
 During normal screen-saver playback, macOS treats mouse and keyboard input as an
 exit request, so fullscreen and multi-display presentation are automatic rather
 than gesture-driven.
