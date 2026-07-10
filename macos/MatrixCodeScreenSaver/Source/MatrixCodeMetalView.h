@@ -40,6 +40,9 @@ typedef void (^MatrixCodeMetalFrameHandler)(MatrixCodeMetalView *view,
 + (float)diagnosticProceduralDigitValueForGlyphIndex:(NSInteger)glyph
                                       rainGlyphCount:(NSInteger)rainGlyphCount
                                             controls:(NSDictionary<NSString *, id> *)controls;
++ (float)diagnosticStepChanceForReferenceRateChance:(float)chance
+                                             elapsed:(float)elapsed
+                                       referenceRate:(float)referenceRate;
 - (nullable NSData *)diagnosticBGRAFrameWithWidth:(NSUInteger)width height:(NSUInteger)height;
 - (NSArray<NSNumber *> *)diagnosticGlyphStateSnapshotWithWidth:(NSUInteger)width height:(NSUInteger)height;
 #endif

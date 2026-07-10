@@ -173,6 +173,15 @@ static float MatrixCodeSmoothstep(float edge0, float edge1, float value) {
     return t * t * (3.0f - 2.0f * t);
 }
 
+static float MatrixCodeStepChanceForReferenceRateChance(float chance,
+                                                        float elapsed,
+                                                        float referenceRate) {
+    float p = fminf(1, fmaxf(0, chance));
+    if (p <= 0 || elapsed <= 0 || referenceRate <= 0) return 0;
+    if (p >= 1) return 1;
+    return 1.0f - expf(logf(1.0f - p) * referenceRate * elapsed);
+}
+
 static float MatrixCodeImageSignalForLuminance(float luminance) {
     float value = fminf(1, fmaxf(0, luminance));
     float nonEmpty = MatrixCodeSmoothstep(0.035f, 0.12f, value);
@@ -640,6 +649,12 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
     return MatrixCodeProceduralDigitValueForRainGlyphMode(glyph,
                                                           rainGlyphCount,
                                                           MatrixCodeGlyphMode(controls ?: @{}));
+}
+
++ (float)diagnosticStepChanceForReferenceRateChance:(float)chance
+                                             elapsed:(float)elapsed
+                                       referenceRate:(float)referenceRate {
+    return MatrixCodeStepChanceForReferenceRateChance(chance, elapsed, referenceRate);
 }
 #endif
 
@@ -1731,11 +1746,15 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
                     glyphState->phase = 1;
                 } else if (!head && brightness > 0.05f &&
                            (mutationChance > 0 || imageGlyph != NSNotFound)) {
-                    float roll = MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState));
-                    float imageMutationChance = imageGlyph != NSNotFound
+                    float imageSecondMutationChance = imageGlyph != NSNotFound
                         ? fminf(0.72f, 0.08f + imageInfluence * 0.46f)
                         : 0;
-                    if (roll < fmaxf(mutationChance, imageMutationChance)) {
+                    float imageMutationChance = MatrixCodeStepChanceForReferenceRateChance(
+                        imageSecondMutationChance, glyphDt, 1.0f);
+                    float combinedMutationChance = fmaxf(mutationChance, imageMutationChance);
+                    if (combinedMutationChance > 0 &&
+                        MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState)) <
+                            combinedMutationChance) {
                         NSInteger randomGlyph = MatrixCodeRainGlyphIndex(
                             MatrixCodeNextGlyphEventKey(glyphState), glyphMode);
                         if (messageGlyph != NSNotFound) {

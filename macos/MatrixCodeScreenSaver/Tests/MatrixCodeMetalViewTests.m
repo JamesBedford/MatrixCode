@@ -18,6 +18,9 @@
                          localRows:(NSInteger)localRows;
 - (void)updateActiveImageFrameStateAtTime:(NSTimeInterval)now;
 - (double)updateMeasuredFramesPerSecondAtTime:(NSTimeInterval)time;
++ (float)diagnosticStepChanceForReferenceRateChance:(float)chance
+                                             elapsed:(float)elapsed
+                                       referenceRate:(float)referenceRate;
 @end
 
 @interface MatrixCodeMetalViewTests : XCTestCase
@@ -165,6 +168,25 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
     XCTAssertEqualWithAccuracy([[view valueForKey:@"measuredFramesPerSecond"] doubleValue],
                                60,
                                0.5);
+}
+
+- (void)testImageMutationChanceScalesWithFrameTime {
+    const float oneSecondChance = 0.54f;
+    float perSixtyHzFrame =
+        [MatrixCodeMetalView diagnosticStepChanceForReferenceRateChance:oneSecondChance
+                                                                 elapsed:1.0f / 60.0f
+                                                           referenceRate:1.0f];
+    float perOneTwentyHzFrame =
+        [MatrixCodeMetalView diagnosticStepChanceForReferenceRateChance:oneSecondChance
+                                                                 elapsed:1.0f / 120.0f
+                                                           referenceRate:1.0f];
+    float sixtyHzSecond = 1.0f - powf(1.0f - perSixtyHzFrame, 60.0f);
+    float oneTwentyHzSecond = 1.0f - powf(1.0f - perOneTwentyHzFrame, 120.0f);
+
+    XCTAssertEqualWithAccuracy(sixtyHzSecond, oneSecondChance, 0.0001f);
+    XCTAssertEqualWithAccuracy(oneTwentyHzSecond, oneSecondChance, 0.0001f);
+    XCTAssertLessThan(perSixtyHzFrame, 0.02f);
+    XCTAssertLessThan(perOneTwentyHzFrame, perSixtyHzFrame);
 }
 
 - (void)testNativeRendererProducesVisibleGreenGlyphPixels {
