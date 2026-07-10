@@ -33,6 +33,7 @@
 @property(nonatomic, strong, nullable) NSDate *deferredRainStartDate;
 @property(nonatomic) BOOL userPaused;
 @property(nonatomic, strong, nullable) NSDate *pauseStartedDate;
+@property(nonatomic, strong, nullable) NSTrackingArea *settingsRevealTrackingArea;
 @end
 
 @implementation MatrixCodeRainHostView
@@ -99,7 +100,24 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
+    self.window.acceptsMouseMovedEvents = YES;
     [self ensureMetalView];
+}
+
+- (void)updateTrackingAreas {
+    if (self.settingsRevealTrackingArea) {
+        [self removeTrackingArea:self.settingsRevealTrackingArea];
+    }
+    self.settingsRevealTrackingArea = [[NSTrackingArea alloc]
+        initWithRect:NSZeroRect
+             options:NSTrackingMouseEnteredAndExited |
+                     NSTrackingMouseMoved |
+                     NSTrackingActiveInKeyWindow |
+                     NSTrackingInVisibleRect
+               owner:self
+            userInfo:nil];
+    [self addTrackingArea:self.settingsRevealTrackingArea];
+    [super updateTrackingAreas];
 }
 
 - (BOOL)isScreenSaverPreview {
@@ -368,6 +386,31 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     return self.configurationController.window;
 }
 
+- (void)showSettingsOverlay {
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    if ([self isStandaloneMultiMonitorPresentation]) return;
+    [self ensureMetalView];
+    if (!self.configurationController) {
+        __weak typeof(self) weakSelf = self;
+        self.configurationController =
+            [[MatrixCodeConfigurationController alloc] initEmbeddedInView:self
+                                                              closeHandler:^{
+            MatrixCodeRainHostView *strongSelf = weakSelf;
+            strongSelf.configurationController = nil;
+            [strongSelf.window makeFirstResponder:strongSelf];
+        }];
+    } else {
+        [self.configurationController showSettingsPanel];
+    }
+    [self.window makeFirstResponder:self];
+}
+
+- (void)revealSettingsOverlayForPointerActivity {
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    if ([self isStandaloneMultiMonitorPresentation]) return;
+    [self showSettingsOverlay];
+}
+
 - (BOOL)acceptsFirstResponder {
     return YES;
 }
@@ -437,7 +480,9 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
 }
 
 - (void)mouseDown:(NSEvent *)event {
-    if (self.introOverlay.playing) {
+    if (self.configurationController && self.mode == MatrixCodeRainHostModeStandalone) {
+        [self.configurationController showSettingsPanel];
+    } else if (self.introOverlay.playing) {
         [self.introOverlay skip];
     } else if (self.mode == MatrixCodeRainHostModeStandalone) {
         [self handleStandaloneBackdropClick];
@@ -446,14 +491,29 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
     }
 }
 
+- (void)mouseEntered:(NSEvent *)event {
+    [self revealSettingsOverlayForPointerActivity];
+}
+
+- (void)mouseMoved:(NSEvent *)event {
+    [self revealSettingsOverlayForPointerActivity];
+}
+
 - (void)keyDown:(NSEvent *)event {
     NSString *characters = event.charactersIgnoringModifiers.lowercaseString;
     NSEventModifierFlags deviceIndependentFlags =
         event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
     BOOL hasCommandControlOrOption = (deviceIndependentFlags &
         (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption)) != 0;
-    if (!event.isARepeat && !hasCommandControlOrOption && [characters isEqualToString:@"p"]) {
+    BOOL commandOnly = (deviceIndependentFlags & NSEventModifierFlagCommand) != 0 &&
+        (deviceIndependentFlags & (NSEventModifierFlagControl | NSEventModifierFlagOption)) == 0;
+    if (!event.isARepeat && commandOnly && [characters isEqualToString:@","] &&
+        self.mode == MatrixCodeRainHostModeStandalone) {
+        [self showSettingsOverlay];
+    } else if (!event.isARepeat && !hasCommandControlOrOption && [characters isEqualToString:@"p"]) {
         [self toggleUserPaused];
+    } else if (self.configurationController && event.keyCode == 53) {
+        [self.configurationController cancelOperation:self];
     } else if (event.keyCode == 53 && [self exitStandalonePresentationIfNeeded]) {
         return;
     } else if (self.introOverlay.playing && event.keyCode == 53) {
@@ -464,6 +524,10 @@ static NSTimeInterval MatrixCodeLastScreenClaimAt;
 }
 
 - (void)cancelOperation:(id)sender {
+    if (self.configurationController) {
+        [self.configurationController cancelOperation:sender];
+        return;
+    }
     if ([self exitStandalonePresentationIfNeeded]) return;
     if (self.introOverlay.playing) [self.introOverlay skip];
     else [super cancelOperation:sender];

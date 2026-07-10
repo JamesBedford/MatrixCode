@@ -49,6 +49,27 @@ static NSEvent *MatrixCodePKeyEvent(BOOL repeat) {
     return MatrixCodeKeyEvent(nil, @"p", 35, repeat);
 }
 
+static NSEvent *MatrixCodeMouseMovedEvent(NSWindow *window) {
+    return [NSEvent mouseEventWithType:NSEventTypeMouseMoved
+                              location:NSMakePoint(320, 240)
+                         modifierFlags:0
+                             timestamp:0
+                          windowNumber:window.windowNumber
+                               context:nil
+                           eventNumber:1
+                            clickCount:0
+                              pressure:0];
+}
+
+static NSView *MatrixCodeHostDescendantWithIdentifier(NSView *view, NSString *identifier) {
+    if ([view.identifier isEqualToString:identifier]) return view;
+    for (NSView *subview in view.subviews) {
+        NSView *match = MatrixCodeHostDescendantWithIdentifier(subview, identifier);
+        if (match) return match;
+    }
+    return nil;
+}
+
 - (void)testEscapeKeyExitsStandaloneFullScreen {
     MatrixCodeEscapeTestWindow *window =
         [[MatrixCodeEscapeTestWindow alloc] initWithContentRect:NSMakeRect(0, 0, 640, 480)
@@ -93,6 +114,56 @@ static NSEvent *MatrixCodePKeyEvent(BOOL repeat) {
 
     [NSNotificationCenter.defaultCenter removeObserver:observer];
     XCTAssertTrue(requestedExit);
+}
+
+- (void)testStandaloneSettingsAppearAsEmbeddedRainOverlayNotSheet {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = NO;
+    window.contentView = hostView;
+
+    [hostView showSettingsOverlay];
+    [hostView layoutSubtreeIfNeeded];
+
+    XCTAssertNil(window.attachedSheet);
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
+    id controller = [hostView valueForKey:@"configurationController"];
+    XCTAssertNotNil(controller);
+    XCTAssertNil([controller window]);
+}
+
+- (void)testStandaloneSettingsAppearWhenPointerMovesOverRainWindow {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = NO;
+    window.contentView = hostView;
+    [hostView viewDidMoveToWindow];
+
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+
+    [hostView mouseMoved:MatrixCodeMouseMovedEvent(window)];
+    [hostView layoutSubtreeIfNeeded];
+
+    XCTAssertTrue(window.acceptsMouseMovedEvents);
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
 }
 
 - (void)testPKeyTogglesUserPauseWithoutRepeating {

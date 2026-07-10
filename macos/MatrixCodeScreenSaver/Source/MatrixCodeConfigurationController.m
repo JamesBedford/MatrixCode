@@ -3,11 +3,17 @@
 #import "MatrixCodeIntroOverlayView.h"
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodePreferences.h"
+#import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeTokenResolver.h"
+
+#import <QuartzCore/QuartzCore.h>
 
 NSNotificationName const MatrixCodePreviewValuesDidChangeNotification =
     @"MatrixCodePreviewValuesDidChangeNotification";
 NSString * const MatrixCodePreviewValuesKey = @"values";
+
+static const NSTimeInterval MatrixCodeSettingsFadeDuration = 0.24;
+static const NSTimeInterval MatrixCodeSettingsHideDelay = 2.8;
 
 static NSDictionary *MatrixCodeJSONObject(NSString *raw, Class expectedClass) {
     if (![raw isKindOfClass:NSString.class]) return nil;
@@ -55,6 +61,70 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 
 - (BOOL)isFlipped {
     return YES;
+}
+
+@end
+
+@interface MatrixCodeSettingsHoverView : NSView
+@property(nonatomic, copy) dispatch_block_t activityHandler;
+@property(nonatomic, copy) dispatch_block_t exitHandler;
+@end
+
+@implementation MatrixCodeSettingsHoverView {
+    NSTrackingArea *_trackingArea;
+}
+
+- (void)updateTrackingAreas {
+    if (_trackingArea) [self removeTrackingArea:_trackingArea];
+    _trackingArea = [[NSTrackingArea alloc]
+        initWithRect:NSZeroRect
+             options:NSTrackingMouseEnteredAndExited |
+                     NSTrackingMouseMoved |
+                     NSTrackingActiveInKeyWindow |
+                     NSTrackingInVisibleRect
+               owner:self
+            userInfo:nil];
+    [self addTrackingArea:_trackingArea];
+    [super updateTrackingAreas];
+}
+
+- (NSView *)hitTest:(NSPoint)point {
+    for (NSView *subview in self.subviews.reverseObjectEnumerator) {
+        if (subview.hidden || subview.alphaValue <= 0.01) continue;
+        NSPoint converted = [self convertPoint:point toView:subview];
+        NSView *hit = [subview hitTest:converted];
+        if (hit) return hit;
+    }
+    return nil;
+}
+
+- (void)mouseEntered:(NSEvent *)event {
+    if (self.activityHandler) self.activityHandler();
+}
+
+- (void)mouseMoved:(NSEvent *)event {
+    if (self.activityHandler) self.activityHandler();
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    if (self.activityHandler) self.activityHandler();
+    [super mouseDown:event];
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    if (self.exitHandler) self.exitHandler();
+}
+
+@end
+
+@interface MatrixCodeSettingsBackdropView : NSView
+@property(nonatomic, copy) dispatch_block_t outsideClickHandler;
+@end
+
+@implementation MatrixCodeSettingsBackdropView
+
+- (void)mouseDown:(NSEvent *)event {
+    if (self.outsideClickHandler) self.outsideClickHandler();
 }
 
 @end
@@ -157,7 +227,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 
 @end
 
-@interface MatrixCodeConfigurationController ()
+@interface MatrixCodeConfigurationController () <NSTextFieldDelegate>
 @property(nonatomic, strong) MatrixCodePreferences *preferences;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *stagedValues;
 @property(nonatomic, strong) NSMutableDictionary *controls;
@@ -176,16 +246,32 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 @property(nonatomic, strong) NSTextField *postIntroDelayField;
 @property(nonatomic, strong) NSDatePicker *defaultCountdownDatePicker;
 @property(nonatomic, strong) NSButton *mirrorButton;
+@property(nonatomic, strong) NSView *editorBackdrop;
+@property(nonatomic, strong) NSView *editorCard;
+@property(nonatomic, copy) NSString *editorKind;
+@property(nonatomic, copy) NSDictionary *editorSnapshot;
+@property(nonatomic, strong) NSTextField *panelNameField;
+@property(nonatomic, strong) MatrixCodeMetalView *settingsMetalView;
+@property(nonatomic, strong) NSTimer *settingsAnimationTimer;
+@property(nonatomic, strong) MatrixCodeSettingsHoverView *settingsOverlayView;
+@property(nonatomic, strong) NSView *settingsPanel;
+@property(nonatomic, strong) NSTimer *settingsHideTimer;
+@property(nonatomic, strong) MatrixCodeMetalView *charactersPreviewView;
+@property(nonatomic, strong) NSTimer *charactersPreviewTimer;
+@property(nonatomic) BOOL settingsPanelVisible;
+@property(nonatomic, weak) NSView *embeddedHostView;
+@property(nonatomic) BOOL embeddedPresentation;
 @end
 
 @implementation MatrixCodeConfigurationController
 
 - (instancetype)initWithCloseHandler:(dispatch_block_t)closeHandler {
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 860, 680)
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 920, 700)
                                                   styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskResizable
                                                     backing:NSBackingStoreBuffered defer:NO];
     window.title = @"Matrix Code Options";
-    window.minSize = NSMakeSize(700, 540);
+    window.minSize = NSMakeSize(700, 560);
+    window.acceptsMouseMovedEvents = YES;
     self = [super initWithWindow:window];
     if (!self) return nil;
     _preferences = [[MatrixCodePreferences alloc] init];
@@ -197,7 +283,27 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return self;
 }
 
+- (instancetype)initEmbeddedInView:(NSView *)hostView closeHandler:(dispatch_block_t)closeHandler {
+    self = [super initWithWindow:nil];
+    if (!self) return nil;
+    _embeddedHostView = hostView;
+    _embeddedPresentation = YES;
+    _preferences = [[MatrixCodePreferences alloc] init];
+    _stagedValues = [[_preferences storedValues] mutableCopy];
+    _originalValues = [_stagedValues copy];
+    _closeHandler = [closeHandler copy];
+    [self loadModels];
+    [self buildInterface];
+    return self;
+}
+
+- (NSView *)presentationContentView {
+    return self.embeddedPresentation ? self.embeddedHostView : self.window.contentView;
+}
+
 - (void)publishPreviewValues:(NSDictionary<NSString *, NSString *> *)values {
+    [self.settingsMetalView reloadStoredValues:values];
+    [self.charactersPreviewView reloadStoredValues:[self characterPreviewValuesFromValues:values]];
     [self.previewController reloadStoredValues:values];
     [NSNotificationCenter.defaultCenter
         postNotificationName:MatrixCodePreviewValuesDidChangeNotification
@@ -206,7 +312,77 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 }
 
 - (void)draftDidChange {
-    [self publishPreviewValues:[self serializedValues]];
+    NSDictionary *values = [self serializedValues];
+    [self publishPreviewValues:values];
+    if (!self.editorBackdrop) {
+        [self.preferences commitValues:values];
+        self.originalValues = [values copy];
+    }
+}
+
+- (BOOL)settingsPanelContainsMouse {
+    NSWindow *window = self.settingsPanel.window ?: self.window;
+    if (!self.settingsPanel || self.settingsPanel.hidden || !window) return NO;
+    NSPoint windowPoint = window.mouseLocationOutsideOfEventStream;
+    NSPoint panelPoint = [self.settingsPanel convertPoint:windowPoint fromView:nil];
+    return NSPointInRect(panelPoint, self.settingsPanel.bounds);
+}
+
+- (void)scheduleSettingsPanelHide {
+    [self.settingsHideTimer invalidate];
+    __weak typeof(self) weakSelf = self;
+    self.settingsHideTimer =
+        [NSTimer scheduledTimerWithTimeInterval:MatrixCodeSettingsHideDelay
+                                        repeats:NO
+                                          block:^(NSTimer *timer) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        if (self.editorBackdrop || [self settingsPanelContainsMouse]) {
+            [self scheduleSettingsPanelHide];
+            return;
+        }
+        [self setSettingsPanelVisible:NO immediate:NO];
+    }];
+}
+
+- (void)setSettingsPanelVisible:(BOOL)visible immediate:(BOOL)immediate {
+    self.settingsPanelVisible = visible;
+    if (visible) {
+        self.settingsPanel.hidden = NO;
+    } else {
+        [self.settingsHideTimer invalidate];
+        self.settingsHideTimer = nil;
+    }
+
+    void (^changes)(void) = ^{
+        self.settingsPanel.alphaValue = visible ? 1.0 : 0.0;
+    };
+    void (^completion)(void) = ^{
+        if (!self.settingsPanelVisible) {
+            self.settingsPanel.hidden = YES;
+        }
+    };
+
+    if (immediate) {
+        changes();
+        completion();
+    } else {
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = MatrixCodeSettingsFadeDuration;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            self.settingsPanel.animator.alphaValue = visible ? 1.0 : 0.0;
+        } completionHandler:completion];
+    }
+
+    if (visible) [self scheduleSettingsPanelHide];
+}
+
+- (void)settingsPointerActivity {
+    [self setSettingsPanelVisible:YES immediate:NO];
+}
+
+- (void)showSettingsPanel {
+    [self settingsPointerActivity];
 }
 
 - (void)loadModels {
@@ -359,14 +535,14 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     // its bottom edge, which made every settings tab open at the end of its
     // form. Use a top-origin document so y=0 is the first control.
     NSView *document = [[MatrixCodeFlippedDocumentView alloc]
-        initWithFrame:NSMakeRect(0, 0, 780, 700)];
+        initWithFrame:NSMakeRect(0, 0, 600, 700)];
     [document addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
         [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor],
         [stack.trailingAnchor constraintEqualToAnchor:document.trailingAnchor],
         [stack.topAnchor constraintEqualToAnchor:document.topAnchor],
         [stack.bottomAnchor constraintLessThanOrEqualToAnchor:document.bottomAnchor],
-        [stack.widthAnchor constraintGreaterThanOrEqualToConstant:620],
+        [stack.widthAnchor constraintGreaterThanOrEqualToConstant:560],
     ]];
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
     scroll.hasVerticalScroller = YES;
@@ -377,39 +553,470 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 }
 
 - (void)buildInterface {
-    NSView *content = self.window.contentView;
-    NSTabView *tabs = [[NSTabView alloc] initWithFrame:NSZeroRect];
-    tabs.translatesAutoresizingMaskIntoConstraints = NO;
-    [tabs addTabViewItem:[self tabItem:@"Rain" view:[self rainTab]]];
-    [tabs addTabViewItem:[self tabItem:@"Characters" view:[self charactersTab]]];
-    [tabs addTabViewItem:[self tabItem:@"Intro" view:[self introTab]]];
-    [tabs addTabViewItem:[self tabItem:@"Messages" view:[self messagesTab]]];
-    [tabs addTabViewItem:[self tabItem:@"Countdowns" view:[self countdownTab]]];
+    NSView *content = [self presentationContentView];
+    if (!content) return;
+    content.window.acceptsMouseMovedEvents = YES;
+    MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
+    theme.presetName = [self.controls[@"preset"] isKindOfClass:NSString.class]
+        ? self.controls[@"preset"] : @"classic";
+    [self.settingsAnimationTimer invalidate];
+    self.settingsAnimationTimer = nil;
+    self.settingsMetalView = nil;
+    if (!self.embeddedPresentation) {
+        content.wantsLayer = YES;
+        content.layer.backgroundColor = theme.backgroundColor.CGColor;
+        self.settingsMetalView = [[MatrixCodeMetalView alloc] initWithFrame:content.bounds
+                                                                    session:nil
+                                                               storedValues:[self serializedValues]];
+        self.settingsMetalView.translatesAutoresizingMaskIntoConstraints = NO;
+        self.settingsMetalView.identifier = @"settings-rain-backdrop";
+        [self.settingsMetalView setAnimationActive:YES];
+        [content addSubview:self.settingsMetalView];
+        __weak typeof(self) weakSelf = self;
+        self.settingsAnimationTimer =
+            [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer *timer) {
+                [weakSelf.settingsMetalView draw];
+            }];
+    }
 
-    NSButton *reset = [NSButton buttonWithTitle:@"Reset All" target:self action:@selector(resetAll:)];
-    reset.translatesAutoresizingMaskIntoConstraints = NO;
-    NSButton *cancel = [NSButton buttonWithTitle:@"Cancel" target:self action:@selector(cancel:)];
-    cancel.keyEquivalent = @"\e";
-    cancel.translatesAutoresizingMaskIntoConstraints = NO;
-    NSButton *ok = [NSButton buttonWithTitle:@"OK" target:self action:@selector(accept:)];
-    ok.keyEquivalent = @"\r";
-    ok.translatesAutoresizingMaskIntoConstraints = NO;
-    [content addSubview:tabs];
-    [content addSubview:reset];
-    [content addSubview:cancel];
-    [content addSubview:ok];
+    MatrixCodeSettingsHoverView *overlay = [[MatrixCodeSettingsHoverView alloc] initWithFrame:NSZeroRect];
+    overlay.translatesAutoresizingMaskIntoConstraints = NO;
+    overlay.identifier = @"settings-hover-overlay";
+    __weak typeof(self) weakSelfForHover = self;
+    overlay.activityHandler = ^{
+        [weakSelfForHover settingsPointerActivity];
+    };
+    overlay.exitHandler = ^{
+        [weakSelfForHover scheduleSettingsPanelHide];
+    };
+
+    NSView *panel = [self controlsPanel];
+    panel.translatesAutoresizingMaskIntoConstraints = NO;
+    [content addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
+    [overlay addSubview:panel];
+    self.settingsOverlayView = overlay;
+    self.settingsPanel = panel;
     [NSLayoutConstraint activateConstraints:@[
-        [tabs.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:16],
-        [tabs.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-16],
-        [tabs.topAnchor constraintEqualToAnchor:content.topAnchor constant:12],
-        [tabs.bottomAnchor constraintEqualToAnchor:ok.topAnchor constant:-14],
-        [reset.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:20],
-        [reset.centerYAnchor constraintEqualToAnchor:ok.centerYAnchor],
-        [ok.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-20],
-        [ok.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-16],
-        [cancel.trailingAnchor constraintEqualToAnchor:ok.leadingAnchor constant:-8],
-        [cancel.centerYAnchor constraintEqualToAnchor:ok.centerYAnchor],
+        [overlay.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+        [overlay.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+        [overlay.topAnchor constraintEqualToAnchor:content.topAnchor],
+        [overlay.bottomAnchor constraintEqualToAnchor:content.bottomAnchor],
+        [panel.leadingAnchor constraintEqualToAnchor:overlay.leadingAnchor constant:16],
+        [panel.topAnchor constraintEqualToAnchor:overlay.topAnchor constant:16],
+        [panel.bottomAnchor constraintEqualToAnchor:overlay.bottomAnchor constant:-16],
+        [panel.widthAnchor constraintEqualToConstant:320],
     ]];
+    if (self.settingsMetalView) {
+        [NSLayoutConstraint activateConstraints:@[
+            [self.settingsMetalView.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+            [self.settingsMetalView.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+            [self.settingsMetalView.topAnchor constraintEqualToAnchor:content.topAnchor],
+            [self.settingsMetalView.bottomAnchor constraintEqualToAnchor:content.bottomAnchor],
+        ]];
+    }
+    [self setSettingsPanelVisible:YES immediate:YES];
+}
+
+- (NSFont *)settingsFontOfSize:(CGFloat)size weight:(NSFontWeight)weight {
+    return [MatrixCodeSettingsTheme.sharedTheme monospacedFontOfSize:size weight:weight];
+}
+
+- (void)styleLabel:(NSTextField *)label uppercase:(BOOL)uppercase {
+    if (uppercase) [MatrixCodeSettingsTheme.sharedTheme styleLabel:label];
+    else {
+        label.font = [self settingsFontOfSize:11 weight:NSFontWeightRegular];
+        label.textColor = MatrixCodeSettingsTheme.sharedTheme.accentColor;
+    }
+}
+
+- (void)styleButton:(NSButton *)button {
+    [MatrixCodeSettingsTheme.sharedTheme styleButton:button];
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:30].active = YES;
+}
+
+- (NSButton *)settingsButton:(NSString *)title action:(SEL)action identifier:(NSString *)identifier {
+    NSButton *button = [NSButton buttonWithTitle:title target:self action:action];
+    button.identifier = identifier;
+    [self styleButton:button];
+    return button;
+}
+
+- (NSView *)panelSlider:(NSString *)label
+                    key:(NSString *)key
+                    min:(double)minimum
+                    max:(double)maximum {
+    NSTextField *name = [NSTextField labelWithString:label];
+    [self styleLabel:name uppercase:YES];
+    NSSlider *slider = [NSSlider sliderWithValue:[self.controls[key] doubleValue]
+                                        minValue:minimum
+                                        maxValue:maximum
+                                          target:self
+                                          action:@selector(controlChanged:)];
+    slider.identifier = key;
+    slider.continuous = YES;
+    NSTextField *value = [NSTextField labelWithString:[self displayValueForSlider:slider]];
+    value.identifier = [key stringByAppendingString:@"-value"];
+    value.alignment = NSTextAlignmentRight;
+    [MatrixCodeSettingsTheme.sharedTheme styleSlider:slider readout:value];
+    [value.widthAnchor constraintEqualToConstant:58].active = YES;
+    NSStackView *header = [NSStackView stackViewWithViews:@[name, value]];
+    header.distribution = NSStackViewDistributionFill;
+    NSStackView *row = [NSStackView stackViewWithViews:@[header, slider]];
+    row.orientation = NSUserInterfaceLayoutOrientationVertical;
+    row.spacing = 2;
+    row.identifier = [@"row-" stringByAppendingString:key];
+    return row;
+}
+
+- (NSView *)panelInlineRow:(NSString *)label control:(NSView *)control {
+    NSTextField *name = [NSTextField labelWithString:label];
+    [self styleLabel:name uppercase:YES];
+    NSStackView *row = [NSStackView stackViewWithViews:@[name, control]];
+    row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    row.alignment = NSLayoutAttributeCenterY;
+    row.distribution = NSStackViewDistributionFill;
+    return row;
+}
+
+- (NSButton *)panelToggle:(NSString *)label key:(NSString *)key {
+    NSButton *button = [NSButton buttonWithTitle:label target:self action:@selector(controlChanged:)];
+    button.identifier = key;
+    button.buttonType = NSButtonTypeToggle;
+    [MatrixCodeSettingsTheme.sharedTheme styleToggleButton:button on:[self.controls[key] boolValue]];
+    [button.widthAnchor constraintEqualToConstant:54].active = YES;
+    return button;
+}
+
+- (NSPopUpButton *)panelPopup:(NSString *)identifier
+                         items:(NSArray<NSArray<NSString *> *> *)items {
+    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    for (NSArray<NSString *> *item in items) {
+        [popup addItemWithTitle:item[0]];
+        popup.lastItem.representedObject = item[1];
+        if ([item[1] isEqualToString:self.controls[identifier]]) [popup selectItem:popup.lastItem];
+    }
+    popup.identifier = identifier;
+    popup.target = self;
+    popup.action = @selector(controlChanged:);
+    [MatrixCodeSettingsTheme.sharedTheme stylePopupButton:popup];
+    return popup;
+}
+
+- (NSView *)controlsPanel {
+    MatrixCodeSettingsPanelView *surface = [[MatrixCodeSettingsPanelView alloc] initWithFrame:NSZeroRect];
+    surface.identifier = @"settings-panel";
+
+    NSStackView *stack = [NSStackView stackViewWithViews:@[]];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    stack.alignment = NSLayoutAttributeLeading;
+    stack.spacing = 6;
+    stack.edgeInsets = NSEdgeInsetsMake(16, 18, 18, 18);
+
+    NSTextField *title = [NSTextField labelWithString:@"MATRIX"];
+    title.identifier = @"settings-title";
+    [MatrixCodeSettingsTheme.sharedTheme styleHeading:title level:1];
+    [stack addArrangedSubview:title];
+
+    NSTextField *name = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    name.placeholderString = @"Neo";
+    name.stringValue = self.stagedValues[@"mx-user-name"] ?: @"";
+    name.identifier = @"mx-user-name";
+    name.target = self;
+    name.action = @selector(nameChanged:);
+    name.delegate = self;
+    [MatrixCodeSettingsTheme.sharedTheme styleTextField:name];
+    self.panelNameField = name;
+    [name.widthAnchor constraintEqualToConstant:130].active = YES;
+    [stack addArrangedSubview:[self panelInlineRow:@"Viewer name" control:name]];
+
+    NSArray *specs = @[
+        @[@"Density", @"density", @0.2, @100],
+        @[@"Ramp-up", @"rampUpMs", @0, @30000],
+        @[@"Trail length", @"trailLength", @0.01, @0.5],
+        @[@"Trail variation", @"trailVariation", @0, @1],
+        @[@"Speed", @"speed", @0.2, @3],
+        @[@"Glyph size", @"glyphScale", @0.5, @10],
+        @[@"Glow", @"glow", @0, @2.5],
+        @[@"Lead glow", @"leadBrightness", @0, @3],
+        @[@"Vignette", @"vignette", @0, @1],
+    ];
+    for (NSArray *spec in specs) {
+        NSView *row = [self panelSlider:spec[0] key:spec[1]
+                                   min:[spec[2] doubleValue] max:[spec[3] doubleValue]];
+        [row.widthAnchor constraintEqualToConstant:284].active = YES;
+        [stack addArrangedSubview:row];
+    }
+
+    NSPopUpButton *preset = [self panelPopup:@"preset" items:@[
+        @[@"Green (Classic)", @"classic"], @[@"Amber", @"amber"], @[@"Gold", @"gold"],
+        @[@"Red", @"red"], @[@"Pink", @"pink"], @[@"Purple", @"purple"],
+        @[@"Blue", @"blue"], @[@"White", @"white"],
+    ]];
+    [stack addArrangedSubview:[self panelInlineRow:@"Color" control:preset]];
+    NSPopUpButton *quality = [self panelPopup:@"quality" items:@[
+        @[@"Low", @"low"], @[@"Medium", @"med"], @[@"High", @"high"],
+    ]];
+    [stack addArrangedSubview:[self panelInlineRow:@"Quality" control:quality]];
+    [stack addArrangedSubview:[self panelInlineRow:@"Scanlines" control:[self panelToggle:@"Scanlines" key:@"scanlines"]]];
+    [stack addArrangedSubview:[self panelInlineRow:@"Allow overlap" control:[self panelToggle:@"Allow overlap" key:@"allowOverlap"]]];
+
+    NSArray *buttons = @[
+        @[@"▦ Characters", @"characters"],
+        @[@"▷ Replay intro", @"replay"],
+        @[@"✎ Edit intro", @"intro"],
+        @[@"✎ Edit messages", @"messages"],
+        @[@"⏱ Edit countdown", @"countdowns"],
+    ];
+    for (NSArray *spec in buttons) {
+        SEL action = [spec[1] isEqualToString:@"replay"] ? @selector(previewIntro:) : @selector(openEditor:);
+        NSButton *button = [self settingsButton:spec[0] action:action identifier:spec[1]];
+        [button.widthAnchor constraintEqualToConstant:284].active = YES;
+        [stack addArrangedSubview:button];
+    }
+    NSButton *reset = [self settingsButton:@"↺ Reset to defaults"
+                                    action:@selector(resetControls:)
+                                identifier:@"reset-controls"];
+    [reset.widthAnchor constraintEqualToConstant:284].active = YES;
+    [stack addArrangedSubview:reset];
+
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.drawsBackground = NO;
+    scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    [MatrixCodeSettingsTheme.sharedTheme styleScrollView:scroll];
+    MatrixCodeFlippedDocumentView *document = [[MatrixCodeFlippedDocumentView alloc] initWithFrame:NSMakeRect(0, 0, 320, 690)];
+    [document addSubview:stack];
+    scroll.documentView = document;
+    [surface addSubview:scroll];
+    [NSLayoutConstraint activateConstraints:@[
+        [scroll.leadingAnchor constraintEqualToAnchor:surface.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:surface.trailingAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:surface.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:surface.bottomAnchor],
+        [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:document.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:document.topAnchor],
+        [stack.bottomAnchor constraintLessThanOrEqualToAnchor:document.bottomAnchor],
+    ]];
+    return surface;
+}
+
+- (NSView *)editorContentForKind:(NSString *)kind {
+    if ([kind isEqualToString:@"characters"]) return [self charactersTab];
+    if ([kind isEqualToString:@"intro"]) return [self introTab];
+    if ([kind isEqualToString:@"messages"]) return [self messagesTab];
+    return [self countdownTab];
+}
+
+- (void)styleEditorViewHierarchy:(NSView *)view {
+    MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
+    if ([view isKindOfClass:NSScrollView.class]) {
+        [theme styleScrollView:(NSScrollView *)view];
+    } else if ([view isKindOfClass:NSPopUpButton.class]) {
+        [theme stylePopupButton:(NSPopUpButton *)view];
+    } else if ([view isKindOfClass:NSSlider.class]) {
+        [theme styleSlider:(NSSlider *)view readout:nil];
+    } else if ([view isKindOfClass:NSTextField.class]) {
+        NSTextField *field = (NSTextField *)view;
+        if (field.editable) [theme styleTextField:field];
+        else if (field.font.pointSize >= 15) [theme styleHeading:field level:1];
+        else [theme styleLabel:field];
+    } else if ([view isKindOfClass:NSButton.class]) {
+        NSButton *button = (NSButton *)view;
+        BOOL switchLike =
+            [button.title isEqualToString:@"Rain during intro"] ||
+            [button.title isEqualToString:@"Enable messages"] ||
+            [button.title isEqualToString:@"Flicker dissolve"] ||
+            [button.title isEqualToString:@"Brightness fade"] ||
+            [button.title isEqualToString:@"Enable default target"] ||
+            [button.title isEqualToString:@"Set"] ||
+            [button.title isEqualToString:@"Mirror glyphs"];
+        if (switchLike) {
+            button.font = [theme monospacedFontOfSize:11 weight:NSFontWeightRegular];
+            button.contentTintColor = theme.accentColor;
+        } else {
+            [theme styleButton:button];
+        }
+    } else if ([view isKindOfClass:NSDatePicker.class]) {
+        NSControl *picker = (NSControl *)view;
+        picker.font = [theme monospacedFontOfSize:11 weight:NSFontWeightRegular];
+    }
+    for (NSView *subview in view.subviews) [self styleEditorViewHierarchy:subview];
+}
+
+- (void)presentEditorKind:(NSString *)kind {
+    [self.editorBackdrop removeFromSuperview];
+    [self stopCharactersPreview];
+    NSView *root = [self presentationContentView];
+    if (!root) return;
+    MatrixCodeSettingsBackdropView *backdrop =
+        [[MatrixCodeSettingsBackdropView alloc] initWithFrame:NSZeroRect];
+    backdrop.translatesAutoresizingMaskIntoConstraints = NO;
+    backdrop.identifier = @"settings-editor-backdrop";
+    backdrop.wantsLayer = YES;
+    backdrop.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:0.60].CGColor;
+    __weak typeof(self) weakSelf = self;
+    backdrop.outsideClickHandler = ^{
+        if ([kind isEqualToString:@"characters"]) [weakSelf closeEditorSave:nil];
+        else [weakSelf closeEditorCancel:nil];
+    };
+
+    MatrixCodeSettingsPanelView *card = [[MatrixCodeSettingsPanelView alloc] initWithFrame:NSZeroRect];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.identifier = [@"settings-editor-card-" stringByAppendingString:kind];
+    card.modal = YES;
+
+    NSView *body = [self editorContentForKind:kind];
+    body.translatesAutoresizingMaskIntoConstraints = NO;
+    [self styleEditorViewHierarchy:body];
+    NSButton *reset = [self settingsButton:
+        [kind isEqualToString:@"characters"] ? @"Reset Characters" : @"Reset to default"
+                                     action:@selector(resetCurrentEditor:)
+                                 identifier:@"editor-reset"];
+    BOOL characters = [kind isEqualToString:@"characters"];
+    NSButton *cancel = characters ? nil :
+        [self settingsButton:@"Cancel"
+                      action:@selector(closeEditorCancel:)
+                  identifier:@"editor-cancel"];
+    cancel.keyEquivalent = @"\e";
+    NSButton *save = [self settingsButton:
+        characters ? @"Done" : @"Save"
+                                    action:@selector(closeEditorSave:)
+                                identifier:@"editor-save"];
+    save.keyEquivalent = @"\r";
+    NSArray<NSView *> *footerViews = characters
+        ? @[reset, save]
+        : @[reset, cancel, save];
+    NSStackView *footer = [NSStackView stackViewWithViews:footerViews];
+    footer.translatesAutoresizingMaskIntoConstraints = NO;
+    footer.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    footer.alignment = NSLayoutAttributeCenterY;
+    footer.spacing = 8;
+    [reset setContentHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [footer setCustomSpacing:characters ? 324 : 220 afterView:reset];
+
+    [card addSubview:body];
+    [card addSubview:footer];
+    [backdrop addSubview:card];
+    [root addSubview:backdrop positioned:NSWindowAbove relativeTo:nil];
+    NSLayoutConstraint *cardPreferredHeight = [card.heightAnchor constraintEqualToConstant:610];
+    cardPreferredHeight.priority = NSLayoutPriorityDefaultLow;
+    NSLayoutConstraint *cardViewportHeight =
+        [card.heightAnchor constraintEqualToAnchor:backdrop.heightAnchor constant:-48];
+    cardViewportHeight.priority = NSLayoutPriorityDefaultHigh;
+    [NSLayoutConstraint activateConstraints:@[
+        [backdrop.leadingAnchor constraintEqualToAnchor:root.leadingAnchor],
+        [backdrop.trailingAnchor constraintEqualToAnchor:root.trailingAnchor],
+        [backdrop.topAnchor constraintEqualToAnchor:root.topAnchor],
+        [backdrop.bottomAnchor constraintEqualToAnchor:root.bottomAnchor],
+        [card.centerXAnchor constraintEqualToAnchor:backdrop.centerXAnchor],
+        [card.centerYAnchor constraintEqualToAnchor:backdrop.centerYAnchor],
+        [card.widthAnchor constraintEqualToConstant:620],
+        cardPreferredHeight,
+        cardViewportHeight,
+        [card.heightAnchor constraintLessThanOrEqualToConstant:610],
+        [card.heightAnchor constraintLessThanOrEqualToAnchor:backdrop.heightAnchor constant:-48],
+        [body.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
+        [body.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
+        [body.topAnchor constraintEqualToAnchor:card.topAnchor],
+        [body.bottomAnchor constraintEqualToAnchor:footer.topAnchor constant:-8],
+        [footer.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
+        [footer.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
+        [footer.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-18],
+    ]];
+    self.editorBackdrop = backdrop;
+    self.editorCard = card;
+    self.editorKind = kind;
+}
+
+- (void)openEditor:(NSButton *)sender {
+    NSString *kind = sender.identifier;
+    if (![@[@"characters", @"intro", @"messages", @"countdowns"] containsObject:kind]) return;
+    self.editorSnapshot = [self serializedValues];
+    [self presentEditorKind:kind];
+}
+
+- (void)closeEditorSave:(id)sender {
+    [self stopCharactersPreview];
+    NSDictionary *values = [self serializedValues];
+    [self.preferences commitValues:values];
+    self.originalValues = [values copy];
+    [self publishPreviewValues:values];
+    [self.editorBackdrop removeFromSuperview];
+    self.editorBackdrop = nil;
+    self.editorCard = nil;
+    self.editorKind = nil;
+    self.editorSnapshot = nil;
+}
+
+- (void)closeEditorCancel:(id)sender {
+    [self stopCharactersPreview];
+    if (self.editorSnapshot) {
+        self.stagedValues = [self.editorSnapshot mutableCopy];
+        [self loadModels];
+        [self publishPreviewValues:[self serializedValues]];
+    }
+    [self closeEditorSave:sender];
+    [self rebuildConfigurationInterface];
+}
+
+- (void)cancelOperation:(id)sender {
+    if (self.editorBackdrop) {
+        if ([self.editorKind isEqualToString:@"characters"]) [self closeEditorSave:sender];
+        else [self closeEditorCancel:sender];
+        return;
+    }
+    [self cancel:sender];
+}
+
+- (void)resetCurrentEditor:(id)sender {
+    if ([self.editorKind isEqualToString:@"characters"]) {
+        self.controls[@"glyphMode"] = @"matrix";
+        self.controls[@"glyphFont"] = @"matrix";
+        self.controls[@"glyphRate"] = @1;
+        self.controls[@"mirror"] = @YES;
+    } else {
+        NSMutableDictionary *values = [[self serializedValues] mutableCopy];
+        NSString *key = [self.editorKind isEqualToString:@"intro"] ? @"mx-intro" :
+            ([self.editorKind isEqualToString:@"messages"] ? @"mx-messages" : @"mx-countdown");
+        [values removeObjectForKey:key];
+        self.stagedValues = values;
+        [self loadModels];
+    }
+    [self draftDidChange];
+    NSString *kind = self.editorKind;
+    [self presentEditorKind:kind];
+}
+
+- (void)resetControls:(id)sender {
+    self.controls = [@{
+        @"speed": @1, @"trailLength": @0.255, @"trailVariation": @1,
+        @"density": @2, @"rampUpMs": @8000,
+        @"glyphRate": @1, @"glyphScale": @1, @"glow": @0.9, @"leadBrightness": @1.6,
+        @"glyphMode": @"matrix", @"glyphFont": @"matrix", @"preset": @"classic",
+        @"mirror": @YES, @"scanlines": @NO, @"vignette": @0,
+        @"allowOverlap": @YES, @"quality": @"high",
+    } mutableCopy];
+    [self draftDidChange];
+    [self rebuildConfigurationInterface];
+}
+
+- (void)rebuildConfigurationInterface {
+    [self.settingsHideTimer invalidate];
+    self.settingsHideTimer = nil;
+    [self.editorBackdrop removeFromSuperview];
+    self.editorBackdrop = nil;
+    self.editorCard = nil;
+    [self stopCharactersPreview];
+    [self.settingsOverlayView removeFromSuperview];
+    self.settingsOverlayView = nil;
+    self.settingsPanel = nil;
+    if (!self.embeddedPresentation) {
+        for (NSView *view in self.window.contentView.subviews.copy) [view removeFromSuperview];
+    }
+    [self buildInterface];
 }
 
 - (NSTabViewItem *)tabItem:(NSString *)label view:(NSView *)view {
@@ -435,9 +1042,24 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return row;
 }
 
+- (NSView *)settingsCardContainingView:(NSView *)view {
+    MatrixCodeSettingsCardView *card = [[MatrixCodeSettingsCardView alloc] initWithFrame:NSZeroRect];
+    view.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:view];
+    [NSLayoutConstraint activateConstraints:@[
+        [view.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:10],
+        [view.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-10],
+        [view.topAnchor constraintEqualToAnchor:card.topAnchor constant:8],
+        [view.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-8],
+    ]];
+    return card;
+}
+
 - (NSString *)displayValueForSlider:(NSSlider *)slider {
     if ([slider.identifier isEqualToString:@"rampUpMs"]) {
-        return [NSString stringWithFormat:@"%.0f", slider.doubleValue];
+        return slider.doubleValue <= 0
+            ? @"off"
+            : [NSString stringWithFormat:@"%.1fs", slider.doubleValue / 1000.0];
     }
     if ([slider.identifier isEqualToString:@"trailLength"]) {
         double percent = (slider.doubleValue - 0.01) / 0.49 * 100.0;
@@ -446,18 +1068,39 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     if ([slider.identifier isEqualToString:@"trailVariation"]) {
         return [NSString stringWithFormat:@"%.0f%%", slider.doubleValue * 100.0];
     }
+    if ([slider.identifier isEqualToString:@"speed"]) {
+        return [NSString stringWithFormat:@"%.2f×", slider.doubleValue];
+    }
+    if ([slider.identifier isEqualToString:@"glyphScale"]) {
+        return [NSString stringWithFormat:@"%.1f×", slider.doubleValue];
+    }
+    if ([slider.identifier isEqualToString:@"vignette"]) {
+        return slider.doubleValue <= 0
+            ? @"off"
+            : [NSString stringWithFormat:@"%.0f%%", slider.doubleValue * 100.0];
+    }
+    if ([slider.identifier isEqualToString:@"glyphRate"]) {
+        return [NSString stringWithFormat:@"%.2fx", slider.doubleValue];
+    }
     return [NSString stringWithFormat:@"%.2f", slider.doubleValue];
+}
+
+- (NSTextField *)readoutWithIdentifier:(NSString *)identifier inView:(NSView *)view {
+    if ([view.identifier isEqualToString:identifier] &&
+        [view isKindOfClass:NSTextField.class]) {
+        return (NSTextField *)view;
+    }
+    for (NSView *subview in view.subviews) {
+        NSTextField *readout = [self readoutWithIdentifier:identifier inView:subview];
+        if (readout) return readout;
+    }
+    return nil;
 }
 
 - (void)updateReadoutForSlider:(NSSlider *)slider {
     NSString *identifier = [slider.identifier stringByAppendingString:@"-value"];
-    for (NSView *view in slider.superview.subviews) {
-        if ([view.identifier isEqualToString:identifier] &&
-            [view isKindOfClass:NSTextField.class]) {
-            ((NSTextField *)view).stringValue = [self displayValueForSlider:slider];
-            break;
-        }
-    }
+    NSTextField *readout = [self readoutWithIdentifier:identifier inView:slider.superview];
+    readout.stringValue = [self displayValueForSlider:slider];
 }
 
 - (NSView *)slider:(NSString *)key min:(double)minimum max:(double)maximum {
@@ -466,7 +1109,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                          target:self action:@selector(controlChanged:)];
     slider.identifier = key;
     slider.continuous = YES;
-    [slider.widthAnchor constraintEqualToConstant:380].active = YES;
+    [slider.widthAnchor constraintEqualToConstant:300].active = YES;
     NSTextField *readout = [NSTextField labelWithString:[self displayValueForSlider:slider]];
     readout.identifier = [key stringByAppendingString:@"-value"];
     readout.alignment = NSTextAlignmentRight;
@@ -478,6 +1121,91 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     control.alignment = NSLayoutAttributeCenterY;
     control.spacing = 10;
     return control;
+}
+
+- (NSDictionary<NSString *, NSString *> *)characterPreviewValuesFromValues:
+    (NSDictionary<NSString *, NSString *> *)values {
+    NSMutableDictionary<NSString *, NSString *> *previewValues = [values mutableCopy];
+    NSMutableDictionary *controls =
+        [MatrixCodeJSONObject(previewValues[@"mx-controls"], NSDictionary.class) mutableCopy]
+        ?: [NSMutableDictionary dictionary];
+    controls[@"rampUpMs"] = @0;
+    previewValues[@"mx-controls"] = MatrixCodeJSONString(controls);
+
+    NSMutableDictionary *messages =
+        [MatrixCodeJSONObject(previewValues[@"mx-messages"], NSDictionary.class) mutableCopy]
+        ?: [NSMutableDictionary dictionary];
+    messages[@"enabled"] = @NO;
+    previewValues[@"mx-messages"] = MatrixCodeJSONString(messages);
+    return previewValues;
+}
+
+- (NSDictionary<NSString *, id> *)charactersPreviewSession {
+    NSTimeInterval epochMs = (NSDate.date.timeIntervalSince1970 - 12.0) * 1000.0;
+    return @{@"seed": @0x43a71f2d, @"epoch": @(epochMs)};
+}
+
+- (void)startCharactersPreviewTimerIfNeeded {
+    if (self.charactersPreviewTimer) return;
+    __weak typeof(self) weakSelf = self;
+    self.charactersPreviewTimer =
+        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer *timer) {
+        [weakSelf.charactersPreviewView draw];
+    }];
+}
+
+- (void)stopCharactersPreview {
+    [self.charactersPreviewTimer invalidate];
+    self.charactersPreviewTimer = nil;
+    [self.charactersPreviewView setAnimationActive:NO];
+    self.charactersPreviewView = nil;
+}
+
+- (NSView *)charactersPreviewCard {
+    MatrixCodeSettingsCardView *card = [[MatrixCodeSettingsCardView alloc] initWithFrame:NSZeroRect];
+    card.identifier = @"settings-character-preview";
+    [card.widthAnchor constraintEqualToConstant:540].active = YES;
+
+    NSTextField *label = [NSTextField labelWithString:@"Rain preview"];
+    label.identifier = @"settings-character-preview-title";
+
+    MatrixCodeMetalView *preview = [[MatrixCodeMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, 508, 190)
+              session:[self charactersPreviewSession]
+         storedValues:[self characterPreviewValuesFromValues:[self serializedValues]]];
+    NSView *previewSurface = preview;
+    if (preview) {
+        preview.identifier = @"settings-character-preview-rain";
+        preview.wantsLayer = YES;
+        preview.layer.cornerRadius = 6.0;
+        preview.layer.masksToBounds = YES;
+        [preview setAnimationActive:YES];
+        self.charactersPreviewView = preview;
+        [self startCharactersPreviewTimerIfNeeded];
+    } else {
+        NSTextField *fallback = [NSTextField labelWithString:@"Preview unavailable"];
+        fallback.identifier = @"settings-character-preview-unavailable";
+        fallback.alignment = NSTextAlignmentCenter;
+        previewSurface = fallback;
+    }
+    previewSurface.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSStackView *stack = [NSStackView stackViewWithViews:@[label, previewSurface]];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    stack.alignment = NSLayoutAttributeLeading;
+    stack.spacing = 8;
+    [card addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:12],
+        [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-12],
+        [stack.topAnchor constraintEqualToAnchor:card.topAnchor constant:12],
+        [stack.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-12],
+        [previewSurface.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
+        [previewSurface.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor],
+        [previewSurface.heightAnchor constraintEqualToConstant:190],
+    ]];
+    return card;
 }
 
 - (NSView *)rainTab {
@@ -508,13 +1236,32 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                                              max:[spec[3] doubleValue]]]];
     }
     NSPopUpButton *preset = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    [preset addItemsWithTitles:@[@"classic", @"amber", @"gold", @"red", @"pink", @"purple", @"blue", @"white"]];
-    [preset selectItemWithTitle:self.controls[@"preset"]];
+    NSArray *presetItems = @[
+        @[@"Green (Classic)", @"classic"], @[@"Amber", @"amber"],
+        @[@"Gold", @"gold"], @[@"Red", @"red"],
+        @[@"Pink", @"pink"], @[@"Purple", @"purple"],
+        @[@"Blue", @"blue"], @[@"White", @"white"],
+    ];
+    for (NSArray *item in presetItems) {
+        [preset addItemWithTitle:item[0]];
+        preset.lastItem.representedObject = item[1];
+        if ([item[1] isEqualToString:self.controls[@"preset"]]) {
+            [preset selectItem:preset.lastItem];
+        }
+    }
     preset.identifier = @"preset"; preset.target = self; preset.action = @selector(controlChanged:);
     [stack addArrangedSubview:[self rowWithLabel:@"Color" control:preset]];
     NSPopUpButton *quality = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    [quality addItemsWithTitles:@[@"low", @"med", @"high"]];
-    [quality selectItemWithTitle:self.controls[@"quality"]];
+    NSArray *qualityItems = @[
+        @[@"Low", @"low"], @[@"Medium", @"med"], @[@"High", @"high"],
+    ];
+    for (NSArray *item in qualityItems) {
+        [quality addItemWithTitle:item[0]];
+        quality.lastItem.representedObject = item[1];
+        if ([item[1] isEqualToString:self.controls[@"quality"]]) {
+            [quality selectItem:quality.lastItem];
+        }
+    }
     quality.identifier = @"quality"; quality.target = self; quality.action = @selector(controlChanged:);
     [stack addArrangedSubview:[self rowWithLabel:@"Quality" control:quality]];
     for (NSArray *toggle in @[@[@"Scanlines", @"scanlines"], @[@"Allow overlap", @"allowOverlap"]]) {
@@ -536,12 +1283,13 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         @"These controls affect the ambient rain glyphs. In-rain messages keep their readable character set."];
     [hint.widthAnchor constraintLessThanOrEqualToConstant:680].active = YES;
     [stack addArrangedSubview:hint];
+    [stack addArrangedSubview:[self charactersPreviewCard]];
 
     NSPopUpButton *glyphMode = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     NSArray *glyphModeItems = @[
-        @[@"matrix", @"matrix"], @[@"katakana", @"katakana"],
-        @[@"binary", @"binary"], @[@"digits", @"digits"],
-        @[@"latin", @"latin"], @[@"symbols", @"symbols"],
+        @[@"Matrix mix", @"matrix"], @[@"Katakana", @"katakana"],
+        @[@"Binary", @"binary"], @[@"Digits", @"digits"],
+        @[@"Latin", @"latin"], @[@"Symbols", @"symbols"],
     ];
     for (NSArray *item in glyphModeItems) {
         [glyphMode addItemWithTitle:item[0]];
@@ -553,6 +1301,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     glyphMode.identifier = @"glyphMode";
     glyphMode.target = self;
     glyphMode.action = @selector(controlChanged:);
+    [glyphMode.widthAnchor constraintEqualToConstant:240].active = YES;
     [stack addArrangedSubview:[self rowWithLabel:@"Character set" control:glyphMode]];
 
     NSPopUpButton *glyphFont = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
@@ -571,6 +1320,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     glyphFont.identifier = @"glyphFont";
     glyphFont.target = self;
     glyphFont.action = @selector(controlChanged:);
+    [glyphFont.widthAnchor constraintEqualToConstant:240].active = YES;
     [stack addArrangedSubview:[self rowWithLabel:@"Font" control:glyphFont]];
 
     for (NSArray *spec in @[@[@"Glyph change", @"glyphRate", @0, @5]]) {
@@ -599,13 +1349,26 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         id value = [[sender selectedItem] representedObject];
         NSString *selected = [value isKindOfClass:NSString.class] ? value : [sender titleOfSelectedItem];
         self.controls[key] = selected;
+        if ([key isEqualToString:@"preset"]) {
+            MatrixCodeSettingsTheme.sharedTheme.presetName = selected;
+            if (!self.embeddedPresentation) {
+                self.window.contentView.layer.backgroundColor =
+                    MatrixCodeSettingsTheme.sharedTheme.backgroundColor.CGColor;
+            }
+        }
         if ([key isEqualToString:@"glyphMode"]) {
             BOOL mirror = MatrixCodePreferredMirrorForGlyphMode(selected);
             self.controls[@"mirror"] = @(mirror);
             self.mirrorButton.state = mirror ? NSControlStateValueOn : NSControlStateValueOff;
         }
     }
-    else if ([sender isKindOfClass:NSButton.class]) self.controls[key] = @([sender state] == NSControlStateValueOn);
+    else if ([sender isKindOfClass:NSButton.class]) {
+        BOOL enabled = [sender state] == NSControlStateValueOn;
+        self.controls[key] = @(enabled);
+        if ([key isEqualToString:@"scanlines"] || [key isEqualToString:@"allowOverlap"]) {
+            [MatrixCodeSettingsTheme.sharedTheme styleToggleButton:sender on:enabled];
+        }
+    }
     [self draftDidChange];
 }
 
@@ -616,14 +1379,61 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [self draftDidChange];
 }
 
+- (void)controlTextDidChange:(NSNotification *)notification {
+    NSTextField *field = [notification.object isKindOfClass:NSTextField.class]
+        ? notification.object : nil;
+    if (!field) return;
+    NSString *identifier = field.identifier ?: @"";
+    if ([identifier isEqualToString:@"mx-user-name"]) {
+        [self nameChanged:field];
+    } else if ([identifier isEqualToString:@"text"] ||
+               [identifier hasPrefix:@"holdMs"] ||
+               [identifier hasPrefix:@"pauseMs"]) {
+        [self introLineChanged:field];
+    } else if ([identifier isEqualToString:@"messageText"]) {
+        [self messageLineChanged:field];
+    } else if ([identifier isEqualToString:@"momentName"]) {
+        [self momentChanged:field];
+    } else if ([identifier isEqualToString:@"charMs"] ||
+               [identifier hasPrefix:@"startDelayMs"] ||
+               [identifier hasPrefix:@"fadeOutMs"] ||
+               [identifier hasPrefix:@"postIntroDelayMs"]) {
+        [self introTimingChanged:field];
+    } else if ([identifier hasPrefix:@"frequencyMs"] ||
+               [identifier hasPrefix:@"persistenceMs"] ||
+               [identifier hasPrefix:@"appearMs"] ||
+               [identifier hasPrefix:@"disappearMs"] ||
+               [identifier hasPrefix:@"verticalPosition"] ||
+               [identifier hasPrefix:@"verticalJitter"]) {
+        [self messageNumberChanged:field];
+    }
+}
+
 - (NSTextField *)numberField:(double)value identifier:(NSString *)identifier action:(SEL)action {
     NSTextField *field = [[NSTextField alloc] initWithFrame:NSZeroRect];
     field.doubleValue = value;
     field.identifier = identifier;
     field.target = self;
     field.action = action;
+    field.delegate = self;
     [field.widthAnchor constraintEqualToConstant:76].active = YES;
     return field;
+}
+
+- (NSTextField *)secondsField:(double)milliseconds
+                    identifier:(NSString *)identifier
+                        action:(SEL)action {
+    return [self numberField:milliseconds / 1000.0
+                  identifier:[identifier stringByAppendingString:@"-seconds"]
+                      action:action];
+}
+
+- (NSTextField *)percentField:(double)fraction
+                    identifier:(NSString *)identifier
+                        action:(SEL)action {
+    return [self numberField:fraction * 100.0
+                  identifier:[identifier stringByAppendingString:@"-percent"]
+                      action:action];
 }
 
 - (NSView *)introTab {
@@ -642,12 +1452,15 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSButton *add = [NSButton buttonWithTitle:@"Add Line" target:self action:@selector(addIntroLine:)];
     [stack addArrangedSubview:add];
     for (NSArray *field in @[@[@"Typing speed (ms/character)", @"charMs"],
-                              @[@"Start delay (ms)", @"startDelayMs"],
-                              @[@"Fade out (ms)", @"fadeOutMs"],
-                              @[@"Delay after intro (ms)", @"postIntroDelayMs"]]) {
-        NSTextField *number = [self numberField:[self.intro[field[1]] doubleValue]
-                                     identifier:field[1]
-                                         action:@selector(introTimingChanged:)];
+                              @[@"Start delay (s)", @"startDelayMs"],
+                              @[@"Fade out (s)", @"fadeOutMs"],
+                              @[@"Delay after intro (s)", @"postIntroDelayMs"]]) {
+        BOOL milliseconds = [field[1] isEqualToString:@"charMs"];
+        NSTextField *number = milliseconds
+            ? [self numberField:[self.intro[field[1]] doubleValue]
+                     identifier:field[1] action:@selector(introTimingChanged:)]
+            : [self secondsField:[self.intro[field[1]] doubleValue]
+                      identifier:field[1] action:@selector(introTimingChanged:)];
         if ([field[1] isEqualToString:@"postIntroDelayMs"]) {
             self.postIntroDelayField = number;
         }
@@ -674,34 +1487,42 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         NSTextField *text = [[NSTextField alloc] initWithFrame:NSZeroRect];
         text.stringValue = [line[@"text"] isKindOfClass:NSString.class] ? line[@"text"] : @"";
         text.tag = index; text.identifier = @"text"; text.target = self; text.action = @selector(introLineChanged:);
-        [text.widthAnchor constraintEqualToConstant:330].active = YES;
-        NSTextField *hold = [self numberField:[line[@"holdMs"] doubleValue] identifier:@"holdMs"
-                                       action:@selector(introLineChanged:)];
-        hold.tag = index;
-        NSTextField *pause = [self numberField:[line[@"pauseMs"] doubleValue] identifier:@"pauseMs"
+        text.delegate = self;
+        [text.widthAnchor constraintEqualToConstant:520].active = YES;
+        NSTextField *hold = [self secondsField:[line[@"holdMs"] doubleValue] identifier:@"holdMs"
                                         action:@selector(introLineChanged:)];
+        hold.tag = index;
+        NSTextField *pause = [self secondsField:[line[@"pauseMs"] doubleValue] identifier:@"pauseMs"
+                                         action:@selector(introLineChanged:)];
         pause.tag = index;
+        pause.enabled = index + 1 < self.introLines.count;
         NSButton *up = [NSButton buttonWithTitle:@"↑" target:self action:@selector(moveIntroLine:)];
         up.tag = index; up.identifier = @"up"; up.enabled = index > 0;
         NSButton *down = [NSButton buttonWithTitle:@"↓" target:self action:@selector(moveIntroLine:)];
         down.tag = index; down.identifier = @"down"; down.enabled = index + 1 < self.introLines.count;
         NSButton *remove = [NSButton buttonWithTitle:@"−" target:self action:@selector(removeIntroLine:)];
         remove.tag = index; remove.enabled = self.introLines.count > 1;
-        NSStackView *row = [NSStackView stackViewWithViews:@[
-            text, [NSTextField labelWithString:@"Hold"], hold,
-            [NSTextField labelWithString:@"Pause"], pause, up, down, remove
+        NSStackView *timings = [NSStackView stackViewWithViews:@[
+            [NSTextField labelWithString:@"Show for (s)"], hold,
+            [NSTextField labelWithString:@"Pause after (s)"], pause, up, down, remove
         ]];
-        row.spacing = 6; row.alignment = NSLayoutAttributeCenterY;
-        [self.introLinesStack addArrangedSubview:row];
+        timings.spacing = 6;
+        timings.alignment = NSLayoutAttributeCenterY;
+        NSStackView *row = [NSStackView stackViewWithViews:@[text, timings]];
+        row.orientation = NSUserInterfaceLayoutOrientationVertical;
+        row.spacing = 6;
+        row.alignment = NSLayoutAttributeLeading;
+        [self.introLinesStack addArrangedSubview:[self settingsCardContainingView:row]];
     }];
 }
 
 - (void)introLineChanged:(NSTextField *)sender {
     if (sender.tag >= self.introLines.count) return;
-    self.introLines[sender.tag][sender.identifier] =
-        [sender.identifier isEqualToString:@"text"]
+    NSString *key = [sender.identifier stringByReplacingOccurrencesOfString:@"-seconds" withString:@""];
+    self.introLines[sender.tag][key] =
+        [key isEqualToString:@"text"]
             ? MatrixCodeSettingText(sender.stringValue, 120)
-            : @(MIN(20000, MAX(0, sender.doubleValue)));
+            : @(MIN(20000, MAX(0, sender.doubleValue * 1000.0)));
     [self draftDidChange];
 }
 - (void)addIntroLine:(id)sender {
@@ -724,9 +1545,12 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [self draftDidChange];
 }
 - (void)introTimingChanged:(NSTextField *)sender {
-    BOOL characterTiming = [sender.identifier isEqualToString:@"charMs"];
-    self.intro[sender.identifier] = @(MIN(characterTiming ? 500 : 10000,
-        MAX(characterTiming ? 10 : 0, sender.doubleValue)));
+    BOOL seconds = [sender.identifier hasSuffix:@"-seconds"];
+    NSString *key = [sender.identifier stringByReplacingOccurrencesOfString:@"-seconds" withString:@""];
+    BOOL characterTiming = [key isEqualToString:@"charMs"];
+    double value = sender.doubleValue * (seconds ? 1000.0 : 1.0);
+    self.intro[key] = @(MIN(characterTiming ? 500 : 10000,
+        MAX(characterTiming ? 10 : 0, value)));
     [self draftDidChange];
 }
 - (void)introRainChanged:(NSButton *)sender {
@@ -753,15 +1577,20 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [stack addArrangedSubview:self.messageLinesStack];
     [self rebuildMessageLines];
     [stack addArrangedSubview:[NSButton buttonWithTitle:@"Add Message" target:self action:@selector(addMessage:)]];
-    for (NSArray *field in @[@[@"Average frequency (ms)", @"frequencyMs"],
-                              @[@"Fade in (ms)", @"appearMs"],
-                              @[@"Hold (ms)", @"persistenceMs"],
-                              @[@"Fade out (ms)", @"disappearMs"],
-                              @[@"Vertical position (0–1)", @"verticalPosition"],
-                              @[@"Vertical jitter (0–1)", @"verticalJitter"]]) {
+    for (NSArray *field in @[@[@"Show one every (s)", @"frequencyMs"],
+                              @[@"Appear over (s)", @"appearMs"],
+                              @[@"Each stays for (s)", @"persistenceMs"],
+                              @[@"Disappear over (s)", @"disappearMs"],
+                              @[@"Vertical position (%)", @"verticalPosition"],
+                              @[@"Vertical randomness (%)", @"verticalJitter"]]) {
+        BOOL percent = [field[1] hasPrefix:@"vertical"];
+        NSTextField *number = percent
+            ? [self percentField:[self.messages[field[1]] doubleValue]
+                      identifier:field[1] action:@selector(messageNumberChanged:)]
+            : [self secondsField:[self.messages[field[1]] doubleValue]
+                      identifier:field[1] action:@selector(messageNumberChanged:)];
         [stack addArrangedSubview:[self rowWithLabel:field[0]
-                                            control:[self numberField:[self.messages[field[1]] doubleValue]
-                                                           identifier:field[1] action:@selector(messageNumberChanged:)]]];
+                                            control:number]];
     }
     for (NSArray *toggle in @[@[@"Flicker dissolve", @"flickerOut"],
                                @[@"Brightness fade", @"brightnessFade"]]) {
@@ -780,7 +1609,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     }
     [self.messageLines enumerateObjectsUsingBlock:^(NSString *message, NSUInteger index, BOOL *stop) {
         NSTextField *text = [[NSTextField alloc] initWithFrame:NSZeroRect];
-        text.stringValue = message; text.tag = index; text.target = self; text.action = @selector(messageLineChanged:);
+        text.stringValue = message; text.tag = index; text.identifier = @"messageText";
+        text.target = self; text.action = @selector(messageLineChanged:); text.delegate = self;
         [text.widthAnchor constraintEqualToConstant:480].active = YES;
         NSButton *up = [NSButton buttonWithTitle:@"↑" target:self action:@selector(moveMessage:)];
         up.tag = index; up.identifier = @"up"; up.enabled = index > 0;
@@ -790,7 +1620,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         remove.tag = index;
         NSStackView *row = [NSStackView stackViewWithViews:@[text, up, down, remove]];
         row.spacing = 6; row.alignment = NSLayoutAttributeCenterY;
-        [self.messageLinesStack addArrangedSubview:row];
+        [self.messageLinesStack addArrangedSubview:[self settingsCardContainingView:row]];
     }];
 }
 - (void)messageLineChanged:(NSTextField *)sender {
@@ -816,14 +1646,18 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [self draftDidChange];
 }
 - (void)messageNumberChanged:(NSTextField *)sender {
-    double value = sender.doubleValue;
-    if ([sender.identifier hasPrefix:@"vertical"]) value = MIN(1, MAX(0, value));
+    BOOL percent = [sender.identifier hasSuffix:@"-percent"];
+    BOOL seconds = [sender.identifier hasSuffix:@"-seconds"];
+    NSString *key = [[sender.identifier stringByReplacingOccurrencesOfString:@"-percent" withString:@""]
+        stringByReplacingOccurrencesOfString:@"-seconds" withString:@""];
+    double value = sender.doubleValue * (percent ? 0.01 : (seconds ? 1000.0 : 1.0));
+    if ([key hasPrefix:@"vertical"]) value = MIN(1, MAX(0, value));
     else {
-        BOOL minimumGap = [sender.identifier isEqualToString:@"frequencyMs"] ||
-            [sender.identifier isEqualToString:@"persistenceMs"];
+        BOOL minimumGap = [key isEqualToString:@"frequencyMs"] ||
+            [key isEqualToString:@"persistenceMs"];
         value = MIN(600000, MAX(minimumGap ? 500 : 0, value));
     }
-    self.messages[sender.identifier] = @(value);
+    self.messages[key] = @(value);
     [self draftDidChange];
 }
 - (void)messageToggleChanged:(NSButton *)sender {
@@ -870,7 +1704,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [self.moments enumerateObjectsUsingBlock:^(NSMutableDictionary *moment, NSUInteger index, BOOL *stop) {
         NSTextField *name = [[NSTextField alloc] initWithFrame:NSZeroRect];
         name.placeholderString = @"Name"; name.stringValue = [moment[@"name"] isKindOfClass:NSString.class] ? moment[@"name"] : @"";
-        name.tag = index; name.identifier = @"name"; name.target = self; name.action = @selector(momentChanged:);
+        name.tag = index; name.identifier = @"momentName"; name.target = self;
+        name.action = @selector(momentChanged:); name.delegate = self;
         [name.widthAnchor constraintEqualToConstant:170].active = YES;
         NSDatePicker *date = [[NSDatePicker alloc] initWithFrame:NSZeroRect];
         date.datePickerElements = NSDatePickerElementFlagYearMonthDay |
@@ -893,7 +1728,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
             name, enabled, date, up, down, remove
         ]];
         row.spacing = 8; row.alignment = NSLayoutAttributeCenterY;
-        [self.momentsStack addArrangedSubview:row];
+        [self.momentsStack addArrangedSubview:[self settingsCardContainingView:row]];
     }];
 }
 - (void)defaultCountdownEnabled:(NSButton *)sender {
@@ -928,7 +1763,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (void)momentChanged:(id)sender {
     NSInteger index = [sender tag];
     if (index >= self.moments.count) return;
-    if ([[sender identifier] isEqualToString:@"name"]) {
+    if ([[sender identifier] isEqualToString:@"momentName"]) {
         NSString *name = MatrixCodeSettingText([sender stringValue], 40);
         NSCharacterSet *illegal = [NSCharacterSet characterSetWithCharactersInString:@":{}"];
         name = [[name componentsSeparatedByCharactersInSet:illegal] componentsJoinedByString:@""];
@@ -1002,25 +1837,58 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (void)previewMessage:(id)sender { [self showPreviewWithIntro:NO message:YES]; }
 
 - (void)resetAll:(id)sender {
-    [self.stagedValues removeAllObjects];
-    [self loadModels];
-    for (NSView *view in self.window.contentView.subviews.copy) [view removeFromSuperview];
-    [self buildInterface];
-    [self draftDidChange];
+    [self resetControls:sender];
 }
 
 - (void)accept:(id)sender {
+    if (self.editorBackdrop) {
+        [self closeEditorSave:sender];
+        return;
+    }
     NSDictionary *values = [self serializedValues];
     [self.preferences commitValues:values];
     [self publishPreviewValues:values];
-    [NSApp endSheet:self.window returnCode:NSModalResponseOK];
+    [self.settingsHideTimer invalidate];
+    self.settingsHideTimer = nil;
+    [self.settingsAnimationTimer invalidate];
+    self.settingsAnimationTimer = nil;
+    [self.settingsMetalView setAnimationActive:NO];
+    if (self.embeddedPresentation) {
+        [self.settingsOverlayView removeFromSuperview];
+        self.settingsOverlayView = nil;
+    } else {
+        [NSApp endSheet:self.window returnCode:NSModalResponseOK];
+    }
     self.closeHandler();
 }
 
 - (void)cancel:(id)sender {
-    [self publishPreviewValues:self.originalValues];
-    [NSApp endSheet:self.window returnCode:NSModalResponseCancel];
+    if (self.editorBackdrop) {
+        [self closeEditorCancel:sender];
+        return;
+    }
+    NSDictionary *values = [self serializedValues];
+    [self publishPreviewValues:values];
+    [self.settingsHideTimer invalidate];
+    self.settingsHideTimer = nil;
+    [self.settingsAnimationTimer invalidate];
+    self.settingsAnimationTimer = nil;
+    [self.settingsMetalView setAnimationActive:NO];
+    if (self.embeddedPresentation) {
+        [self.settingsOverlayView removeFromSuperview];
+        self.settingsOverlayView = nil;
+    } else {
+        [NSApp endSheet:self.window returnCode:NSModalResponseCancel];
+    }
     self.closeHandler();
+}
+
+- (void)dealloc {
+    [_settingsHideTimer invalidate];
+    [_settingsAnimationTimer invalidate];
+    [_charactersPreviewTimer invalidate];
+    [_settingsMetalView setAnimationActive:NO];
+    [_charactersPreviewView setAnimationActive:NO];
 }
 
 @end

@@ -101,13 +101,7 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
 
 - (IBAction)showSettings:(id)sender {
     MatrixCodeRainHostView *hostView = [self hostViewForSettings];
-    NSWindow *settingsWindow = [hostView configureWindow];
-    NSWindow *parentWindow = hostView.window;
-    if (settingsWindow.sheetParent || settingsWindow.isVisible) {
-        [settingsWindow makeKeyAndOrderFront:nil];
-    } else if (parentWindow) {
-        [parentWindow beginSheet:settingsWindow completionHandler:nil];
-    }
+    [hostView showSettingsOverlay];
     [NSApp activateIgnoringOtherApps:YES];
 }
 

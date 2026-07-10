@@ -104,6 +104,7 @@ targets:
       - path: Source/MatrixCodeRainHostView.m
       - path: Source/MatrixCodeRainLifecycle.m
       - path: Source/MatrixCodeSession.m
+      - path: Source/MatrixCodeSettingsTheme.m
       - path: Source/MatrixCodeTokenResolver.m
       - path: Resources/MatrixCodeShaders.msl
         buildPhase: resources

@@ -7,7 +7,9 @@ FOUNDATION_EXPORT NSString * const MatrixCodePreviewValuesKey;
 
 @interface MatrixCodeConfigurationController : NSWindowController
 - (instancetype)initWithCloseHandler:(dispatch_block_t)closeHandler;
+- (instancetype)initEmbeddedInView:(NSView *)hostView closeHandler:(dispatch_block_t)closeHandler;
 - (instancetype)init NS_UNAVAILABLE;
+- (void)showSettingsPanel;
 @end
 
 NS_ASSUME_NONNULL_END

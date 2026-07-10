@@ -1,9 +1,13 @@
 #import <XCTest/XCTest.h>
 
 #import "MatrixCodeConfigurationController.h"
+#import "MatrixCodeMetalView.h"
+#import "MatrixCodePreferences.h"
 
 @interface MatrixCodeConfigurationController (Testing)
 - (void)controlChanged:(id)sender;
+- (void)openEditor:(NSButton *)sender;
+- (void)setSettingsPanelVisible:(BOOL)visible immediate:(BOOL)immediate;
 @end
 
 static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identifier) {
@@ -15,56 +19,114 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
     return nil;
 }
 
+static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *value) {
+    for (NSMenuItem *item in popup.itemArray) {
+        if ([item.representedObject isEqual:value]) {
+            [popup selectItem:item];
+            return;
+        }
+    }
+    XCTFail(@"Missing represented value %@ in %@", value, popup.identifier);
+}
+
 @interface MatrixCodeConfigurationControllerTests : XCTestCase
+@property(nonatomic, strong) MatrixCodePreferences *preferences;
+@property(nonatomic, copy) NSDictionary<NSString *, NSString *> *originalStoredValues;
 @end
 
 @implementation MatrixCodeConfigurationControllerTests
 
-- (void)testNativeConfigurationSheetBuildsAllFeatureTabs {
+- (void)setUp {
+    [super setUp];
+    self.preferences = [[MatrixCodePreferences alloc] init];
+    self.originalStoredValues = [self.preferences storedValues];
+    [self.preferences commitValues:@{}];
+}
+
+- (void)tearDown {
+    [self.preferences commitValues:self.originalStoredValues ?: @{}];
+    self.originalStoredValues = nil;
+    self.preferences = nil;
+    [super tearDown];
+}
+
+- (void)testNativeConfigurationSheetBuildsWebStylePanelOverRain {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
     XCTAssertNotNil(controller.window);
-    NSTabView *tabs = nil;
-    for (NSView *view in controller.window.contentView.subviews) {
-        if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-rain-backdrop"));
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-hover-overlay"));
+    NSView *panel = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-panel");
+    XCTAssertNotNil(panel);
+    [controller.window.contentView layoutSubtreeIfNeeded];
+    XCTAssertEqualWithAccuracy(panel.frame.size.width, 320, 0.5);
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView, @"Rain"));
+    for (NSString *identifier in @[@"characters", @"intro", @"messages", @"countdowns",
+                                    @"reset-controls"]) {
+        XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(panel, identifier), @"%@", identifier);
     }
-    XCTAssertNotNil(tabs);
-    XCTAssertEqual(tabs.numberOfTabViewItems, 5);
-    XCTAssertEqualObjects([tabs.tabViewItems valueForKey:@"label"],
-                          (@[@"Rain", @"Characters", @"Intro", @"Messages", @"Countdowns"]));
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-cancel"));
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-save"));
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-hint"));
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                    @"ambient-title"));
 }
 
-- (void)testEveryFeatureTabStartsAtTopOfItsForm {
+- (void)testSettingsPanelFadesAsHoverHudInsteadOfPermanentModalSurface {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    NSTabView *tabs = nil;
-    for (NSView *view in controller.window.contentView.subviews) {
-        if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
-    }
-    XCTAssertNotNil(tabs);
-    [controller.window.contentView layoutSubtreeIfNeeded];
+    NSView *overlay = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                        @"settings-hover-overlay");
+    NSView *panel = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-panel");
+    XCTAssertNotNil(overlay);
+    XCTAssertNotNil(panel);
+    XCTAssertFalse(panel.hidden);
+    XCTAssertEqualWithAccuracy(panel.alphaValue, 1, 0.001);
 
-    for (NSTabViewItem *item in tabs.tabViewItems) {
-        [tabs selectTabViewItem:item];
-        NSScrollView *scroll = [item.view isKindOfClass:NSScrollView.class]
-            ? (NSScrollView *)item.view : nil;
-        XCTAssertNotNil(scroll, @"%@ should use a scroll view", item.label);
-        [scroll layoutSubtreeIfNeeded];
-        XCTAssertTrue(scroll.documentView.isFlipped,
-                      @"%@ should use a top-origin document view", item.label);
-        XCTAssertEqualWithAccuracy(scroll.contentView.bounds.origin.y, 0, 0.001,
-                                   @"%@ should initially show its first controls", item.label);
+    [controller setSettingsPanelVisible:NO immediate:YES];
+    XCTAssertTrue(panel.hidden);
+    XCTAssertEqualWithAccuracy(panel.alphaValue, 0, 0.001);
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-rain-backdrop"));
+
+    [controller setSettingsPanelVisible:YES immediate:YES];
+    XCTAssertFalse(panel.hidden);
+    XCTAssertEqualWithAccuracy(panel.alphaValue, 1, 0.001);
+}
+
+- (void)testEditorButtonsOpenCenteredCustomCards {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    for (NSString *kind in @[@"characters", @"intro", @"messages", @"countdowns"]) {
+        NSButton *button = (NSButton *)MatrixCodeDescendantWithIdentifier(
+            controller.window.contentView, kind);
+        XCTAssertTrue([button isKindOfClass:NSButton.class]);
+        [controller openEditor:button];
+        XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                           @"settings-editor-backdrop"));
+        XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(
+            controller.window.contentView,
+            [@"settings-editor-card-" stringByAppendingString:kind]));
+        XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                           @"editor-reset"));
+        NSView *cancel = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                            @"editor-cancel");
+        if ([kind isEqualToString:@"characters"]) XCTAssertNil(cancel);
+        else XCTAssertNotNil(cancel);
+        XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                           @"editor-save"));
     }
 }
 
 - (void)testRainSlidersShowLiveNumericValues {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    NSTabView *tabs = nil;
-    for (NSView *view in controller.window.contentView.subviews) {
-        if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
-    }
-    NSView *rain = tabs.tabViewItems.firstObject.view;
+    NSView *rain = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                      @"settings-panel");
     NSArray<NSString *> *keys = @[
         @"density", @"rampUpMs", @"trailLength", @"trailVariation", @"speed", @"glyphScale",
         @"glow", @"leadBrightness", @"vignette",
@@ -77,13 +139,18 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
         XCTAssertTrue([readout isKindOfClass:NSTextField.class], @"Missing %@ readout", key);
         XCTAssertGreaterThan(readout.stringValue.length, 0);
     }
+    NSSlider *density = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"density");
+    NSSlider *ramp = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"rampUpMs");
+    XCTAssertEqualWithAccuracy(density.minValue, 0.2, 0.001);
+    XCTAssertEqualWithAccuracy(ramp.maxValue, 30000, 0.001);
 
     NSSlider *speed = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"speed");
     NSTextField *speedReadout = (NSTextField *)MatrixCodeDescendantWithIdentifier(
         rain, @"speed-value");
     speed.doubleValue = 2.25;
     [speed sendAction:speed.action to:speed.target];
-    XCTAssertEqualObjects(speedReadout.stringValue, @"2.25");
+    XCTAssertEqualObjects(speedReadout.stringValue, @"2.25×");
+    XCTAssertEqualWithAccuracy(speed.minValue, 0.2, 0.001);
 
     NSSlider *trail = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"trailLength");
     NSTextField *trailReadout = (NSTextField *)MatrixCodeDescendantWithIdentifier(
@@ -102,22 +169,86 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
     XCTAssertEqualObjects(variationReadout.stringValue, @"35%");
 }
 
+- (void)testEditorsPresentWebUnitsWhileKeepingStableStorageIdentifiers {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSButton *intro = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"intro");
+    [controller openEditor:intro];
+    NSTextField *startDelay = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"startDelayMs-seconds");
+    NSTextField *hold = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"holdMs-seconds");
+    XCTAssertTrue([startDelay isKindOfClass:NSTextField.class]);
+    XCTAssertTrue([hold isKindOfClass:NSTextField.class]);
+    XCTAssertEqualWithAccuracy(startDelay.doubleValue, 0.6, 0.001);
+    XCTAssertEqualWithAccuracy(hold.doubleValue, 2.8, 0.001);
+}
+
 - (void)testCharacterTabContainsGlyphSettings {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    NSTabView *tabs = nil;
-    for (NSView *view in controller.window.contentView.subviews) {
-        if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
-    }
-    NSView *characters = tabs.tabViewItems[1].view;
+    NSButton *open = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"characters");
+    [controller openEditor:open];
+    NSView *characters = MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"settings-editor-card-characters");
     NSPopUpButton *glyphMode = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(characters, @"glyphMode");
     NSPopUpButton *glyphFont = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(characters, @"glyphFont");
     NSSlider *glyphRate = (NSSlider *)MatrixCodeDescendantWithIdentifier(characters, @"glyphRate");
     NSButton *mirror = (NSButton *)MatrixCodeDescendantWithIdentifier(characters, @"mirror");
+    NSView *previewCard = MatrixCodeDescendantWithIdentifier(characters, @"settings-character-preview");
+    MatrixCodeMetalView *preview = (MatrixCodeMetalView *)MatrixCodeDescendantWithIdentifier(
+        characters, @"settings-character-preview-rain");
     XCTAssertTrue([glyphMode isKindOfClass:NSPopUpButton.class]);
     XCTAssertTrue([glyphFont isKindOfClass:NSPopUpButton.class]);
     XCTAssertTrue([glyphRate isKindOfClass:NSSlider.class]);
     XCTAssertTrue([mirror isKindOfClass:NSButton.class]);
+    XCTAssertTrue([previewCard isKindOfClass:NSView.class]);
+    XCTAssertTrue([preview isKindOfClass:MatrixCodeMetalView.class]);
+    XCTAssertEqualObjects([glyphMode.itemArray valueForKey:@"title"],
+                          (@[@"Matrix mix", @"Katakana", @"Binary", @"Digits", @"Latin", @"Symbols"]));
+    XCTAssertEqualObjects([glyphMode.itemArray valueForKey:@"representedObject"],
+                          (@[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"]));
+    XCTAssertEqualObjects([glyphFont.itemArray valueForKey:@"title"],
+                          (@[@"Movie Gothic", @"Sharp Gothic", @"SF Mono",
+                             @"Terminal Mono", @"Rounded", @"Mincho"]));
+    XCTAssertEqualObjects([glyphFont.itemArray valueForKey:@"representedObject"],
+                          (@[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"]));
+}
+
+- (void)testRainPopupsUseWebLabelsAndPersistStableValues {
+    __block NSDictionary<NSString *, NSString *> *previewValues = nil;
+    id observer = [NSNotificationCenter.defaultCenter
+        addObserverForName:MatrixCodePreviewValuesDidChangeNotification
+                    object:nil
+                     queue:nil
+                usingBlock:^(NSNotification *notification) {
+        previewValues = notification.userInfo[MatrixCodePreviewValuesKey];
+    }];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSView *rain = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                      @"settings-panel");
+    NSPopUpButton *preset = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(rain, @"preset");
+    NSPopUpButton *quality = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(rain, @"quality");
+
+    XCTAssertEqualObjects([preset.itemArray valueForKey:@"title"],
+                          (@[@"Green (Classic)", @"Amber", @"Gold", @"Red",
+                             @"Pink", @"Purple", @"Blue", @"White"]));
+    XCTAssertEqualObjects([quality.itemArray valueForKey:@"title"],
+                          (@[@"Low", @"Medium", @"High"]));
+
+    MatrixCodeSelectRepresentedValue(preset, @"amber");
+    [controller controlChanged:preset];
+    MatrixCodeSelectRepresentedValue(quality, @"med");
+    [controller controlChanged:quality];
+
+    NSData *data = [previewValues[@"mx-controls"] dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *controls = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    XCTAssertEqualObjects(controls[@"preset"], @"amber");
+    XCTAssertEqualObjects(controls[@"quality"], @"med");
+    [NSNotificationCenter.defaultCenter removeObserver:observer];
 }
 
 - (void)testGlyphModeSelectionAppliesPreferredMirrorState {
@@ -131,11 +262,11 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
     }];
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    NSTabView *tabs = nil;
-    for (NSView *view in controller.window.contentView.subviews) {
-        if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
-    }
-    NSView *characters = tabs.tabViewItems[1].view;
+    NSButton *open = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"characters");
+    [controller openEditor:open];
+    NSView *characters = MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"settings-editor-card-characters");
     NSPopUpButton *glyphMode = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(characters, @"glyphMode");
     NSButton *mirror = (NSButton *)MatrixCodeDescendantWithIdentifier(characters, @"mirror");
     XCTAssertTrue([glyphMode isKindOfClass:NSPopUpButton.class]);
@@ -154,8 +285,8 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
         mirror.state = expectedMirror ? NSControlStateValueOff : NSControlStateValueOn;
         [controller controlChanged:mirror];
 
-        [glyphMode selectItemWithTitle:mode];
-        XCTAssertEqualObjects(glyphMode.titleOfSelectedItem, mode);
+        MatrixCodeSelectRepresentedValue(glyphMode, mode);
+        XCTAssertEqualObjects(glyphMode.selectedItem.representedObject, mode);
         [controller controlChanged:glyphMode];
 
         XCTAssertEqual(mirror.state == NSControlStateValueOn, expectedMirror, @"%@", mode);
@@ -178,12 +309,8 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
     }];
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    NSTabView *tabs = nil;
-    for (NSView *view in controller.window.contentView.subviews) {
-        if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
-    }
     NSSlider *speed = (NSSlider *)MatrixCodeDescendantWithIdentifier(
-        tabs.tabViewItems.firstObject.view, @"speed");
+        controller.window.contentView, @"speed");
     speed.doubleValue = 2.25;
     [speed sendAction:speed.action to:speed.target];
 

@@ -51,9 +51,9 @@ From this directory:
 
 The release products are written to `build/MatrixCode.saver`,
 `build/MatrixCode.saver.zip`, `build/MatrixCode.app`, and
-`build/MatrixCode.app.zip`. The zips are copied directly from Xcode's signed
-temporary output and are the safest artifacts to move out of a cloud-synced
-working tree.
+`build/MatrixCode.app.zip`. Packaging stages, signs, and verifies the products
+under `/private/tmp` before copying them back, so the zips are the safest
+artifacts to move out of a cloud-synced working tree.
 
 The project is generated from `project.yml` with XcodeGen. Source files live in
 `Source/`, Metal shaders live in `Resources/MatrixCodeShaders.msl`, and native
@@ -70,12 +70,29 @@ working tree and double-click the resulting saver. Select **MatrixCode** in
 System Settings → Screen Saver. To run it as a standalone app, open
 `build/MatrixCode.app` or expand and open `build/MatrixCode.app.zip`.
 
-Use **Options…** in System Settings, or **MatrixCode → Settings…** in the
-standalone app, to edit the rain controls, viewer name, intro, in-rain messages,
-and countdown/countup moments.
+Use **MatrixCode → Settings…** in the standalone app to edit settings directly
+over the running Matrix rain, matching the browser's hover/fade HUD instead of
+opening a separate sheet: hovering or moving the pointer over the rain window
+fades in the translucent 320-point control panel, then it fades out again after
+a short idle delay unless the pointer is over it. The same native controller is hosted as **Options…** in
+System Settings for the screen saver, where ScreenSaver.framework requires
+Apple's configure-sheet container.
 
-The Options sheet is transactional: **OK** saves all changes and **Cancel**
-discards them. In the standalone app, double-click the rain to toggle native
+The settings UI mirrors the browser's Matrix-terminal surface with
+preset-coloured native controls and centered Characters, Intro, Messages, and
+Countdown editor cards. The root settings session is transactional: **Save**
+commits all changes and **Cancel** discards them; editor cards also provide
+their web-equivalent scoped reset and save/cancel actions.
+
+The implementation uses AppKit controls throughout—there is no embedded web
+runtime. Two intentional platform differences remain: System Settings supplies
+standard sheet chrome for Screen Saver Options, and date/time values use the
+native `NSDatePicker` rather than the browser's `datetime-local` control. These
+keep keyboard navigation, accessibility, locale handling, and Screen Saver
+Options hosting native while the standalone app's surrounding geometry,
+typography, palette, and interaction model match the web UI.
+
+In the standalone app, double-click the rain to toggle native
 fullscreen and triple-click it to start the continuous multi-monitor
 presentation. Press `P` to pause or resume the animation; the presentation
 commands are also available from the **View** menu.
@@ -101,9 +118,10 @@ than gesture-driven.
   weighted glyph selection.
 - `MatrixCodeIntroOverlayView` renders the native typewriter intro and resolves
   tokens before measuring/playing each line.
-- `MatrixCodeConfigurationController` builds the AppKit Options sheet and
-  sanitizes settings using the same ranges, caps, defaults, and `mx-*`
-  persistence keys as the browser stores.
+- `MatrixCodeConfigurationController` builds both the AppKit Screen Saver
+  Options sheet and the standalone app's embedded settings HUD, sanitizing
+  settings using the same ranges, caps, defaults, and `mx-*` persistence keys
+  as the browser stores.
 - `MatrixCodePreferences` reads and writes the shared preference documents.
 - `MatrixCodeTokenResolver` mirrors `src/sim/tokens.ts`, including named
   countdown/countup moments and astronomical/calendar token calculations.

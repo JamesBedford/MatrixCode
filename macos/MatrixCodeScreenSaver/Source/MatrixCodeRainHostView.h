@@ -21,6 +21,7 @@ typedef NS_ENUM(NSInteger, MatrixCodeRainHostMode) {
 - (void)stopAnimation;
 - (void)animateOneFrame;
 - (NSWindow *)configureWindow;
+- (void)showSettingsOverlay;
 
 @end
 

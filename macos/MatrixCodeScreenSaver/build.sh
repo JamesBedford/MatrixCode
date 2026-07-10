@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=${0:A:h}
 DERIVED_DATA="/private/tmp/MatrixCodeScreenSaverDerivedData"
+PACKAGE_DIR="/private/tmp/MatrixCodeScreenSaverPackage"
 cd "${SCRIPT_DIR}"
 
 xcodegen generate
@@ -33,18 +34,22 @@ rm -rf \
   "${SCRIPT_DIR}/build/MatrixCode.saver" \
   "${SCRIPT_DIR}/build/MatrixCode.saver.zip" \
   "${SCRIPT_DIR}/build/MatrixCode.app" \
-  "${SCRIPT_DIR}/build/MatrixCode.app.zip"
-ditto "${SOURCE_SAVER}" "${SCRIPT_DIR}/build/MatrixCode.saver"
-ditto "${SOURCE_APP}" "${SCRIPT_DIR}/build/MatrixCode.app"
-xattr -cr "${SCRIPT_DIR}/build/MatrixCode.saver"
-xattr -cr "${SCRIPT_DIR}/build/MatrixCode.app"
-touch "${SCRIPT_DIR}/build/MatrixCode.saver"
-touch "${SCRIPT_DIR}/build/MatrixCode.app"
-codesign --force --sign - "${SCRIPT_DIR}/build/MatrixCode.saver"
-codesign --force --sign - "${SCRIPT_DIR}/build/MatrixCode.app"
-codesign --verify --deep --strict "${SCRIPT_DIR}/build/MatrixCode.saver"
-codesign --verify --deep --strict "${SCRIPT_DIR}/build/MatrixCode.app"
-ditto -c -k --keepParent "${SOURCE_SAVER}" "${SCRIPT_DIR}/build/MatrixCode.saver.zip"
-ditto -c -k --keepParent "${SOURCE_APP}" "${SCRIPT_DIR}/build/MatrixCode.app.zip"
+  "${SCRIPT_DIR}/build/MatrixCode.app.zip" \
+  "${PACKAGE_DIR}"
+mkdir -p "${PACKAGE_DIR}"
+ditto "${SOURCE_SAVER}" "${PACKAGE_DIR}/MatrixCode.saver"
+ditto "${SOURCE_APP}" "${PACKAGE_DIR}/MatrixCode.app"
+xattr -cr "${PACKAGE_DIR}/MatrixCode.saver"
+xattr -cr "${PACKAGE_DIR}/MatrixCode.app"
+touch "${PACKAGE_DIR}/MatrixCode.saver"
+touch "${PACKAGE_DIR}/MatrixCode.app"
+codesign --force --sign - "${PACKAGE_DIR}/MatrixCode.saver"
+codesign --force --sign - "${PACKAGE_DIR}/MatrixCode.app"
+codesign --verify --deep --strict "${PACKAGE_DIR}/MatrixCode.saver"
+codesign --verify --deep --strict "${PACKAGE_DIR}/MatrixCode.app"
+ditto -c -k --keepParent "${PACKAGE_DIR}/MatrixCode.saver" "${SCRIPT_DIR}/build/MatrixCode.saver.zip"
+ditto -c -k --keepParent "${PACKAGE_DIR}/MatrixCode.app" "${SCRIPT_DIR}/build/MatrixCode.app.zip"
+ditto "${PACKAGE_DIR}/MatrixCode.saver" "${SCRIPT_DIR}/build/MatrixCode.saver"
+ditto "${PACKAGE_DIR}/MatrixCode.app" "${SCRIPT_DIR}/build/MatrixCode.app"
 
 echo "Built MatrixCode.saver, MatrixCode.saver.zip, MatrixCode.app, and MatrixCode.app.zip in ${SCRIPT_DIR}/build"
