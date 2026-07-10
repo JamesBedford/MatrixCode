@@ -12,7 +12,7 @@ This extends the **existing** intro `rampUpMs` setting so it *also* applies on r
 - First-visit / Replay / Preview behaviour is **unchanged** (still driven by `startIntroSequence`).
 - `rainDuringIntro` and `postIntroDelayMs` are intro-only and stay untouched — there is no intro on a repeat visit, so the rain simply ramps from empty starting at load.
 - **`prefers-reduced-motion`**: no ramp — the static, warmed, full-density frame shows as today.
-- **Multi-monitor fullscreen / panel** windows have no intro and are untouched.
+- **Multi-monitor mode / panel** windows have no intro and are untouched.
 - The ramp affects **active columns → density only** (the existing mechanism); `speed`, curve (linear), etc. are unchanged.
 
 This is the item explicitly listed as out-of-scope in the prior choreography design ("Applying the choreography on no-intro / reduced-motion loads") — now in scope for the no-intro case only. Reduced-motion remains excluded.
@@ -103,5 +103,5 @@ Keep the **"Ramp-up (s)"** field where it is (intro editor → **Rain** section)
 
 - A separate main-panel control (reusing the intro setting was the chosen approach).
 - Changing the default `rampUpMs` from 0.
-- Ramping under reduced motion, or in multi-monitor fullscreen/panel windows.
+- Ramping under reduced motion, or in multi-monitor mode/panel windows.
 - Non-linear ramp curves, or ramping `speed`.

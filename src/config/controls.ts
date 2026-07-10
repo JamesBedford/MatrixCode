@@ -1,6 +1,7 @@
 import type { Controls, QualityTier } from "../types.ts";
 import { clamp } from "../util/math.ts";
 import { PRESET_NAMES } from "./colorPresets.ts";
+import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 
 export const DEFAULT_CONTROLS: Controls = {
   speed: 1,
@@ -167,7 +168,9 @@ export class ControlsStore {
 
   private persist(): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+      const value = JSON.stringify(this.state);
+      localStorage.setItem(STORAGE_KEY, value);
+      nativeStorageDidChange(STORAGE_KEY, value);
     } catch {
       /* storage may be unavailable (private mode) — ignore */
     }

@@ -110,7 +110,7 @@ renderer.renderFrame(paramsOf(controls.get()), grid);
 message?.update(now);
 ```
 
-Reduced-motion / no-intro paths never enter a choreography (the sentinel keeps `f = 1`), so they render the warmed-up rain exactly as today. The multi-monitor fullscreen path is untouched (it has no intro).
+Reduced-motion / no-intro paths never enter a choreography (the sentinel keeps `f = 1`), so they render the warmed-up rain exactly as today. The multi-monitor mode path is untouched (it has no intro).
 
 ## Editor UI — `src/ui/introEditor.ts`
 

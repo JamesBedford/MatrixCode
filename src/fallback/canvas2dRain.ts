@@ -7,6 +7,7 @@ import type { PresetName } from "../types.ts";
 // white leading glyph, translucent-black trail fade, per-column speeds.
 
 export interface Canvas2dRainHandle {
+  start: () => void;
   stop: () => void;
 }
 
@@ -20,7 +21,7 @@ export function startCanvas2dRain(
   glyphScale = 1,
 ): Canvas2dRainHandle {
   const ctx0 = canvas.getContext("2d");
-  if (!ctx0) return { stop: () => {} };
+  if (!ctx0) return { start: () => {}, stop: () => {} };
   const ctx = ctx0; // non-null, captured by the animation closures
 
   const colors = getPreset(preset);
@@ -33,7 +34,7 @@ export function startCanvas2dRain(
   let cols = 0;
   let drops: number[] = [];
   let speeds: number[] = [];
-  let running = true;
+  let running = false;
   let raf = 0;
 
   function layout(): void {
@@ -95,9 +96,15 @@ export function startCanvas2dRain(
 
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  raf = requestAnimationFrame(frame);
+  const start = (): void => {
+    if (running) return;
+    running = true;
+    raf = requestAnimationFrame(frame);
+  };
+  start();
 
   return {
+    start,
     stop: () => {
       running = false;
       cancelAnimationFrame(raf);

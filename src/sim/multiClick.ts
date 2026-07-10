@@ -1,6 +1,6 @@
 export type MultiClickAction = "wait" | "multiMonitor";
 
-/** Advance the backdrop click sequence; the third click launches multi-monitor fullscreen immediately. */
+/** Advance the backdrop click sequence; the third click launches multi-monitor mode immediately. */
 export function advanceMultiClick(currentCount: number): { count: number; action: MultiClickAction } {
   const count = currentCount + 1;
   return count >= 3 ? { count: 0, action: "multiMonitor" } : { count, action: "wait" };

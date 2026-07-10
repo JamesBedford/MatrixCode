@@ -10,7 +10,7 @@ describe("backdrop multi-click gesture", () => {
     expect(settledMultiClickAction(second.count)).toBe("fullscreen");
   });
 
-  it("launches multi-monitor fullscreen immediately on click three", () => {
+  it("launches multi-monitor mode immediately on click three", () => {
     const third = advanceMultiClick(advanceMultiClick(advanceMultiClick(0).count).count);
     expect(third).toEqual({ count: 0, action: "multiMonitor" });
   });

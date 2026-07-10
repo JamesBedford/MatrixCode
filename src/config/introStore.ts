@@ -6,6 +6,7 @@ import {
   DEFAULT_PAUSE_MS,
 } from "../sim/messageOverlay.ts";
 import { num } from "./sanitize.ts";
+import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 
 /** User-editable intro: the lines, the global timing settings, and the rain-start choreography. */
 export interface IntroScript {
@@ -99,7 +100,9 @@ export class IntroStore {
   set(script: IntroScript): void {
     this.script = sanitizeIntro(script);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.script));
+      const value = JSON.stringify(this.script);
+      localStorage.setItem(STORAGE_KEY, value);
+      nativeStorageDidChange(STORAGE_KEY, value);
     } catch {
       /* storage may be unavailable (private mode) — ignore */
     }
@@ -109,6 +112,7 @@ export class IntroStore {
     this.script = cloneIntro(DEFAULT_INTRO);
     try {
       localStorage.removeItem(STORAGE_KEY);
+      nativeStorageDidChange(STORAGE_KEY, null);
     } catch {
       /* ignore */
     }

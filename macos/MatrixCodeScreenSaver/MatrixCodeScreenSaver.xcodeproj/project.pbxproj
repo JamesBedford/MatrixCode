@@ -1,0 +1,539 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		00D12CF355FFA169D3810855 /* MatrixCodeConfigurationController.m in Sources */ = {isa = PBXBuildFile; fileRef = EA1738AB9C295C5F1D693185 /* MatrixCodeConfigurationController.m */; };
+		0DE98B514F7518DFD3ADF002 /* MatrixCodeScreenSaverView.m in Sources */ = {isa = PBXBuildFile; fileRef = E858B41358185A811FE160A1 /* MatrixCodeScreenSaverView.m */; };
+		0F27DED51AE95F1974CCE3BC /* MatrixCodeNativeTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 8A7AD3A887C65066A0556D22 /* MatrixCodeNativeTests.m */; };
+		126833FF63A5C64FCFC6C8AB /* MatrixCodeIntroOverlayView.m in Sources */ = {isa = PBXBuildFile; fileRef = 64AB896A897642C183770CD9 /* MatrixCodeIntroOverlayView.m */; };
+		18C28FC04EA4D80D8D9E4CDD /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 85F61ABB0D4A223369D6DEFF /* AppKit.framework */; };
+		19355D616D58FDB65B8A7FBD /* ScreenSaver.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D95B4AD4E624D11550055918 /* ScreenSaver.framework */; };
+		219AAB22C4231F383153F70D /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0D51BC0EFE837288DF1C2724 /* XCTest.framework */; };
+		361D52D3583FB40014657A43 /* MatrixCodeMetalViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = CF3191B1E876A0C0A2D3BA47 /* MatrixCodeMetalViewTests.m */; };
+		37B06F876941E29275769CDA /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C090124F0DF8A7DCBEDEC974 /* Metal.framework */; };
+		405D8CAFD9557BDD78B336B1 /* MatrixCodeShaders.msl in Resources */ = {isa = PBXBuildFile; fileRef = 01E45C83FEBB6CE0C1121552 /* MatrixCodeShaders.msl */; };
+		4DEE9683D557EA766322305C /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3CE22739F1AF715A44184DF /* MetalKit.framework */; };
+		4F9C97109029EB284BB364DF /* MatrixCodeTokenResolver.m in Sources */ = {isa = PBXBuildFile; fileRef = 865F9239EC01EAFD1DD11142 /* MatrixCodeTokenResolver.m */; };
+		5054A5B6921AFCF3D4826A7F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C090124F0DF8A7DCBEDEC974 /* Metal.framework */; };
+		6C92607D7B723A0B265CCCDA /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3CE22739F1AF715A44184DF /* MetalKit.framework */; };
+		71CC9A7D8240B92F1863FDBE /* MatrixCodeMetalView.m in Sources */ = {isa = PBXBuildFile; fileRef = E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */; };
+		76038862B62D8F885645A420 /* MatrixCodeTokenResolverTests.m in Sources */ = {isa = PBXBuildFile; fileRef = AFA8600626CA1476652EB7A7 /* MatrixCodeTokenResolverTests.m */; };
+		76504B3702DE7A1DBF571ED1 /* MatrixCodeConfigurationControllerTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 8095DE3A536DFECCF9FED58F /* MatrixCodeConfigurationControllerTests.m */; };
+		76D37A9783BF54B369885E51 /* MatrixCodeSession.m in Sources */ = {isa = PBXBuildFile; fileRef = DCACD09200F763B25BE37D6E /* MatrixCodeSession.m */; };
+		8FF04AFD119CA2292DB0E2C4 /* MatrixCodeShaders.msl in Resources */ = {isa = PBXBuildFile; fileRef = 01E45C83FEBB6CE0C1121552 /* MatrixCodeShaders.msl */; };
+		910E9B2D12D4D456646720B0 /* MatrixCodePreferences.m in Sources */ = {isa = PBXBuildFile; fileRef = 652BCD2CA85C0793A7839BCA /* MatrixCodePreferences.m */; };
+		9221281F824C6BACA8AB6804 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 85F61ABB0D4A223369D6DEFF /* AppKit.framework */; };
+		9958295F9B242F9FA84BAA02 /* MatrixCodeTokenResolver.m in Sources */ = {isa = PBXBuildFile; fileRef = 865F9239EC01EAFD1DD11142 /* MatrixCodeTokenResolver.m */; };
+		A9F2B696D7B1329CC247B7C8 /* ScreenSaver.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D95B4AD4E624D11550055918 /* ScreenSaver.framework */; };
+		AC91C7D8ACF823F13378FABD /* MatrixCodePreferences.m in Sources */ = {isa = PBXBuildFile; fileRef = 652BCD2CA85C0793A7839BCA /* MatrixCodePreferences.m */; };
+		B413DB23B40D4C5D4893D378 /* MatrixCodeConstants.m in Sources */ = {isa = PBXBuildFile; fileRef = AEF98B97E178759EDA759445 /* MatrixCodeConstants.m */; };
+		BD8F371405B3FCAB4ED439FD /* MatrixCodeMetalView.m in Sources */ = {isa = PBXBuildFile; fileRef = E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */; };
+		CDB85E0416A6CC8160DFA68F /* MatrixCodeIntroOverlayView.m in Sources */ = {isa = PBXBuildFile; fileRef = 64AB896A897642C183770CD9 /* MatrixCodeIntroOverlayView.m */; };
+		D8E434095A6303EA6F397F18 /* MatrixCodeIntroOverlayViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = B7FB66B2F1DA00F3EAD79399 /* MatrixCodeIntroOverlayViewTests.m */; };
+		DDE43AE261604E346612D178 /* MatrixCodeConfigurationController.m in Sources */ = {isa = PBXBuildFile; fileRef = EA1738AB9C295C5F1D693185 /* MatrixCodeConfigurationController.m */; };
+		FD4D9DBC0D99EF497A0CBDEC /* MatrixCodeSession.m in Sources */ = {isa = PBXBuildFile; fileRef = DCACD09200F763B25BE37D6E /* MatrixCodeSession.m */; };
+		FF4B61FA6203600EC601BD32 /* MatrixCodeConstants.m in Sources */ = {isa = PBXBuildFile; fileRef = AEF98B97E178759EDA759445 /* MatrixCodeConstants.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		01E45C83FEBB6CE0C1121552 /* MatrixCodeShaders.msl */ = {isa = PBXFileReference; path = MatrixCodeShaders.msl; sourceTree = "<group>"; };
+		0D51BC0EFE837288DF1C2724 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		2B4086277E4FEDD05E4B385F /* MatrixCodeMetalView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeMetalView.h; sourceTree = "<group>"; };
+		5CCE42226407864C2C7C1736 /* MatrixCodeConstants.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeConstants.h; sourceTree = "<group>"; };
+		64AB896A897642C183770CD9 /* MatrixCodeIntroOverlayView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeIntroOverlayView.m; sourceTree = "<group>"; };
+		652BCD2CA85C0793A7839BCA /* MatrixCodePreferences.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodePreferences.m; sourceTree = "<group>"; };
+		6D3FCBDE86E56724D1FBCFE2 /* MatrixCodeTokenResolver.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeTokenResolver.h; sourceTree = "<group>"; };
+		72A45A3E9782B2FA5B6C2F47 /* MatrixCodeScreenSaverView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeScreenSaverView.h; sourceTree = "<group>"; };
+		7CE281351456715D8CB6088B /* MatrixCodeSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeSession.h; sourceTree = "<group>"; };
+		8095DE3A536DFECCF9FED58F /* MatrixCodeConfigurationControllerTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeConfigurationControllerTests.m; sourceTree = "<group>"; };
+		85F61ABB0D4A223369D6DEFF /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		865F9239EC01EAFD1DD11142 /* MatrixCodeTokenResolver.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeTokenResolver.m; sourceTree = "<group>"; };
+		8A7AD3A887C65066A0556D22 /* MatrixCodeNativeTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeNativeTests.m; sourceTree = "<group>"; };
+		8E7BF8FCBF7891E9951DD582 /* MatrixCodeNativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MatrixCodeNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		91D80EB2FB5BCB53A63FB3FD /* MatrixCodeConfigurationController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeConfigurationController.h; sourceTree = "<group>"; };
+		A3CE22739F1AF715A44184DF /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		AEF98B97E178759EDA759445 /* MatrixCodeConstants.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeConstants.m; sourceTree = "<group>"; };
+		AFA8600626CA1476652EB7A7 /* MatrixCodeTokenResolverTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeTokenResolverTests.m; sourceTree = "<group>"; };
+		B7FB66B2F1DA00F3EAD79399 /* MatrixCodeIntroOverlayViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeIntroOverlayViewTests.m; sourceTree = "<group>"; };
+		BC608A3472B9FC260A92BA60 /* MatrixCodeIntroOverlayView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeIntroOverlayView.h; sourceTree = "<group>"; };
+		C090124F0DF8A7DCBEDEC974 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		CF3191B1E876A0C0A2D3BA47 /* MatrixCodeMetalViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeMetalViewTests.m; sourceTree = "<group>"; };
+		D331C34E5842C9475FC9D317 /* MatrixCode.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MatrixCode.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		D95B4AD4E624D11550055918 /* ScreenSaver.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenSaver.framework; path = System/Library/Frameworks/ScreenSaver.framework; sourceTree = SDKROOT; };
+		DCACD09200F763B25BE37D6E /* MatrixCodeSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeSession.m; sourceTree = "<group>"; };
+		E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeMetalView.m; sourceTree = "<group>"; };
+		E858B41358185A811FE160A1 /* MatrixCodeScreenSaverView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeScreenSaverView.m; sourceTree = "<group>"; };
+		EA1738AB9C295C5F1D693185 /* MatrixCodeConfigurationController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeConfigurationController.m; sourceTree = "<group>"; };
+		FAB243D779C7F99DB17F7D0A /* MatrixCodePreferences.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodePreferences.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		25A7100A4C15085124C582ED /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				18C28FC04EA4D80D8D9E4CDD /* AppKit.framework in Frameworks */,
+				5054A5B6921AFCF3D4826A7F /* Metal.framework in Frameworks */,
+				4DEE9683D557EA766322305C /* MetalKit.framework in Frameworks */,
+				A9F2B696D7B1329CC247B7C8 /* ScreenSaver.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E882AC43A5B14D5799375EB9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9221281F824C6BACA8AB6804 /* AppKit.framework in Frameworks */,
+				37B06F876941E29275769CDA /* Metal.framework in Frameworks */,
+				6C92607D7B723A0B265CCCDA /* MetalKit.framework in Frameworks */,
+				19355D616D58FDB65B8A7FBD /* ScreenSaver.framework in Frameworks */,
+				219AAB22C4231F383153F70D /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		6153783A60F3C8B567CEFE13 = {
+			isa = PBXGroup;
+			children = (
+				E85ED2A9C24CBDB9B7323F71 /* Resources */,
+				CE91C4FF3EF219EA87E01B75 /* Source */,
+				6EFB15A30AF9B8EEFA8C96AB /* Tests */,
+				F295EFE6AE20A04C9E779969 /* Frameworks */,
+				B8770EED022394786ABA097A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6EFB15A30AF9B8EEFA8C96AB /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				8095DE3A536DFECCF9FED58F /* MatrixCodeConfigurationControllerTests.m */,
+				B7FB66B2F1DA00F3EAD79399 /* MatrixCodeIntroOverlayViewTests.m */,
+				CF3191B1E876A0C0A2D3BA47 /* MatrixCodeMetalViewTests.m */,
+				8A7AD3A887C65066A0556D22 /* MatrixCodeNativeTests.m */,
+				AFA8600626CA1476652EB7A7 /* MatrixCodeTokenResolverTests.m */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		B8770EED022394786ABA097A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D331C34E5842C9475FC9D317 /* MatrixCode.bundle */,
+				8E7BF8FCBF7891E9951DD582 /* MatrixCodeNativeTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CE91C4FF3EF219EA87E01B75 /* Source */ = {
+			isa = PBXGroup;
+			children = (
+				91D80EB2FB5BCB53A63FB3FD /* MatrixCodeConfigurationController.h */,
+				EA1738AB9C295C5F1D693185 /* MatrixCodeConfigurationController.m */,
+				5CCE42226407864C2C7C1736 /* MatrixCodeConstants.h */,
+				AEF98B97E178759EDA759445 /* MatrixCodeConstants.m */,
+				BC608A3472B9FC260A92BA60 /* MatrixCodeIntroOverlayView.h */,
+				64AB896A897642C183770CD9 /* MatrixCodeIntroOverlayView.m */,
+				2B4086277E4FEDD05E4B385F /* MatrixCodeMetalView.h */,
+				E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */,
+				FAB243D779C7F99DB17F7D0A /* MatrixCodePreferences.h */,
+				652BCD2CA85C0793A7839BCA /* MatrixCodePreferences.m */,
+				72A45A3E9782B2FA5B6C2F47 /* MatrixCodeScreenSaverView.h */,
+				E858B41358185A811FE160A1 /* MatrixCodeScreenSaverView.m */,
+				7CE281351456715D8CB6088B /* MatrixCodeSession.h */,
+				DCACD09200F763B25BE37D6E /* MatrixCodeSession.m */,
+				6D3FCBDE86E56724D1FBCFE2 /* MatrixCodeTokenResolver.h */,
+				865F9239EC01EAFD1DD11142 /* MatrixCodeTokenResolver.m */,
+			);
+			path = Source;
+			sourceTree = "<group>";
+		};
+		E85ED2A9C24CBDB9B7323F71 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				01E45C83FEBB6CE0C1121552 /* MatrixCodeShaders.msl */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		F295EFE6AE20A04C9E779969 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				85F61ABB0D4A223369D6DEFF /* AppKit.framework */,
+				C090124F0DF8A7DCBEDEC974 /* Metal.framework */,
+				A3CE22739F1AF715A44184DF /* MetalKit.framework */,
+				D95B4AD4E624D11550055918 /* ScreenSaver.framework */,
+				0D51BC0EFE837288DF1C2724 /* XCTest.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		92B3C680ADA1224FB92059BD /* MatrixCodeNativeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B22EF42090598997B604A50E /* Build configuration list for PBXNativeTarget "MatrixCodeNativeTests" */;
+			buildPhases = (
+				90A33CF4A69F5FA606663134 /* Sources */,
+				3CDD675C11D141EAE9F2DB30 /* Resources */,
+				E882AC43A5B14D5799375EB9 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MatrixCodeNativeTests;
+			packageProductDependencies = (
+			);
+			productName = MatrixCodeNativeTests;
+			productReference = 8E7BF8FCBF7891E9951DD582 /* MatrixCodeNativeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		EEE3616F67C3EFFD647F5291 /* MatrixCode */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0A9B33DAB7FCA635B2EC8E3C /* Build configuration list for PBXNativeTarget "MatrixCode" */;
+			buildPhases = (
+				960229D2CF0C28C16B3ABD01 /* Sources */,
+				F43E8CACC232EFB6280400EF /* Resources */,
+				25A7100A4C15085124C582ED /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MatrixCode;
+			packageProductDependencies = (
+			);
+			productName = MatrixCode;
+			productReference = D331C34E5842C9475FC9D317 /* MatrixCode.bundle */;
+			productType = "com.apple.product-type.bundle";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A305F2BAA9E52E23D040BD99 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					92B3C680ADA1224FB92059BD = {
+						ProvisioningStyle = Manual;
+					};
+					EEE3616F67C3EFFD647F5291 = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = D29D473924745973ADEE00DE /* Build configuration list for PBXProject "MatrixCodeScreenSaver" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6153783A60F3C8B567CEFE13;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EEE3616F67C3EFFD647F5291 /* MatrixCode */,
+				92B3C680ADA1224FB92059BD /* MatrixCodeNativeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3CDD675C11D141EAE9F2DB30 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8FF04AFD119CA2292DB0E2C4 /* MatrixCodeShaders.msl in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F43E8CACC232EFB6280400EF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				405D8CAFD9557BDD78B336B1 /* MatrixCodeShaders.msl in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		90A33CF4A69F5FA606663134 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DDE43AE261604E346612D178 /* MatrixCodeConfigurationController.m in Sources */,
+				76504B3702DE7A1DBF571ED1 /* MatrixCodeConfigurationControllerTests.m in Sources */,
+				B413DB23B40D4C5D4893D378 /* MatrixCodeConstants.m in Sources */,
+				126833FF63A5C64FCFC6C8AB /* MatrixCodeIntroOverlayView.m in Sources */,
+				D8E434095A6303EA6F397F18 /* MatrixCodeIntroOverlayViewTests.m in Sources */,
+				BD8F371405B3FCAB4ED439FD /* MatrixCodeMetalView.m in Sources */,
+				361D52D3583FB40014657A43 /* MatrixCodeMetalViewTests.m in Sources */,
+				0F27DED51AE95F1974CCE3BC /* MatrixCodeNativeTests.m in Sources */,
+				910E9B2D12D4D456646720B0 /* MatrixCodePreferences.m in Sources */,
+				76D37A9783BF54B369885E51 /* MatrixCodeSession.m in Sources */,
+				4F9C97109029EB284BB364DF /* MatrixCodeTokenResolver.m in Sources */,
+				76038862B62D8F885645A420 /* MatrixCodeTokenResolverTests.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		960229D2CF0C28C16B3ABD01 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				00D12CF355FFA169D3810855 /* MatrixCodeConfigurationController.m in Sources */,
+				FF4B61FA6203600EC601BD32 /* MatrixCodeConstants.m in Sources */,
+				CDB85E0416A6CC8160DFA68F /* MatrixCodeIntroOverlayView.m in Sources */,
+				71CC9A7D8240B92F1863FDBE /* MatrixCodeMetalView.m in Sources */,
+				AC91C7D8ACF823F13378FABD /* MatrixCodePreferences.m in Sources */,
+				0DE98B514F7518DFD3ADF002 /* MatrixCodeScreenSaverView.m in Sources */,
+				FD4D9DBC0D99EF497A0CBDEC /* MatrixCodeSession.m in Sources */,
+				9958295F9B242F9FA84BAA02 /* MatrixCodeTokenResolver.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0DF3ABAFD543A41EABB12608 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks";
+				MACH_O_TYPE = mh_bundle;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matrixcode.screensaver;
+				PRODUCT_NAME = MatrixCode;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				WRAPPER_EXTENSION = saver;
+			};
+			name = Release;
+		};
+		5AEFF93EA0D1386634EC24B9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks";
+				MACH_O_TYPE = mh_bundle;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matrixcode.screensaver;
+				PRODUCT_NAME = MatrixCode;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				WRAPPER_EXTENSION = saver;
+			};
+			name = Debug;
+		};
+		91948449D967BA6B0E70F1EE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Source";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matrixcode.screensaver.tests;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		A7A80D0A05B533AEFB17E10A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Source";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matrixcode.screensaver.tests;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		C098CE7D603BCD8A566241C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		E628D17BE952D0001971F1C3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0A9B33DAB7FCA635B2EC8E3C /* Build configuration list for PBXNativeTarget "MatrixCode" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5AEFF93EA0D1386634EC24B9 /* Debug */,
+				0DF3ABAFD543A41EABB12608 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B22EF42090598997B604A50E /* Build configuration list for PBXNativeTarget "MatrixCodeNativeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				91948449D967BA6B0E70F1EE /* Debug */,
+				A7A80D0A05B533AEFB17E10A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D29D473924745973ADEE00DE /* Build configuration list for PBXProject "MatrixCodeScreenSaver" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E628D17BE952D0001971F1C3 /* Debug */,
+				C098CE7D603BCD8A566241C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A305F2BAA9E52E23D040BD99 /* Project object */;
+}

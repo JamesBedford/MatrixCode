@@ -1,6 +1,7 @@
 import type { CountdownDoc, CountdownMoment } from "../types.ts";
 import { text, capArray } from "./sanitize.ts";
 import { clamp } from "../util/math.ts";
+import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 
 const STORAGE_KEY = "mx-countdown";
 // Largest instant a JS Date can represent (±8.64e15 ms); guards against absurd stored values.
@@ -70,7 +71,9 @@ export class CountdownStore {
   set(doc: CountdownDoc): void {
     this.doc = sanitizeCountdown(doc);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.doc));
+      const value = JSON.stringify(this.doc);
+      localStorage.setItem(STORAGE_KEY, value);
+      nativeStorageDidChange(STORAGE_KEY, value);
     } catch {
       /* storage may be unavailable (private mode) — ignore */
     }
@@ -80,6 +83,7 @@ export class CountdownStore {
     this.doc = cloneCountdown(DEFAULT_COUNTDOWN);
     try {
       localStorage.removeItem(STORAGE_KEY);
+      nativeStorageDidChange(STORAGE_KEY, null);
     } catch {
       /* ignore */
     }

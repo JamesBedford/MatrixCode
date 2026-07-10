@@ -35,9 +35,15 @@ import {
   openExitChannel,
   prefetchScreens,
 } from "./multimonitor/multiMonitorFullscreen.ts";
+import {
+  isNativeHosted,
+  nativeMultiMonitorConfig,
+  nativeStorageDidChange,
+} from "./platform/nativeHost.ts";
 
 export interface MatrixRainHandle {
   destroy: () => void;
+  setActive: (active: boolean) => void;
   controls: ControlsStore;
 }
 
@@ -50,7 +56,7 @@ const BASE_SEED = 0x1a2b3c;
 const DENSITY_KEY_STEP = 1.2;
 // The message scheduler's own PRNG seed, kept separate from the sim's so scheduling never perturbs the rain.
 const MSG_SEED = 0x5eed1e;
-// Multi-monitor fullscreen lockstep: advance the shared sim in fixed steps toward the
+// Multi-monitor mode lockstep: advance the shared sim in fixed steps toward the
 // shared wall-clock, capping per-frame catch-up so a stalled window recovers
 // gradually instead of freezing.
 const MULTI_MONITOR_FIXED_DT = 1 / 60;
@@ -60,7 +66,7 @@ const MULTI_MONITOR_MAX_STEPS = Math.ceil(MAX_FRAME_CATCHUP_SECONDS / MULTI_MONI
 // Window within which consecutive background clicks count as one gesture.
 const MULTI_CLICK_MS = 350;
 
-/** Active multi-monitor fullscreen state for this window (controller or a panel). */
+/** Active multi-monitor mode state for this window (controller or a panel). */
 interface MultiMonitorState {
   config: MultiMonitorConfig;
   isController: boolean;
@@ -151,6 +157,10 @@ export async function mountMatrixRain(
     showNotice(container, "Compatibility mode — WebGL2 unavailable");
     return {
       controls,
+      setActive: (active: boolean) => {
+        if (active) fb.start();
+        else fb.stop();
+      },
       destroy: () => {
         fb.stop();
         ro.disconnect();
@@ -185,9 +195,10 @@ export async function mountMatrixRain(
   const hud = new URLSearchParams(location.search).has("hud") ? createHud(container) : null;
   let pending: { w: number; h: number } | null = null;
   let running = false;
+  let hostActive = true;
   let raf = 0;
   let last = 0;
-  // Token-facing FPS is tracked independently so it remains available in multi-monitor fullscreen, whose
+  // Token-facing FPS is tracked independently so it remains available in multi-monitor mode, whose
   // fixed-step branch intentionally bypasses the adaptive-resolution controller and its FPS EMA.
   let fpsLast = 0;
   let fpsEmaMs = 0;
@@ -201,8 +212,9 @@ export async function mountMatrixRain(
   // Debounce so the live Ramp-up slider replays the build-up once the drag settles, not every step.
   let rampPreviewTimer = 0;
 
-  // Multi-monitor fullscreen: this window is a panel iff the URL carries a slice config.
-  const panelConfig = parsePanelConfig();
+  // Multi-monitor mode: this window is a panel iff the URL carries a slice config.
+  const nativeHosted = isNativeHosted();
+  const panelConfig = nativeMultiMonitorConfig(controls.get()) ?? parsePanelConfig();
   let multiMonitorState: MultiMonitorState | null = null;
   let exitChan: ReturnType<typeof openExitChannel> | null = null;
 
@@ -290,13 +302,20 @@ export async function mountMatrixRain(
     console.error("Matrix GPU init failed, using fallback:", err);
     const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale);
     showNotice(container, "Compatibility mode");
-    return { controls, destroy: () => fb.stop() };
+    return {
+      controls,
+      setActive: (active: boolean) => {
+        if (active) fb.start();
+        else fb.stop();
+      },
+      destroy: () => fb.stop(),
+    };
   }
 
   // ---------- Overlays ----------
   // Panels are a pure backdrop — no intro, no controls UI.
   const introStore = panelConfig ? null : new IntroStore();
-  // Multi-monitor fullscreen panels have no editor UI, but they still need the same persisted message and
+  // Multi-monitor mode panels have no editor UI, but they still need the same persisted message and
   // countdown documents as the controller so every window can schedule an identical virtual-grid message.
   const messagesStore = new MessagesStore();
   const countdownStore = new CountdownStore();
@@ -416,6 +435,7 @@ export async function mountMatrixRain(
       markSeenPending = false;
       try {
         localStorage.setItem(INTRO_KEY, "1");
+        nativeStorageDidChange(INTRO_KEY, "1");
       } catch {
         /* ignore */
       }
@@ -453,6 +473,7 @@ export async function mountMatrixRain(
     ? null
     : new ControlsPanel(container, controls, {
         onToggleFullscreen: () => toggleFullscreen(),
+        onEnterMultiMonitor: () => { void enterMultiMonitor(); },
         onReplayIntro: () => { if (introStore) startIntroSequence(introStore.get()); },
         onEditIntro: () => editor?.open(),
         onEditMessages: () => messagesEditor?.open(),
@@ -578,7 +599,7 @@ export async function mountMatrixRain(
 
   const start = (): void => {
     if (running) return;
-    if (reduceMq.matches || userPaused) {
+    if (!hostActive || reduceMq.matches || userPaused) {
       renderStatic();
       return;
     }
@@ -659,16 +680,17 @@ export async function mountMatrixRain(
 
   // ---------- Fullscreen + keys ----------
   const toggleFullscreen = (): void => {
+    if (nativeHosted) return;
     if (document.fullscreenElement) void document.exitFullscreen();
     else void container.requestFullscreen?.();
   };
 
-  // ---------- Multi-monitor fullscreen (all monitors) ----------
+  // ---------- Multi-monitor mode (all monitors) ----------
   // Switch this window's rain into a slice of the shared virtual grid.
   const enterMultiMonitorRender = (config: MultiMonitorConfig, isController: boolean, openedWindows: Window[]): void => {
     container.classList.add("mx-multimonitor"); // hides the controls/intro overlays via CSS
     sim = new RainSim({ cols: config.vCols, rows: config.vRows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: config.seed });
-    sim.warmUp(controls.get(), config.warmupSeconds);
+    sim.warmUpDistributed(controls.get(), config.warmupSeconds);
     // The controller's normal-mode scheduler has already consumed random values while panel schedulers
     // are fresh. Reload persisted settings and restart all schedulers here so the original window
     // cannot retain a stale document while newly opened panel windows use the latest one.
@@ -712,7 +734,7 @@ export async function mountMatrixRain(
       messageScheduler = createMessageScheduler();
       resetExtras(); // overlap is disabled in multi-monitor mode; start the overlap lanes clean on return
       renderStatic();
-    } else {
+    } else if (!nativeHosted) {
       try {
         window.close(); // a panel window ends with the show
       } catch {
@@ -728,9 +750,9 @@ export async function mountMatrixRain(
     window.setTimeout(() => n.remove(), ms);
   };
 
-  // Controller path: a triple-click fans the rain out onto every monitor.
+  // Controller path: start multi-monitor mode across every available monitor.
   const enterMultiMonitor = async (): Promise<void> => {
-    if (multiMonitorState || panelConfig) return;
+    if (nativeHosted || multiMonitorState || panelConfig) return;
     const cell = DEFAULT_SIM_CONFIG.targetCellPx * controls.get().glyphScale;
     let res: MultiMonitorSessionResult;
     try {
@@ -744,13 +766,13 @@ export async function mountMatrixRain(
         if (!document.fullscreenElement) toggleFullscreen();
         return;
       case "denied":
-        flashNotice("Allow “Window management” for this site (address-bar site settings), then triple-click again.");
+        flashNotice("Allow “Window management” for this site (address-bar site settings), then choose Multi-monitor again.");
         return;
       case "needsRetry":
-        flashNotice("Multi-monitor ready — triple-click again to launch.");
+        flashNotice("Multi-monitor mode is ready — choose Multi-monitor again to launch.");
         return;
       case "popupsBlocked":
-        flashNotice("Pop-ups are blocked — allow pop-ups for this site, then triple-click again.");
+        flashNotice("Pop-ups are blocked — allow pop-ups for this site, then choose Multi-monitor again.");
         return;
       case "multiMonitor":
         if (res.openedWindows.length < res.expectedPanels) {
@@ -806,7 +828,7 @@ export async function mountMatrixRain(
   };
   window.addEventListener("pointerdown", onPointerDown);
 
-  // Multi-click on the backdrop: double → ordinary fullscreen, triple → multi-monitor fullscreen.
+  // Backdrop shortcut: double-click enters ordinary fullscreen; triple-click enters multi-monitor mode.
   // Wait out the triple-click window before ordinary fullscreen; transitioning on click two can
   // swallow click three. Multi-monitor mode still launches immediately on the third click's activation.
   let clickCount = 0;
@@ -828,6 +850,7 @@ export async function mountMatrixRain(
   };
   // In a panel, a click is just a way to enter fullscreen if the policy didn't.
   const onPanelClick = (): void => {
+    if (nativeHosted) return;
     if (!document.fullscreenElement) void enterPanelFullscreen(container);
   };
   canvas.addEventListener("click", panelConfig ? onPanelClick : onCanvasClick);
@@ -835,6 +858,7 @@ export async function mountMatrixRain(
   // Esc inside fullscreen is intercepted by the browser (no keydown reaches us),
   // so the authoritative "show ended" signal is leaving fullscreen.
   const onFullscreenChange = (): void => {
+    if (nativeHosted) return;
     if (multiMonitorState && !document.fullscreenElement) exitMultiMonitor(true);
   };
   document.addEventListener("fullscreenchange", onFullscreenChange);
@@ -923,25 +947,33 @@ export async function mountMatrixRain(
   };
 
   if (panelConfig) {
-    // This window was opened as a panel: render its slice and go fullscreen.
+    // Browser panels request fullscreen themselves. Native screen saver views are
+    // already fullscreen and receive their slice from the host launch payload.
     enterMultiMonitorRender(panelConfig, false, []);
-    exitChan = openExitChannel(() => exitMultiMonitor(false));
-    void enterPanelFullscreen(container).then(() => {
-      // Without the AutomaticFullscreen policy a panel can't self-fullscreen; hint
-      // that a click will do it (a click carries the activation requestFullscreen needs).
-      window.setTimeout(() => {
-        if (!document.fullscreenElement) flashNotice("Click anywhere for fullscreen.");
-      }, 600);
-    });
+    if (!nativeHosted) {
+      exitChan = openExitChannel(() => exitMultiMonitor(false));
+      void enterPanelFullscreen(container).then(() => {
+        // Without the AutomaticFullscreen policy a panel can't self-fullscreen; hint
+        // that a click will do it (a click carries the activation requestFullscreen needs).
+        window.setTimeout(() => {
+          if (!document.fullscreenElement) flashNotice("Click anywhere for fullscreen.");
+        }, 600);
+      });
+    }
   } else {
     start();
     maybePlayIntro();
     if (!running) renderStatic(); // reduced-motion: ensure one frame is shown
-    void prefetchScreens(); // warm screen details so the triple-click keeps its gesture
+    if (!nativeHosted) void prefetchScreens(); // warm screen details before multi-monitor mode is requested
   }
 
   return {
     controls,
+    setActive: (active: boolean) => {
+      hostActive = active;
+      if (active) start();
+      else stop();
+    },
     destroy: () => {
       if (multiMonitorState) exitMultiMonitor(false);
       stop();

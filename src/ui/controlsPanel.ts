@@ -1,8 +1,10 @@
 import type { Controls, PresetName, QualityTier } from "../types.ts";
 import { DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
+import { isNativeConfiguration, nativeStorageDidChange } from "../platform/nativeHost.ts";
 
 export interface PanelCallbacks {
   onToggleFullscreen: () => void;
+  onEnterMultiMonitor: () => void;
   onReplayIntro: () => void;
   onEditIntro: () => void;
   onEditMessages: () => void;
@@ -11,7 +13,7 @@ export interface PanelCallbacks {
 
 const HIDE_DELAY_MS = 2800;
 
-/** Auto-hiding control panel + fullscreen button, styled as a Matrix terminal. */
+/** Auto-hiding control panel + display-mode buttons, styled as a Matrix terminal. */
 export class ControlsPanel {
   readonly el: HTMLDivElement;
   private panel: HTMLDivElement;
@@ -34,6 +36,9 @@ export class ControlsPanel {
     const fsBtn = this.button("⛶ Fullscreen", () => this.cb.onToggleFullscreen());
     fsBtn.title = "Fullscreen (F)";
     fab.appendChild(fsBtn);
+    const multiMonitorBtn = this.button("▦ Multi-monitor", () => this.cb.onEnterMultiMonitor());
+    multiMonitorBtn.title = "Start multi-monitor mode";
+    fab.appendChild(multiMonitorBtn);
     this.el.appendChild(fab);
 
     // Bottom-left panel.
@@ -42,6 +47,8 @@ export class ControlsPanel {
     const title = document.createElement("h1");
     title.textContent = "Matrix";
     this.panel.appendChild(title);
+
+    if (isNativeConfiguration()) this.viewerName();
 
     this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =. Turn up past 20 (with Allow overlap on) to make raindrops overlap between columns.");
     this.range("Ramp-up", "rampUpMs", 0, 30000, 500, (v) => controls.set({ rampUpMs: v }), (v) => (v === 0 ? "off" : `${(v / 1000).toFixed(1)}s`), undefined, "How long the rain builds up to full density when it first starts, on load (0 = instant)");
@@ -150,6 +157,31 @@ export class ControlsPanel {
     b.textContent = label;
     b.addEventListener("click", onClick);
     return b;
+  }
+
+  private viewerName(): void {
+    const row = this.row("Viewer name");
+    const input = document.createElement("input");
+    input.className = "mx-name-input";
+    input.type = "text";
+    input.maxLength = 80;
+    input.placeholder = "Neo";
+    try {
+      input.value = localStorage.getItem("mx-user-name") ?? "";
+    } catch {
+      input.value = "";
+    }
+    input.addEventListener("input", () => {
+      const value = input.value.trim();
+      try {
+        if (value) localStorage.setItem("mx-user-name", value);
+        else localStorage.removeItem("mx-user-name");
+        nativeStorageDidChange("mx-user-name", value || null);
+      } catch {
+        /* storage unavailable */
+      }
+    });
+    row.appendChild(input);
   }
 
   private row(label: string): HTMLDivElement {

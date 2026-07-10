@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { RainSim, packCell, unpackCell, decayBrightness } from "../src/sim/rainSim.ts";
 import { createGlyphSet } from "../src/sim/glyphSet.ts";
 import { DEFAULT_SIM_CONFIG } from "../src/config/simConfig.ts";
+import { DEFAULT_CONTROLS } from "../src/config/controls.ts";
 import { FLAG_IS_HEAD, PHASE_MASK } from "../src/types.ts";
 import type { Controls } from "../src/types.ts";
 
@@ -214,6 +215,49 @@ describe("RainSim.spawnRateScale", () => {
     expect(at[3]!).toBeGreaterThan(0);
     expect(at[5]!).toBeGreaterThan(at[3]!);
     expect(at[8]!).toBeGreaterThan(at[5]!);
+  });
+});
+
+describe("RainSim.warmUpDistributed", () => {
+  it("immediately populates every vertical region of a tall display wall", () => {
+    const rows = 150;
+    const sim = new RainSim({
+      cols: 90,
+      rows,
+      config: DEFAULT_SIM_CONFIG,
+      glyphSet: createGlyphSet(),
+      seed: 0x51ced,
+    });
+    sim.warmUpDistributed(DEFAULT_CONTROLS, 2.5);
+
+    const litInBand = (from: number, to: number): number => {
+      let lit = 0;
+      for (let row = from; row < to; row++) {
+        for (let col = 0; col < sim.cols; col++) {
+          if (sim.state[(row * sim.cols + col) * 4 + 1]! > 0) lit++;
+        }
+      }
+      return lit;
+    };
+
+    expect(litInBand(0, 50)).toBeGreaterThan(0);
+    expect(litInBand(50, 100)).toBeGreaterThan(0);
+    expect(litInBand(100, 150)).toBeGreaterThan(0);
+  });
+
+  it("is deterministic for lockstep multi-monitor windows", () => {
+    const options = {
+      cols: 80,
+      rows: 140,
+      config: DEFAULT_SIM_CONFIG,
+      glyphSet: createGlyphSet(),
+      seed: 0x51ced,
+    };
+    const a = new RainSim(options);
+    const b = new RainSim(options);
+    a.warmUpDistributed(DEFAULT_CONTROLS, 2.5);
+    b.warmUpDistributed(DEFAULT_CONTROLS, 2.5);
+    expect(a.state).toEqual(b.state);
   });
 });
 

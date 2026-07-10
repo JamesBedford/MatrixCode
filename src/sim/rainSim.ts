@@ -171,6 +171,50 @@ export class RainSim {
     for (let i = 0; i < steps; i++) this.update(step, controls);
   }
 
+  /**
+   * Pre-fill a tall virtual grid into a deterministic steady state, then run the
+   * ordinary warm-up. Normal streams always enter above row zero, so a short
+   * warm-up leaves lower monitors black in a vertically stacked display wall.
+   * Seeding heads across their whole lifecycle gives every physical slice rain
+   * immediately without changing the normal single-display golden sequence.
+   */
+  warmUpDistributed(controls: Controls, seconds = 2, step = 1 / 60): void {
+    const density = controls.density * DENSITY_SCALE;
+    const streamCount = Math.max(1, Math.round(density));
+    const activeChance = clamp(density / (density + 0.6), 0.1, 1);
+    const minY = -this.cfg.startRowsAbove;
+    const spanY = this.rows + this.cfg.tailMargin - minY;
+    const speedMul = Math.max(controls.speed, 0.1);
+
+    for (let col = 0; col < this.cols; col++) {
+      if (this.rng() > activeChance) continue;
+      for (let s = 0; s < streamCount; s++) {
+        const stream: Stream = {
+          y: minY + this.rng() * spanY,
+          speed: this.cfg.minSpeed + this.rng() * this.cfg.speedRange,
+          white: this.rng() < this.cfg.whiteHeadFraction ? 1 : 0,
+        };
+        this.streams[col]!.push(stream);
+
+        // Reconstruct the still-visible stationary trail behind this head.
+        const headRow = Math.min(Math.floor(stream.y), this.rows - 1);
+        for (let row = headRow; row >= 0; row--) {
+          const ageSeconds = (stream.y - row) / (stream.speed * speedMul);
+          const brightness = Math.pow(controls.trailLength, ageSeconds / this.cfg.trailLengthScale);
+          if (brightness < MIN_BRIGHT) break;
+          const idx = row * this.cols + col;
+          const previous = this.bright[idx]!;
+          this.lightHeadCell(col, row);
+          this.bright[idx] = Math.max(previous, brightness);
+        }
+      }
+    }
+
+    // Pack the seeded state before advancing it through the standard path.
+    this.update(0, controls);
+    this.warmUp(controls, seconds, step);
+  }
+
   /** Return the sim to its empty initial state (as just after construction, before any update). */
   reset(): void {
     this.bright.fill(0);

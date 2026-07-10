@@ -1,5 +1,6 @@
 import type { MessagesDoc } from "../types.ts";
 import { num, text, bool, capArray } from "./sanitize.ts";
+import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 
 const STORAGE_KEY = "mx-messages";
 const MAX_MESSAGES = 12;
@@ -70,7 +71,9 @@ export class MessagesStore {
   set(doc: MessagesDoc): void {
     this.doc = sanitizeMessages(doc);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.doc));
+      const value = JSON.stringify(this.doc);
+      localStorage.setItem(STORAGE_KEY, value);
+      nativeStorageDidChange(STORAGE_KEY, value);
     } catch {
       /* storage may be unavailable (private mode) — ignore */
     }
@@ -80,6 +83,7 @@ export class MessagesStore {
     this.doc = cloneMessages(DEFAULT_MESSAGES);
     try {
       localStorage.removeItem(STORAGE_KEY);
+      nativeStorageDidChange(STORAGE_KEY, null);
     } catch {
       /* ignore */
     }

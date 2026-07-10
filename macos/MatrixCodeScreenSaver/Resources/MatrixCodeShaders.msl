@@ -1,0 +1,115 @@
+#include <metal_stdlib>
+using namespace metal;
+
+struct MatrixCodeGlyphInstance {
+    float2 origin;
+    float2 size;
+    float2 atlasOrigin;
+    float2 atlasSize;
+    float2 oldAtlasOrigin;
+    float crossfade;
+    float brightness;
+    float isHead;
+};
+
+struct MatrixCodeUniforms {
+    float2 viewport;
+    float3 tailColor;
+    float padding0;
+    float3 bodyColor;
+    float padding1;
+    float3 brightColor;
+    float padding2;
+    float3 headColor;
+    float padding3;
+    float glow;
+    float vignette;
+    float scanlines;
+    float glowRadius;
+};
+
+struct MatrixCodeVertexOut {
+    float4 position [[position]];
+    float2 uv;
+    float2 oldUV;
+    float crossfade;
+    float brightness;
+    float isHead;
+};
+
+vertex MatrixCodeVertexOut matrixVertex(
+    uint vertexID [[vertex_id]],
+    uint instanceID [[instance_id]],
+    const device MatrixCodeGlyphInstance *instances [[buffer(0)]],
+    constant MatrixCodeUniforms &uniforms [[buffer(1)]]
+) {
+    constexpr float2 corners[6] = {
+        {0, 0}, {1, 0}, {0, 1},
+        {0, 1}, {1, 0}, {1, 1},
+    };
+    MatrixCodeGlyphInstance instance = instances[instanceID];
+    float2 corner = corners[vertexID];
+    float2 pixelPosition = instance.origin + corner * instance.size;
+    MatrixCodeVertexOut out;
+    out.position = float4(
+        pixelPosition.x / uniforms.viewport.x * 2.0 - 1.0,
+        1.0 - pixelPosition.y / uniforms.viewport.y * 2.0,
+        0,
+        1
+    );
+    out.uv = instance.atlasOrigin + corner * instance.atlasSize;
+    out.oldUV = instance.oldAtlasOrigin + corner * instance.atlasSize;
+    out.crossfade = instance.crossfade;
+    out.brightness = instance.brightness;
+    out.isHead = instance.isHead;
+    return out;
+}
+
+fragment half4 matrixFragment(
+    MatrixCodeVertexOut in [[stage_in]],
+    texture2d<half> atlas [[texture(0)]],
+    constant MatrixCodeUniforms &uniforms [[buffer(1)]]
+) {
+    constexpr sampler atlasSampler(filter::linear, address::clamp_to_edge);
+    half newCenter = atlas.sample(atlasSampler, in.uv).r;
+    half oldCenter = atlas.sample(atlasSampler, in.oldUV).r;
+    half center = mix(oldCenter, newCenter, half(in.crossfade));
+    float2 texel = 1.0 / float2(atlas.get_width(), atlas.get_height());
+    float radius = max(1.0, uniforms.glowRadius);
+    half glowAlpha = 0.0h;
+    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius, 0)).r;
+    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius, 0)).r;
+    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(0,  radius)).r;
+    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(0, -radius)).r;
+    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius,  radius)).r * 0.7h;
+    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius,  radius)).r * 0.7h;
+    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius, -radius)).r * 0.7h;
+    glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius, -radius)).r * 0.7h;
+    glowAlpha *= half(0.105 * uniforms.glow);
+    half alpha = max(center, glowAlpha);
+
+    float brightness = clamp(in.brightness, 0.0, 1.6);
+    float3 color;
+    if (in.isHead > 0.5) {
+        color = mix(uniforms.brightColor, uniforms.headColor,
+                    clamp((brightness - 0.8) * 2.0, 0.0, 1.0));
+    } else if (brightness < 0.35) {
+        color = mix(uniforms.tailColor, uniforms.bodyColor, brightness / 0.35);
+    } else {
+        color = mix(uniforms.bodyColor, uniforms.brightColor,
+                    clamp((brightness - 0.35) / 0.65, 0.0, 1.0));
+    }
+
+    float2 screenUV = in.position.xy / uniforms.viewport;
+    float2 edge = screenUV * (1.0 - screenUV) * 4.0;
+    float vignette = mix(1.0, pow(clamp(edge.x * edge.y, 0.0, 1.0), 0.28),
+                         uniforms.vignette);
+    float scanline = uniforms.scanlines > 0.5
+        ? mix(0.88, 1.0, step(0.5, fract(in.position.y / 3.0)))
+        : 1.0;
+    float glowBoost = center > 0.01h ? 1.0 : (1.0 + uniforms.glow * 0.45);
+    return half4(
+        half3(color * max(brightness, 0.12) * vignette * scanline * glowBoost),
+        alpha * half(clamp(brightness * 1.25, 0.0, 1.0))
+    );
+}

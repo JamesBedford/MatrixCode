@@ -1,4 +1,4 @@
-// Pure, DOM-free geometry for multi-monitor fullscreen: map a set of physical
+// Pure, DOM-free geometry for multi-monitor mode: map a set of physical
 // screens (in the Window Management API's unified virtual coordinate space) onto
 // one shared rain grid, and give each screen the sub-rectangle it should render.
 // Because screens above/below share an X range, a column that flows off the

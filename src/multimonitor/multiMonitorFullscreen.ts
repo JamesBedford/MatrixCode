@@ -1,4 +1,4 @@
-// Orchestration for multi-monitor fullscreen: from one gesture, fan the rain out onto
+// Orchestration for multi-monitor mode: from one gesture, fan the rain out onto
 // every connected monitor. Uses the Chromium Window Management API
 // (getScreenDetails + requestFullscreen({ screen })). Each monitor gets its own
 // browser window rendering a slice of one shared virtual grid (see multiMonitorGrid.ts);
@@ -34,7 +34,7 @@ export type MultiMonitorSessionResult =
   // The window-management permission is blocked/denied for this site.
   | { kind: "denied" }
   // Permission was just resolved (its prompt consumed this gesture) — the next
-  // triple-click will launch cleanly using the now-cached screen details.
+  // multi-monitor request will launch cleanly using the cached screen details.
   | { kind: "needsRetry" }
   // Pop-ups are blocked, so no panel windows could open.
   | { kind: "popupsBlocked" };
@@ -64,7 +64,7 @@ function getScreenDetails(): Promise<ScreenDetails> {
 }
 
 // When permission is already granted we fetch screen details ahead of the click,
-// so the triple-click gesture isn't spent awaiting a permission prompt (which
+// so the launch gesture isn't spent awaiting a permission prompt (which
 // would consume the transient activation needed to open windows + go fullscreen).
 let cachedDetails: ScreenDetails | null = null;
 
@@ -137,7 +137,7 @@ export async function startMultiMonitorSession(
 
   // Granting the permission shows a prompt that consumes this click's transient
   // activation, so we can't also open windows + go fullscreen in the same gesture.
-  // Resolve it first (caching the screens) and let the next triple-click launch.
+  // Resolve it first (caching the screens) and let the next multi-monitor request launch.
   if (!cachedDetails) {
     let state = "granted";
     try {

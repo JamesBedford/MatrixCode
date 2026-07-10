@@ -1044,7 +1044,7 @@ Append to the end of `src/styles.css`:
 }
 ```
 
-- [ ] **Step 3: Hide the modal in multi-monitor fullscreen mode**
+- [ ] **Step 3: Hide the modal in multi-monitor mode**
 
 In `src/styles.css`, find the existing super-mode rule:
 

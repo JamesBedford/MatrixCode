@@ -1,0 +1,89 @@
+name: MatrixCodeScreenSaver
+
+options:
+  minimumXcodeGenVersion: 2.40.0
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    ARCHS: arm64
+    CLANG_ENABLE_OBJC_ARC: YES
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    ONLY_ACTIVE_ARCH: YES
+
+targets:
+  MatrixCode:
+    type: bundle
+    platform: macOS
+    sources:
+      - path: Source
+      - path: Resources/MatrixCodeShaders.msl
+        buildPhase: resources
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleDisplayName: MatrixCode
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: "$(PRODUCT_NAME)"
+        CFBundlePackageType: BNDL
+        CFBundleShortVersionString: "2.0"
+        CFBundleVersion: "2"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSHumanReadableCopyright: MIT License
+        NSPrincipalClass: MatrixCodeScreenSaverView
+    dependencies:
+      - sdk: AppKit.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: ScreenSaver.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matrixcode.screensaver
+        PRODUCT_NAME: MatrixCode
+        WRAPPER_EXTENSION: saver
+        MACH_O_TYPE: mh_bundle
+        SKIP_INSTALL: NO
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @loader_path/../Frameworks"
+  MatrixCodeNativeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Source/MatrixCodeConfigurationController.m
+      - path: Source/MatrixCodeConstants.m
+      - path: Source/MatrixCodeIntroOverlayView.m
+      - path: Source/MatrixCodeMetalView.m
+      - path: Source/MatrixCodePreferences.m
+      - path: Source/MatrixCodeSession.m
+      - path: Source/MatrixCodeTokenResolver.m
+      - path: Resources/MatrixCodeShaders.msl
+        buildPhase: resources
+    dependencies:
+      - sdk: AppKit.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: ScreenSaver.framework
+      - sdk: XCTest.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matrixcode.screensaver.tests
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/Source"
+
+schemes:
+  MatrixCode:
+    build:
+      targets:
+        MatrixCode: all
+        MatrixCodeNativeTests: [test]
+    test:
+      targets:
+        - MatrixCodeNativeTests

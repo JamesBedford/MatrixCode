@@ -1,13 +1,15 @@
-# Multi-monitor fullscreen
+# Multi-monitor mode
 
-**Triple-click the rain** to fan it out across *every* connected monitor: one
+Choose **Multi-monitor** next to the **Fullscreen** button to fan the rain out
+across *every* connected monitor: one
 fullscreen window per display, all rendering one continuous rain that respects
 your physical monitor arrangement (a column that falls off the bottom of one
 screen reappears on the screen below it; side-by-side screens line up). Press
 **Escape** (or close any window) to end the show everywhere at once.
 
 - Double-click still toggles ordinary single-monitor fullscreen; `F` does too.
-- On a single monitor — or any non-Chromium browser — triple-click simply falls
+- Triple-clicking the rain is a shortcut for the **Multi-monitor** button.
+- On a single monitor — or any non-Chromium browser — multi-monitor mode falls
   back to ordinary fullscreen.
 
 ## Requirements
@@ -21,10 +23,11 @@ file directly).
 ## One-time Chrome setup (for the seamless one-click experience)
 
 Without these, the show still works but each extra window opens full-bleed and
-needs one click to go truly fullscreen. With them, a single triple-click puts
-true fullscreen on every monitor instantly.
+needs one click to go truly fullscreen. With them, the **Multi-monitor** button
+puts true fullscreen on every monitor instantly; the triple-click shortcut
+behaves the same way.
 
-1. **Allow pop-ups for the site.** The first triple-click opens one window per
+1. **Allow pop-ups for the site.** Starting multi-monitor mode opens one window per
    other monitor; Chrome blocks multiple pop-ups by default. Open the site, then
    Chrome → the pop-up-blocked icon in the address bar (or *Site settings* →
    *Pop-ups and redirects*) → **Allow** for this origin (e.g.
@@ -43,10 +46,10 @@ true fullscreen on every monitor instantly.
    URLs with wherever you serve the app. To undo:
    `defaults delete com.google.Chrome AutomaticFullscreenAllowedForUrls`.
 
-3. **Grant the Window Management permission.** The first triple-click prompts for
+3. **Grant the Window Management permission.** The first multi-monitor launch prompts for
    *"… wants to manage windows across your displays"* — click **Allow**. (The app
-   pre-fetches screen details on later visits so the gesture isn't spent on the
-   prompt; you may need a second triple-click right after granting it.)
+   pre-fetches screen details on later visits so the launch gesture isn't spent
+   on the prompt; choose **Multi-monitor** again right after granting it.)
 
 ## How it works
 
