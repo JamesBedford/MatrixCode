@@ -13,6 +13,8 @@ const CONTROLS: Controls = {
   rampUpMs: 0,
   glyphRate: 1,
   glyphScale: 1,
+  glyphMode: "matrix",
+  glyphFont: "matrix",
   glow: 1,
   leadBrightness: 1.6,
   preset: "classic",

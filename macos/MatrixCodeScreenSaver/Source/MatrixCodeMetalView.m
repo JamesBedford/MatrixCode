@@ -75,6 +75,36 @@ static BOOL MatrixCodeBool(NSDictionary *dictionary, NSString *key, BOOL fallbac
         ? [value boolValue] : fallback;
 }
 
+static NSString *MatrixCodeGlyphMode(NSDictionary *dictionary) {
+    id value = dictionary[@"glyphMode"];
+    NSArray<NSString *> *modes = @[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"];
+    return [value isKindOfClass:NSString.class] && [modes containsObject:value] ? value : @"matrix";
+}
+
+static NSString *MatrixCodeGlyphFont(NSDictionary *dictionary) {
+    id value = dictionary[@"glyphFont"];
+    NSArray<NSString *> *fonts = @[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"];
+    return [value isKindOfClass:NSString.class] && [fonts containsObject:value] ? value : @"matrix";
+}
+
+static CTFontRef MatrixCodeCreateGlyphFont(NSDictionary *dictionary, CGFloat size) {
+    NSString *font = MatrixCodeGlyphFont(dictionary);
+    NSDictionary<NSString *, NSString *> *names = @{
+        @"matrix": @"HiraginoSans-W6",
+        @"gothic": @"YuGothic-Bold",
+        @"mono": @"Menlo-Bold",
+        @"terminal": @"Courier-Bold",
+        @"rounded": @"ArialRoundedMTBold",
+        @"mincho": @"HiraginoMinchoProN-W6",
+    };
+    NSArray<NSString *> *fallbacks = @[names[font] ?: names[@"matrix"], @"HiraginoSans-W6", @"Menlo-Bold"];
+    for (NSString *name in fallbacks) {
+        CTFontRef candidate = CTFontCreateWithName((__bridge CFStringRef)name, size, NULL);
+        if (candidate) return candidate;
+    }
+    return CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, size, NULL);
+}
+
 static float MatrixCodeVignette(NSDictionary *dictionary) {
     id value = dictionary[@"vignette"];
     if ([value isKindOfClass:NSNumber.class] &&
@@ -186,6 +216,7 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
 
 - (void)reloadStoredValues:(NSDictionary<NSString *,NSString *> *)storedValues {
     BOOL previousMirror = MatrixCodeBool(self.controls, @"mirror", YES);
+    NSString *previousFont = MatrixCodeGlyphFont(self.controls);
     NSDictionary *controls = nil;
     NSString *raw = storedValues[@"mx-controls"];
     if ([raw isKindOfClass:NSString.class]) {
@@ -228,7 +259,8 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
         (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ 0xa511e9b3U));
     [self updatePalette];
     BOOL nextMirror = MatrixCodeBool(self.controls, @"mirror", YES);
-    if (self.atlas && previousMirror != nextMirror) {
+    NSString *nextFont = MatrixCodeGlyphFont(self.controls);
+    if (self.atlas && (previousMirror != nextMirror || ![previousFont isEqualToString:nextFont])) {
         [self buildAtlas];
     }
 }
@@ -330,7 +362,11 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     CGColorSpaceRelease(colorSpace);
     if (!context) return NO;
     CGContextSetGrayFillColor(context, 1, 1);
-    CTFontRef font = CTFontCreateWithName(CFSTR("Menlo-Bold"), 31, NULL);
+    CTFontRef font = MatrixCodeCreateGlyphFont(self.controls, 31);
+    if (!font) {
+        CGContextRelease(context);
+        return NO;
+    }
     NSDictionary *attributes = @{
         (id)kCTFontAttributeName: (__bridge id)font,
         (id)kCTForegroundColorAttributeName: (__bridge id)NSColor.whiteColor.CGColor,
@@ -589,6 +625,7 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     float speedControl = MatrixCodeNumber(self.controls, @"speed", 1, 0.1, 3);
     float trail = MatrixCodeNumber(self.controls, @"trailLength", 0.255, 0.01, 0.5);
     float glyphRate = MatrixCodeNumber(self.controls, @"glyphRate", 1, 0, 5);
+    NSString *glyphMode = MatrixCodeGlyphMode(self.controls);
     NSArray *sessionScreens = [self.session[@"screens"] isKindOfClass:NSArray.class]
         ? self.session[@"screens"] : @[];
     float rampDuration = sessionScreens.count > 1 ? 0 :
@@ -660,9 +697,9 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                 uint32_t glyphBaseKey = laneSeed ^ (uint32_t)(globalColumn * 73856093) ^
                     (uint32_t)(globalRow * 19349663);
                 uint32_t glyphKey = glyphBaseKey ^ mutationTick;
-                NSInteger glyph = MatrixCodeRainGlyphIndex(glyphKey);
+                NSInteger glyph = MatrixCodeRainGlyphIndex(glyphKey, glyphMode);
                 NSInteger oldGlyph = glyphRate > 0
-                    ? MatrixCodeRainGlyphIndex(glyphBaseKey ^ (mutationTick - 1))
+                    ? MatrixCodeRainGlyphIndex(glyphBaseKey ^ (mutationTick - 1), glyphMode)
                     : glyph;
                 float crossfade = glyphRate > 0
                     ? fminf(1, (mutationClock - floorf(mutationClock)) /
@@ -693,7 +730,7 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
                         if ([self.claimedMessageCells containsObject:cellKey]) {
                             uint32_t scrambleKey = MatrixCodeHash(glyphKey ^ (uint32_t)floor(now * 24));
                             if (MatrixCodeUnit(scrambleKey) < messageScramble) {
-                                glyph = MatrixCodeRainGlyphIndex(scrambleKey);
+                                glyph = MatrixCodeRainGlyphIndex(scrambleKey, glyphMode);
                             } else {
                                 glyph = messageGlyph;
                             }

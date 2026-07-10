@@ -6,6 +6,7 @@ export interface PanelCallbacks {
   onToggleFullscreen: () => void;
   onEnterMultiMonitor: () => void;
   onReplayIntro: () => void;
+  onEditCharacters: () => void;
   onEditIntro: () => void;
   onEditMessages: () => void;
   onEditCountdown: () => void;
@@ -58,7 +59,6 @@ export class ControlsPanel {
       (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`,
       (c) => 0.51 - c.trailLength);
     this.range("Speed", "speed", 0.2, 3, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
-    this.range("Glyph change", "glyphRate", 0, 5, 0.05, (v) => controls.set({ glyphRate: v }), (v) => `${v.toFixed(2)}×`);
     this.range("Glyph size", "glyphScale", 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
     this.range("Glow", "glow", 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
     this.range("Lead glow", "leadBrightness", 0, 3, 0.05, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
@@ -75,7 +75,7 @@ export class ControlsPanel {
     );
 
     this.select<PresetName>("Color", c.preset, [
-      ["classic", "Classic green"],
+      ["classic", "Green (Classic)"],
       ["amber", "Amber"],
       ["gold", "Gold"],
       ["red", "Red"],
@@ -91,9 +91,12 @@ export class ControlsPanel {
       ["high", "High"],
     ], (v) => controls.set({ quality: v }));
 
-    this.toggle("Mirror glyphs", c.mirror, (v) => controls.set({ mirror: v }));
     this.toggle("Scanlines", c.scanlines, (v) => controls.set({ scanlines: v }));
     this.toggle("Allow overlap", c.allowOverlap, (v) => controls.set({ allowOverlap: v }));
+
+    const characters = this.button("▦ Characters", () => this.cb.onEditCharacters());
+    characters.style.marginTop = "6px";
+    this.panel.appendChild(characters);
 
     const replay = this.button("▷ Replay intro", () => {
       this.cb.onReplayIntro();

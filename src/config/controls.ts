@@ -1,6 +1,7 @@
-import type { Controls, QualityTier } from "../types.ts";
+import type { Controls, GlyphMode, QualityTier } from "../types.ts";
 import { clamp } from "../util/math.ts";
 import { PRESET_NAMES } from "./colorPresets.ts";
+import { GLYPH_FONTS } from "./glyphFonts.ts";
 import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 
 export const DEFAULT_CONTROLS: Controls = {
@@ -10,6 +11,8 @@ export const DEFAULT_CONTROLS: Controls = {
   rampUpMs: 8000,
   glyphRate: 1,
   glyphScale: 1,
+  glyphMode: "matrix",
+  glyphFont: "matrix",
   glow: 0.9,
   leadBrightness: 1.6,
   preset: "classic",
@@ -22,6 +25,7 @@ export const DEFAULT_CONTROLS: Controls = {
 
 const STORAGE_KEY = "mx-controls";
 const QUALITIES: QualityTier[] = ["low", "med", "high"];
+const GLYPH_MODES: GlyphMode[] = ["matrix", "katakana", "binary", "digits", "latin", "symbols"];
 
 /** Maps each control to its URL query-param name — single source of truth for reading and writing. */
 const URL_PARAMS = {
@@ -31,6 +35,8 @@ const URL_PARAMS = {
   rampUpMs: "ramp",
   glyphRate: "glyphrate",
   glyphScale: "size",
+  glyphMode: "glyphs",
+  glyphFont: "font",
   glow: "glow",
   leadBrightness: "lead",
   preset: "preset",
@@ -64,6 +70,8 @@ function sanitize(input: Partial<Controls>): Partial<Controls> {
   if (finiteNum(input.rampUpMs)) out.rampUpMs = clamp(input.rampUpMs, 0, 60000);
   if (finiteNum(input.glyphRate)) out.glyphRate = clamp(input.glyphRate, 0, 5);
   if (finiteNum(input.glyphScale)) out.glyphScale = clamp(input.glyphScale, 0.5, 10);
+  if (input.glyphMode && GLYPH_MODES.includes(input.glyphMode)) out.glyphMode = input.glyphMode;
+  if (input.glyphFont && GLYPH_FONTS.includes(input.glyphFont)) out.glyphFont = input.glyphFont;
   if (finiteNum(input.glow)) out.glow = clamp(input.glow, 0, 2.5);
   if (finiteNum(input.leadBrightness)) out.leadBrightness = clamp(input.leadBrightness, 0, 3);
   if (input.preset && PRESET_NAMES.includes(input.preset)) out.preset = input.preset;

@@ -8,7 +8,7 @@ typedef struct {
 } MatrixCodeRainStreamSample;
 
 FOUNDATION_EXPORT float MatrixCodeRainRampEase(float progress);
-FOUNDATION_EXPORT NSInteger MatrixCodeRainGlyphIndex(uint32_t key);
+FOUNDATION_EXPORT NSInteger MatrixCodeRainGlyphIndex(uint32_t key, NSString *glyphMode);
 FOUNDATION_EXPORT MatrixCodeRainStreamSample MatrixCodeRainSampleStream(
     uint32_t key,
     float rainElapsed,

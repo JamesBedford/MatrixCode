@@ -102,4 +102,26 @@ describe("glyphSet — message glyphs", () => {
       expect(gs.randomGlyphIndex(rng)).toBeLessThan(gs.ranges.message.start);
     }
   });
+
+  it("can limit ambient rain to binary digits without changing message glyphs", () => {
+    const gs = createGlyphSet("binary");
+    const rng = createRng(42);
+    const seen = new Set<string>();
+    for (let i = 0; i < 1000; i++) {
+      seen.add(gs.chars[gs.randomGlyphIndex(rng)]!);
+    }
+    expect([...seen].sort()).toEqual(["0", "1"]);
+    expect(gs.charToGlyphIndex("A")).toBe(gs.ranges.message.start);
+  });
+
+  it("switches ambient rain character modes in place", () => {
+    const gs = createGlyphSet();
+    gs.setGlyphMode("symbols");
+    const rng = createRng(7);
+    for (let i = 0; i < 1000; i++) {
+      const idx = gs.randomGlyphIndex(rng);
+      expect(idx).toBeGreaterThanOrEqual(gs.ranges.symbols.start);
+      expect(idx).toBeLessThan(gs.ranges.message.start);
+    }
+  });
 });

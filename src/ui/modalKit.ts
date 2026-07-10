@@ -4,6 +4,8 @@
  * builder, and a generic reorderable list — so each editor only supplies its own `build()` body.
  * All styling comes from the global `.mx-modal*` / `.mx-line*` / `.mx-field` classes in styles.css.
  */
+export const MODAL_OPEN_CHANGE_EVENT = "mx-modal-open-change";
+
 export abstract class ModalEditor {
   readonly el: HTMLDivElement; // backdrop
   protected readonly dialog: HTMLDivElement;
@@ -50,11 +52,13 @@ export abstract class ModalEditor {
     this.el.style.display = "grid";
     this.isOpen = true;
     this.previewing = false;
+    this.el.dispatchEvent(new CustomEvent(MODAL_OPEN_CHANGE_EVENT, { detail: { open: true } }));
   }
 
   protected hide(): void {
     this.el.style.display = "none";
     this.isOpen = false;
+    this.el.dispatchEvent(new CustomEvent(MODAL_OPEN_CHANGE_EVENT, { detail: { open: false } }));
   }
 
   /** Hide the modal so a preview can play unobstructed over the rain. */

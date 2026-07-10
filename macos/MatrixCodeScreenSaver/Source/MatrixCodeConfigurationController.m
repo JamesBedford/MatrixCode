@@ -43,6 +43,11 @@ static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
     return [text substringToIndex:MIN(maximumLength, text.length)];
 }
 
+static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
+    return [glyphMode isEqualToString:@"matrix"] ||
+        [glyphMode isEqualToString:@"katakana"];
+}
+
 @interface MatrixCodeFlippedDocumentView : NSView
 @end
 
@@ -170,6 +175,7 @@ static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *originalValues;
 @property(nonatomic, strong) NSTextField *postIntroDelayField;
 @property(nonatomic, strong) NSDatePicker *defaultCountdownDatePicker;
+@property(nonatomic, strong) NSButton *mirrorButton;
 @end
 
 @implementation MatrixCodeConfigurationController
@@ -209,7 +215,7 @@ static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
     NSMutableDictionary *controls = [@{
         @"speed": @1, @"trailLength": @0.255, @"density": @2, @"rampUpMs": @8000,
         @"glyphRate": @1, @"glyphScale": @1, @"glow": @0.9, @"leadBrightness": @1.6,
-        @"preset": @"classic", @"mirror": @YES, @"scanlines": @NO, @"vignette": @0,
+        @"glyphMode": @"matrix", @"glyphFont": @"matrix", @"preset": @"classic", @"mirror": @YES, @"scanlines": @NO, @"vignette": @0,
         @"allowOverlap": @YES, @"quality": @"high",
     } mutableCopy];
     NSArray *controlNumbers = @[
@@ -238,6 +244,12 @@ static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
     NSArray *qualities = @[@"low", @"med", @"high"];
     if ([storedControls[@"quality"] isKindOfClass:NSString.class] &&
         [qualities containsObject:storedControls[@"quality"]]) controls[@"quality"] = storedControls[@"quality"];
+    NSArray *glyphModes = @[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"];
+    if ([storedControls[@"glyphMode"] isKindOfClass:NSString.class] &&
+        [glyphModes containsObject:storedControls[@"glyphMode"]]) controls[@"glyphMode"] = storedControls[@"glyphMode"];
+    NSArray *glyphFonts = @[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"];
+    if ([storedControls[@"glyphFont"] isKindOfClass:NSString.class] &&
+        [glyphFonts containsObject:storedControls[@"glyphFont"]]) controls[@"glyphFont"] = storedControls[@"glyphFont"];
     self.controls = controls;
 
     NSDictionary *storedIntro =
@@ -367,6 +379,7 @@ static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
     NSTabView *tabs = [[NSTabView alloc] initWithFrame:NSZeroRect];
     tabs.translatesAutoresizingMaskIntoConstraints = NO;
     [tabs addTabViewItem:[self tabItem:@"Rain" view:[self rainTab]]];
+    [tabs addTabViewItem:[self tabItem:@"Characters" view:[self charactersTab]]];
     [tabs addTabViewItem:[self tabItem:@"Intro" view:[self introTab]]];
     [tabs addTabViewItem:[self tabItem:@"Messages" view:[self messagesTab]]];
     [tabs addTabViewItem:[self tabItem:@"Countdowns" view:[self countdownTab]]];
@@ -476,7 +489,7 @@ static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
     NSArray *specs = @[
         @[@"Density", @"density", @0.1, @100], @[@"Ramp-up (ms)", @"rampUpMs", @0, @60000],
         @[@"Trail decay", @"trailLength", @0.01, @0.5], @[@"Speed", @"speed", @0.1, @3],
-        @[@"Glyph change", @"glyphRate", @0, @5], @[@"Glyph size", @"glyphScale", @0.5, @10],
+        @[@"Glyph size", @"glyphScale", @0.5, @10],
         @[@"Glow", @"glow", @0, @2.5], @[@"Lead glow", @"leadBrightness", @0, @3],
         @[@"Vignette", @"vignette", @0, @1],
     ];
@@ -496,8 +509,7 @@ static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
     [quality selectItemWithTitle:self.controls[@"quality"]];
     quality.identifier = @"quality"; quality.target = self; quality.action = @selector(controlChanged:);
     [stack addArrangedSubview:[self rowWithLabel:@"Quality" control:quality]];
-    for (NSArray *toggle in @[@[@"Mirror glyphs", @"mirror"], @[@"Scanlines", @"scanlines"],
-                               @[@"Allow overlap", @"allowOverlap"]]) {
+    for (NSArray *toggle in @[@[@"Scanlines", @"scanlines"], @[@"Allow overlap", @"allowOverlap"]]) {
         NSButton *button = [NSButton checkboxWithTitle:toggle[0] target:self action:@selector(controlChanged:)];
         button.identifier = toggle[1];
         button.state = [self.controls[toggle[1]] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
@@ -508,14 +520,84 @@ static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
     return scroll;
 }
 
+- (NSView *)charactersTab {
+    NSStackView *stack;
+    NSView *scroll = [self scrollingStack:&stack];
+    [stack addArrangedSubview:[self heading:@"Characters"]];
+    NSTextField *hint = [NSTextField wrappingLabelWithString:
+        @"These controls affect the ambient rain glyphs. In-rain messages keep their readable character set."];
+    [hint.widthAnchor constraintLessThanOrEqualToConstant:680].active = YES;
+    [stack addArrangedSubview:hint];
+
+    NSPopUpButton *glyphMode = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    NSArray *glyphModeItems = @[
+        @[@"matrix", @"matrix"], @[@"katakana", @"katakana"],
+        @[@"binary", @"binary"], @[@"digits", @"digits"],
+        @[@"latin", @"latin"], @[@"symbols", @"symbols"],
+    ];
+    for (NSArray *item in glyphModeItems) {
+        [glyphMode addItemWithTitle:item[0]];
+        glyphMode.lastItem.representedObject = item[1];
+        if ([item[1] isEqualToString:self.controls[@"glyphMode"]]) {
+            [glyphMode selectItem:glyphMode.lastItem];
+        }
+    }
+    glyphMode.identifier = @"glyphMode";
+    glyphMode.target = self;
+    glyphMode.action = @selector(controlChanged:);
+    [stack addArrangedSubview:[self rowWithLabel:@"Character set" control:glyphMode]];
+
+    NSPopUpButton *glyphFont = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    NSArray *fontItems = @[
+        @[@"Movie Gothic", @"matrix"], @[@"Sharp Gothic", @"gothic"],
+        @[@"SF Mono", @"mono"], @[@"Terminal Mono", @"terminal"],
+        @[@"Rounded", @"rounded"], @[@"Mincho", @"mincho"],
+    ];
+    for (NSArray *item in fontItems) {
+        [glyphFont addItemWithTitle:item[0]];
+        glyphFont.lastItem.representedObject = item[1];
+        if ([item[1] isEqualToString:self.controls[@"glyphFont"]]) {
+            [glyphFont selectItem:glyphFont.lastItem];
+        }
+    }
+    glyphFont.identifier = @"glyphFont";
+    glyphFont.target = self;
+    glyphFont.action = @selector(controlChanged:);
+    [stack addArrangedSubview:[self rowWithLabel:@"Font" control:glyphFont]];
+
+    for (NSArray *spec in @[@[@"Glyph change", @"glyphRate", @0, @5]]) {
+        [stack addArrangedSubview:[self rowWithLabel:spec[0]
+                                            control:[self slider:spec[1]
+                                                             min:[spec[2] doubleValue]
+                                                             max:[spec[3] doubleValue]]]];
+    }
+    NSButton *mirror = [NSButton checkboxWithTitle:@"Mirror glyphs"
+                                           target:self
+                                           action:@selector(controlChanged:)];
+    mirror.identifier = @"mirror";
+    mirror.state = [self.controls[@"mirror"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
+    self.mirrorButton = mirror;
+    [stack addArrangedSubview:mirror];
+    return scroll;
+}
+
 - (void)controlChanged:(id)sender {
     NSString *key = [sender identifier];
     if ([sender isKindOfClass:NSSlider.class]) {
         self.controls[key] = @([sender doubleValue]);
         [self updateReadoutForSlider:sender];
     }
+    else if ([sender isKindOfClass:NSPopUpButton.class]) {
+        id value = [[sender selectedItem] representedObject];
+        NSString *selected = [value isKindOfClass:NSString.class] ? value : [sender titleOfSelectedItem];
+        self.controls[key] = selected;
+        if ([key isEqualToString:@"glyphMode"]) {
+            BOOL mirror = MatrixCodePreferredMirrorForGlyphMode(selected);
+            self.controls[@"mirror"] = @(mirror);
+            self.mirrorButton.state = mirror ? NSControlStateValueOn : NSControlStateValueOff;
+        }
+    }
     else if ([sender isKindOfClass:NSButton.class]) self.controls[key] = @([sender state] == NSControlStateValueOn);
-    else if ([sender isKindOfClass:NSPopUpButton.class]) self.controls[key] = [sender titleOfSelectedItem];
     [self draftDidChange];
 }
 

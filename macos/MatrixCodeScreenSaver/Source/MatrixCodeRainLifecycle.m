@@ -24,7 +24,13 @@ float MatrixCodeRainRampEase(float progress) {
     return velocity * edge / 2.0f + velocity * (p - edge);
 }
 
-NSInteger MatrixCodeRainGlyphIndex(uint32_t key) {
+NSInteger MatrixCodeRainGlyphIndex(uint32_t key, NSString *glyphMode) {
+    float pick = MatrixCodeRainUnit(key ^ 0x68e31da4U);
+    if ([glyphMode isEqualToString:@"binary"]) return 56 + (NSInteger)(pick * 2);
+    if ([glyphMode isEqualToString:@"katakana"]) return (NSInteger)(pick * 56);
+    if ([glyphMode isEqualToString:@"digits"]) return 56 + (NSInteger)(pick * 10);
+    if ([glyphMode isEqualToString:@"latin"]) return 66 + (NSInteger)(pick * 26);
+    if ([glyphMode isEqualToString:@"symbols"]) return 92 + (NSInteger)(pick * 7);
     // Match the web glyph-set group weights: Katakana 80%, digits 11%,
     // Latin 5%, symbols 4%. A second hash chooses inside the selected group.
     float group = MatrixCodeRainUnit(key ^ 0xb5297a4dU);
@@ -37,7 +43,7 @@ NSInteger MatrixCodeRainGlyphIndex(uint32_t key) {
     } else if (group >= 0.80f) {
         start = 56; count = 10;
     }
-    return start + (NSInteger)(MatrixCodeRainUnit(key ^ 0x68e31da4U) * count);
+    return start + (NSInteger)(pick * count);
 }
 
 static float MatrixCodeRainInverseRampEase(float value) {

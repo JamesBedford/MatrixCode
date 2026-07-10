@@ -374,7 +374,8 @@ html.mx-native-config .mx-panel {
   color: var(--mx-label);
 }
 .mx-modal input[type="text"],
-.mx-modal input[type="number"] {
+.mx-modal input[type="number"],
+.mx-modal select {
   font-family: var(--mx-font);
   font-size: 12px;
   color: var(--mx-green);
@@ -382,6 +383,9 @@ html.mx-native-config .mx-panel {
   border: 1px solid var(--mx-border);
   border-radius: 5px;
   padding: 6px 8px;
+}
+.mx-modal select {
+  cursor: pointer;
 }
 .mx-modal input[type="text"] {
   width: 100%;
@@ -397,6 +401,27 @@ html.mx-native-config .mx-panel {
 }
 .mx-modal input:disabled {
   opacity: 0.35;
+}
+.mx-field--stacked {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+.mx-field-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.mx-field-value {
+  color: var(--mx-green);
+  font-variant-numeric: tabular-nums;
+}
+.mx-modal input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--mx-green);
 }
 .mx-icon-btn {
   appearance: none;

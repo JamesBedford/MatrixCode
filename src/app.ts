@@ -12,11 +12,13 @@ import { computeLanes, tierCap, seedForLayer, MAX_LANES, type Lane } from "./sim
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
 import { getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
+import { glyphFontFamily } from "./config/glyphFonts.ts";
 import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
 import { StateTexture } from "./gl/stateTexture.ts";
 import { Renderer, type ExtraLayer } from "./gl/renderer.ts";
 import { AdaptiveResolution } from "./gl/adaptiveResolution.ts";
 import { ControlsPanel } from "./ui/controlsPanel.ts";
+import { CharacterSettingsEditor } from "./ui/characterSettingsEditor.ts";
 import { applyFavicon } from "./ui/favicon.ts";
 import { IntroStore, sanitizeIntro, toTypeConfig, type IntroScript } from "./config/introStore.ts";
 import { IntroEditor } from "./ui/introEditor.ts";
@@ -24,6 +26,8 @@ import { MessagesStore } from "./config/messagesStore.ts";
 import { MessagesEditor } from "./ui/messagesEditor.ts";
 import { CountdownStore } from "./config/countdownStore.ts";
 import { CountdownEditor } from "./ui/countdownEditor.ts";
+import { loadUiState, setActiveSettingsSurface, type ActiveSettingsSurface } from "./config/uiState.ts";
+import { MODAL_OPEN_CHANGE_EVENT } from "./ui/modalKit.ts";
 import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
 import { stepsToAdvance, extractSlice } from "./multimonitor/multiMonitorGrid.ts";
 import {
@@ -170,7 +174,7 @@ export async function mountMatrixRain(
   }
 
   // ---------- GPU path ----------
-  const glyphSet = createGlyphSet();
+  const glyphSet = createGlyphSet(controls.get().glyphMode);
   let atlas: GlyphAtlas;
   let sim: RainSim;
   let stateTex: StateTexture;
@@ -257,8 +261,16 @@ export async function mountMatrixRain(
     extraActive.fill(false);
   };
 
+  const atlasOptions = (): Parameters<typeof buildGlyphAtlas>[1] => ({
+    chars: glyphSet.chars,
+    mirror: controls.get().mirror,
+    fontFamily: glyphFontFamily(controls.get().glyphFont),
+    cellPx: ATLAS_CELL_PX,
+    mirrorExcludeFrom: glyphSet.ranges.message.start,
+  });
+
   const buildGpu = async (): Promise<void> => {
-    atlas = await buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX, mirrorExcludeFrom: glyphSet.ranges.message.start });
+    atlas = await buildGlyphAtlas(gl, atlasOptions());
     sim = new RainSim({ cols: grid.cols, rows: grid.rows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: BASE_SEED });
     stateTex = new StateTexture(gl, grid.cols, grid.rows);
     // Pre-allocate the overlap-layer pool (memory is tiny; each is a cols×rows sim + state texture).
@@ -469,18 +481,62 @@ export async function mountMatrixRain(
     });
   }
 
+  let characterEditor: CharacterSettingsEditor | null = null;
+  if (!panelConfig) {
+    characterEditor = new CharacterSettingsEditor(container, controls);
+  }
+
+  const bindSettingsSurface = (modal: { el: HTMLElement } | null, surface: ActiveSettingsSurface): void => {
+    modal?.el.addEventListener(MODAL_OPEN_CHANGE_EVENT, (event) => {
+      const open = (event as CustomEvent<{ open: boolean }>).detail.open;
+      if (open) {
+        setActiveSettingsSurface(surface);
+      } else if (loadUiState().activeSettingsSurface === surface) {
+        setActiveSettingsSurface(null);
+      }
+    });
+  };
+  bindSettingsSurface(characterEditor, "characters");
+  bindSettingsSurface(editor, "intro");
+  bindSettingsSurface(messagesEditor, "messages");
+  bindSettingsSurface(countdownEditor, "countdown");
+
+  const openSettingsSurface = (surface: ActiveSettingsSurface): void => {
+    if (surface === "characters" && characterEditor) characterEditor.open();
+    else if (surface === "intro" && editor) editor.open();
+    else if (surface === "messages" && messagesEditor) messagesEditor.open();
+    else if (surface === "countdown" && countdownEditor) countdownEditor.open();
+    else setActiveSettingsSurface(null);
+  };
+
   const panel = panelConfig
     ? null
     : new ControlsPanel(container, controls, {
         onToggleFullscreen: () => toggleFullscreen(),
         onEnterMultiMonitor: () => { void enterMultiMonitor(); },
         onReplayIntro: () => { if (introStore) startIntroSequence(introStore.get()); },
-        onEditIntro: () => editor?.open(),
-        onEditMessages: () => messagesEditor?.open(),
-        onEditCountdown: () => countdownEditor?.open(),
+        onEditCharacters: () => openSettingsSurface("characters"),
+        onEditIntro: () => openSettingsSurface("intro"),
+        onEditMessages: () => openSettingsSurface("messages"),
+        onEditCountdown: () => openSettingsSurface("countdown"),
       });
 
   const reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  const activeExtraLayers = (): ExtraLayer[] => {
+    const layers: ExtraLayer[] = [];
+    const c = controls.get();
+    for (const lane of computeLanes(c.density, c.allowOverlap, tierCap(c.quality))) {
+      if (lane.index === 0) continue;
+      const j = lane.index - 1;
+      const s = extraSims[j];
+      const t = extraTexs[j];
+      if (!s || !t || !extraActive[j]) continue;
+      t.upload(s.state);
+      layers.push({ texture: t.texture, colOffset: lane.offset });
+    }
+    return layers;
+  };
 
   // Draw one frame from the current sim state. In multi-monitor mode it paints this
   // window's slice of the shared grid; otherwise the whole grid.
@@ -493,7 +549,7 @@ export async function mountMatrixRain(
     } else {
       stateTex.upload(sim.state);
     }
-    renderer.renderFrame(paramsOf(controls.get()), grid);
+    renderer.renderFrame(paramsOf(controls.get()), grid, multiMonitorState ? undefined : activeExtraLayers());
   };
   const renderStatic = paint;
 
@@ -801,25 +857,54 @@ export async function mountMatrixRain(
     messagesEditor?.syncEnabled(doc.enabled);
   };
 
+  const isTextInputEvent = (e: KeyboardEvent): boolean => {
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    return target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement;
+  };
+
   const onKey = (e: KeyboardEvent): void => {
+    if (isTextInputEvent(e)) return;
+    let handled = false;
     if (multiMonitorState) {
-      if (e.key === "Escape") exitMultiMonitor(true);
+      if (e.key === "Escape") {
+        exitMultiMonitor(true);
+        handled = true;
+      }
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       return;
     }
-    if (e.key === "f" || e.key === "F") toggleFullscreen();
-    else if (e.key === "h" || e.key === "H") panel?.toggleVisible();
-    else if (e.key === "i" || e.key === "I") editor?.open();
-    else if (e.key === "m" || e.key === "M") messagesEditor?.open();
-    else if (e.key === "c" || e.key === "C") countdownEditor?.open();
-    else if (e.key === "n" || e.key === "N") toggleMessages();
-    else if (e.key === "-" || e.key === "_") nudgeDensity(1 / DENSITY_KEY_STEP);
-    else if (e.key === "=" || e.key === "+") nudgeDensity(DENSITY_KEY_STEP);
+    if (e.key === "f" || e.key === "F") { toggleFullscreen(); handled = true; }
+    else if (e.key === "h" || e.key === "H") { panel?.toggleVisible(); handled = true; }
+    else if (e.key === "i" || e.key === "I") { openSettingsSurface("intro"); handled = true; }
+    else if (e.key === "m" || e.key === "M") { openSettingsSurface("messages"); handled = true; }
+    else if (e.key === "c" || e.key === "C") { openSettingsSurface("countdown"); handled = true; }
+    else if (e.key === "n" || e.key === "N") { toggleMessages(); handled = true; }
+    else if (e.key === "-" || e.key === "_") { nudgeDensity(1 / DENSITY_KEY_STEP); handled = true; }
+    else if (e.key === "=" || e.key === "+") { nudgeDensity(DENSITY_KEY_STEP); handled = true; }
     else if (e.key === "p" || e.key === "P") {
-      userPaused = !userPaused;
-      if (userPaused) stop();
-      else start();
+      handled = true;
+      if (!e.repeat) {
+        userPaused = !userPaused;
+        if (userPaused) {
+          stop();
+          renderStatic();
+        } else {
+          start();
+        }
+      }
     }
-    else if (e.key === "Escape") message?.skip();
+    else if (e.key === "Escape") { message?.skip(); handled = true; }
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
   };
   window.addEventListener("keydown", onKey);
 
@@ -902,8 +987,11 @@ export async function mountMatrixRain(
     if (changed.has("glyphScale") && !multiMonitorState) {
       applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
     }
-    if (changed.has("mirror")) {
-      void buildGlyphAtlas(gl, { chars: glyphSet.chars, mirror: controls.get().mirror, cellPx: ATLAS_CELL_PX, mirrorExcludeFrom: glyphSet.ranges.message.start }).then(
+    if (changed.has("glyphMode")) {
+      glyphSet.setGlyphMode(controls.get().glyphMode);
+    }
+    if (changed.has("mirror") || changed.has("glyphFont")) {
+      void buildGlyphAtlas(gl, atlasOptions()).then(
         (a) => {
           const previous = atlas;
           atlas = a;
@@ -964,6 +1052,8 @@ export async function mountMatrixRain(
     start();
     maybePlayIntro();
     if (!running) renderStatic(); // reduced-motion: ensure one frame is shown
+    const restoredSurface = loadUiState().activeSettingsSurface;
+    if (restoredSurface) openSettingsSurface(restoredSurface);
     if (!nativeHosted) void prefetchScreens(); // warm screen details before multi-monitor mode is requested
   }
 
@@ -992,6 +1082,7 @@ export async function mountMatrixRain(
       editor?.destroy();
       messagesEditor?.destroy();
       countdownEditor?.destroy();
+      characterEditor?.destroy();
       panel?.destroy();
       message?.destroy();
       renderer.dispose();

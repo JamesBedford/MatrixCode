@@ -19,7 +19,7 @@
     NSUInteger groups[4] = {0, 0, 0, 0};
     const NSUInteger samples = 100000;
     for (uint32_t key = 0; key < samples; key++) {
-        NSInteger glyph = MatrixCodeRainGlyphIndex(key);
+        NSInteger glyph = MatrixCodeRainGlyphIndex(key, @"matrix");
         XCTAssertGreaterThanOrEqual(glyph, 0);
         XCTAssertLessThan(glyph, 99);
         if (glyph < 56) groups[0]++;
@@ -31,6 +31,17 @@
     for (NSUInteger group = 0; group < 4; group++) {
         XCTAssertEqualWithAccuracy((double)groups[group] / samples, expected[group], 0.005);
     }
+}
+
+- (void)testBinaryGlyphModeOnlyPicksZeroAndOne {
+    NSMutableSet<NSNumber *> *glyphs = [NSMutableSet set];
+    for (uint32_t key = 0; key < 10000; key++) {
+        NSInteger glyph = MatrixCodeRainGlyphIndex(key, @"binary");
+        XCTAssertGreaterThanOrEqual(glyph, 56);
+        XCTAssertLessThanOrEqual(glyph, 57);
+        [glyphs addObject:@(glyph)];
+    }
+    XCTAssertEqual(glyphs.count, (NSUInteger)2);
 }
 
 - (void)testNewlyAdmittedStreamsEnterAboveVirtualDesktop {

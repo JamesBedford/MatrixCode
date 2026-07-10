@@ -1,5 +1,5 @@
 import type { Rng } from "../util/rng.ts";
-import { MAX_GLYPHS } from "../types.ts";
+import { MAX_GLYPHS, type GlyphMode } from "../types.ts";
 
 // The authentic Matrix glyph mix, in canonical index order. Katakana dominate;
 // digits are common; Latin and symbols are a deliberate minority (over-using
@@ -50,6 +50,8 @@ export interface GlyphSet {
     /** The dedicated, always-unmirrored message glyphs (excluded from randomGlyphIndex). */
     message: GroupRange;
   };
+  glyphMode: GlyphMode;
+  setGlyphMode(mode: GlyphMode): void;
   /** Pick a glyph index, weighted so katakana dominate (message glyphs excluded). */
   randomGlyphIndex(rng: Rng): number;
   /** Glyph index for a message character, or null if it has no glyph (space/unsupported). */
@@ -58,8 +60,9 @@ export interface GlyphSet {
 
 // Group selection weights — katakana ~80%, digits ~11%, latin ~5%, symbols ~4%.
 const GROUP_WEIGHTS = [0.8, 0.11, 0.05, 0.04] as const;
+const GLYPH_MODES: GlyphMode[] = ["matrix", "katakana", "binary", "digits", "latin", "symbols"];
 
-export function createGlyphSet(): GlyphSet {
+export function createGlyphSet(initialMode: GlyphMode = "matrix"): GlyphSet {
   const chars = [...KATAKANA, ...DIGITS, ...LATIN, ...SYMBOLS, ...MESSAGE_CHARS];
   if (chars.length > MAX_GLYPHS) {
     chars.length = MAX_GLYPHS; // hard cap so an index fits in one byte
@@ -89,12 +92,26 @@ export function createGlyphSet(): GlyphSet {
     const ch = MESSAGE_CHARS[i]!;
     if (!charIndex.has(ch)) charIndex.set(ch, messageStart + i);
   }
+  let glyphMode: GlyphMode = GLYPH_MODES.includes(initialMode) ? initialMode : "matrix";
+  const pickFromRange = (rng: Rng, range: GroupRange): number =>
+    range.start + Math.floor(rng() * range.count);
 
   return {
     chars,
     count: chars.length,
     ranges,
+    get glyphMode(): GlyphMode {
+      return glyphMode;
+    },
+    setGlyphMode(mode: GlyphMode): void {
+      glyphMode = GLYPH_MODES.includes(mode) ? mode : "matrix";
+    },
     randomGlyphIndex(rng: Rng): number {
+      if (glyphMode === "binary") return ranges.digits.start + Math.floor(rng() * 2);
+      if (glyphMode === "katakana") return pickFromRange(rng, ranges.katakana);
+      if (glyphMode === "digits") return pickFromRange(rng, ranges.digits);
+      if (glyphMode === "latin") return pickFromRange(rng, ranges.latin);
+      if (glyphMode === "symbols") return pickFromRange(rng, ranges.symbols);
       // Group pick: identical arithmetic to the original weightedPick (r = rng()*total, subtract
       // weights left-to-right, first to go negative wins, last group on fallthrough) so the rng
       // draw sequence — and thus the rain — is byte-identical, just without the per-call re-sum.

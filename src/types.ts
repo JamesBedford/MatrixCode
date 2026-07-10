@@ -24,6 +24,8 @@ export type PresetName =
   | "blue"
   | "white";
 export type QualityTier = "low" | "med" | "high";
+export type GlyphMode = "matrix" | "katakana" | "binary" | "digits" | "latin" | "symbols";
+export type GlyphFont = "matrix" | "gothic" | "mono" | "terminal" | "rounded" | "mincho";
 
 /** Live, user-facing tunables bound to the controls panel + localStorage. */
 export interface Controls {
@@ -39,6 +41,10 @@ export interface Controls {
   glyphRate: number;
   /** Glyph size multiplier — scales the grid cell size (bigger = larger glyphs, fewer columns). */
   glyphScale: number;
+  /** Which character family the ambient rain draws from. Messages keep their dedicated readable glyphs. */
+  glyphMode: GlyphMode;
+  /** Font preset used to rasterize the glyph atlas. */
+  glyphFont: GlyphFont;
   /** Bloom strength. */
   glow: number;
   /** Extra HDR push for white-hot leading glyphs (how hard they bloom). */

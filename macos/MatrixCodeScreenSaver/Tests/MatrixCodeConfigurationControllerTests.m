@@ -2,6 +2,10 @@
 
 #import "MatrixCodeConfigurationController.h"
 
+@interface MatrixCodeConfigurationController (Testing)
+- (void)controlChanged:(id)sender;
+@end
+
 static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identifier) {
     if ([view.identifier isEqualToString:identifier]) return view;
     for (NSView *subview in view.subviews) {
@@ -25,9 +29,9 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
         if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
     }
     XCTAssertNotNil(tabs);
-    XCTAssertEqual(tabs.numberOfTabViewItems, 4);
+    XCTAssertEqual(tabs.numberOfTabViewItems, 5);
     XCTAssertEqualObjects([tabs.tabViewItems valueForKey:@"label"],
-                          (@[@"Rain", @"Intro", @"Messages", @"Countdowns"]));
+                          (@[@"Rain", @"Characters", @"Intro", @"Messages", @"Countdowns"]));
 }
 
 - (void)testEveryFeatureTabStartsAtTopOfItsForm {
@@ -62,8 +66,8 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
     }
     NSView *rain = tabs.tabViewItems.firstObject.view;
     NSArray<NSString *> *keys = @[
-        @"density", @"rampUpMs", @"trailLength", @"speed", @"glyphRate",
-        @"glyphScale", @"glow", @"leadBrightness", @"vignette",
+        @"density", @"rampUpMs", @"trailLength", @"speed", @"glyphScale",
+        @"glow", @"leadBrightness", @"vignette",
     ];
     for (NSString *key in keys) {
         NSSlider *slider = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, key);
@@ -80,6 +84,71 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
     speed.doubleValue = 2.25;
     [speed sendAction:speed.action to:speed.target];
     XCTAssertEqualObjects(speedReadout.stringValue, @"2.25");
+}
+
+- (void)testCharacterTabContainsGlyphSettings {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSTabView *tabs = nil;
+    for (NSView *view in controller.window.contentView.subviews) {
+        if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
+    }
+    NSView *characters = tabs.tabViewItems[1].view;
+    NSPopUpButton *glyphMode = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(characters, @"glyphMode");
+    NSPopUpButton *glyphFont = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(characters, @"glyphFont");
+    NSSlider *glyphRate = (NSSlider *)MatrixCodeDescendantWithIdentifier(characters, @"glyphRate");
+    NSButton *mirror = (NSButton *)MatrixCodeDescendantWithIdentifier(characters, @"mirror");
+    XCTAssertTrue([glyphMode isKindOfClass:NSPopUpButton.class]);
+    XCTAssertTrue([glyphFont isKindOfClass:NSPopUpButton.class]);
+    XCTAssertTrue([glyphRate isKindOfClass:NSSlider.class]);
+    XCTAssertTrue([mirror isKindOfClass:NSButton.class]);
+}
+
+- (void)testGlyphModeSelectionAppliesPreferredMirrorState {
+    __block NSDictionary<NSString *, NSString *> *previewValues = nil;
+    id observer = [NSNotificationCenter.defaultCenter
+        addObserverForName:MatrixCodePreviewValuesDidChangeNotification
+                    object:nil
+                     queue:nil
+                usingBlock:^(NSNotification *notification) {
+        previewValues = notification.userInfo[MatrixCodePreviewValuesKey];
+    }];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSTabView *tabs = nil;
+    for (NSView *view in controller.window.contentView.subviews) {
+        if ([view isKindOfClass:NSTabView.class]) tabs = (NSTabView *)view;
+    }
+    NSView *characters = tabs.tabViewItems[1].view;
+    NSPopUpButton *glyphMode = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(characters, @"glyphMode");
+    NSButton *mirror = (NSButton *)MatrixCodeDescendantWithIdentifier(characters, @"mirror");
+    XCTAssertTrue([glyphMode isKindOfClass:NSPopUpButton.class]);
+    XCTAssertTrue([mirror isKindOfClass:NSButton.class]);
+    NSDictionary<NSString *, NSNumber *> *expected = @{
+        @"matrix": @YES,
+        @"katakana": @YES,
+        @"binary": @NO,
+        @"digits": @NO,
+        @"latin": @NO,
+        @"symbols": @NO,
+    };
+
+    for (NSString *mode in @[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"]) {
+        BOOL expectedMirror = [expected[mode] boolValue];
+        mirror.state = expectedMirror ? NSControlStateValueOff : NSControlStateValueOn;
+        [controller controlChanged:mirror];
+
+        [glyphMode selectItemWithTitle:mode];
+        XCTAssertEqualObjects(glyphMode.titleOfSelectedItem, mode);
+        [controller controlChanged:glyphMode];
+
+        XCTAssertEqual(mirror.state == NSControlStateValueOn, expectedMirror, @"%@", mode);
+        NSData *data = [previewValues[@"mx-controls"] dataUsingEncoding:NSUTF8StringEncoding];
+        NSDictionary *controls = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        XCTAssertEqualObjects(controls[@"glyphMode"], mode);
+        XCTAssertEqual([controls[@"mirror"] boolValue], expectedMirror, @"%@", mode);
+    }
+    [NSNotificationCenter.defaultCenter removeObserver:observer];
 }
 
 - (void)testRainSliderPublishesDraftToLivePreview {
