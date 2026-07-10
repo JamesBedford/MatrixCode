@@ -1,9 +1,10 @@
 # MatrixCode for macOS
 
-`MatrixCode.saver` is an independent, Apple-Silicon macOS 13+ implementation of
-MatrixCode. Playback uses AppKit, ScreenSaver.framework, and Metal. Its Options
-sheet is native AppKit. The bundle contains no TypeScript, HTML, WebGL,
-JavaScript runtime, or WKWebView.
+`MatrixCode.saver` and `MatrixCode.app` are independent, Apple-Silicon macOS 13+
+implementations of MatrixCode. Playback uses AppKit and Metal, with
+ScreenSaver.framework used for the saver entry point. The Options sheet is
+native AppKit. The bundles contain no TypeScript, HTML, WebGL, JavaScript
+runtime, or WKWebView.
 
 The web and macOS versions intentionally remain separate products. They share
 the same feature contract and persisted JSON keys, but the screen saver does
@@ -48,9 +49,10 @@ From this directory:
 ./build.sh
 ```
 
-The release products are written to `build/MatrixCode.saver` and
-`build/MatrixCode.saver.zip`. The zip is copied directly from Xcode's signed
-temporary output and is the safest artifact to move out of a cloud-synced
+The release products are written to `build/MatrixCode.saver`,
+`build/MatrixCode.saver.zip`, `build/MatrixCode.app`, and
+`build/MatrixCode.app.zip`. The zips are copied directly from Xcode's signed
+temporary output and are the safest artifacts to move out of a cloud-synced
 working tree.
 
 The project is generated from `project.yml` with XcodeGen. Source files live in
@@ -65,19 +67,32 @@ regression tests live in `Tests/`.
 
 Alternatively, expand `build/MatrixCode.saver.zip` outside the cloud-synced
 working tree and double-click the resulting saver. Select **MatrixCode** in
-System Settings → Screen Saver. Use **Options…** to edit the rain controls,
-viewer name, intro, in-rain messages, and countdown/countup moments.
+System Settings → Screen Saver. To run it as a standalone app, open
+`build/MatrixCode.app` or expand and open `build/MatrixCode.app.zip`.
+
+Use **Options…** in System Settings, or **MatrixCode → Settings…** in the
+standalone app, to edit the rain controls, viewer name, intro, in-rain messages,
+and countdown/countup moments.
 
 The Options sheet is transactional: **OK** saves all changes and **Cancel**
-discards them. During normal screen-saver playback, macOS treats mouse and
-keyboard input as an exit request, so fullscreen and multi-display presentation
-are automatic rather than gesture-driven.
+discards them. In the standalone app, double-click the rain to toggle native
+fullscreen and triple-click it to start the continuous multi-monitor
+presentation; the same commands are also available from the **View** menu.
+During normal screen-saver playback, macOS treats mouse and keyboard input as an
+exit request, so fullscreen and multi-display presentation are automatic rather
+than gesture-driven.
 
 ## Native architecture
 
-- `MatrixCodeScreenSaverView` is the ScreenSaver.framework entry point. It owns
-  lifecycle setup, preview/fullscreen differences, first-responder handling, and
-  intro skip gestures.
+- `MatrixCodeRainHostView` owns lifecycle setup, the shared Metal/intro view
+  stack, preference reloads, first-responder handling, intro skip gestures, and
+  preview/fullscreen/standalone mode differences.
+- `MatrixCodeScreenSaverView` is the thin ScreenSaver.framework entry point and
+  forwards animation/configuration callbacks into `MatrixCodeRainHostView`.
+- `MatrixCodeAppDelegate` is the thin standalone app entry point. It builds the
+  standard menu bar, creates resizable native windows and multi-monitor
+  presentation windows, and embeds
+  `MatrixCodeRainHostView`.
 - `MatrixCodeMetalView` owns the Metal device, render loop, rain state,
   multi-display virtual-grid mapping, themes, glow, scanlines, vignette, and
   in-rain message rendering.

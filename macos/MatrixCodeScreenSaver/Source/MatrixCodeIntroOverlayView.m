@@ -71,7 +71,7 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     id rainDuringIntro = intro[@"rainDuringIntro"];
     _rainDuringIntro = [rainDuringIntro isKindOfClass:NSNumber.class] &&
         CFGetTypeID((__bridge CFTypeRef)rainDuringIntro) == CFBooleanGetTypeID()
-        ? [rainDuringIntro boolValue] : YES;
+        ? [rainDuringIntro boolValue] : NO;
     _postIntroDelay = MatrixCodeClampedNumber(intro, @"postIntroDelayMs", 0, 0, 10000) / 1000.0;
     _totalDuration = _startDelay + _fadeDuration;
     for (NSUInteger index = 0; index < _lines.count; index++) {

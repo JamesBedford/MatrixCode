@@ -27,7 +27,7 @@ export const DEFAULT_INTRO: IntroScript = {
   charMs: DEFAULT_TYPE_CONFIG.charMs,
   startDelayMs: DEFAULT_TYPE_CONFIG.startDelayMs,
   fadeOutMs: DEFAULT_TYPE_CONFIG.fadeOutMs,
-  rainDuringIntro: true,
+  rainDuringIntro: false,
   postIntroDelayMs: 0,
 };
 

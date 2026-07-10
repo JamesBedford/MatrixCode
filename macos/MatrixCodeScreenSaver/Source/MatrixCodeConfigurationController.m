@@ -78,7 +78,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                                             NSWindowStyleMaskClosable |
                                                             NSWindowStyleMaskResizable
                                                     backing:NSBackingStoreBuffered defer:NO];
-    window.title = @"MatrixCode Preview";
+    window.title = @"Matrix Code Preview";
     window.minSize = NSMakeSize(480, 300);
     self = [super initWithWindow:window];
     if (!self) return nil;
@@ -184,7 +184,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 860, 680)
                                                   styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskResizable
                                                     backing:NSBackingStoreBuffered defer:NO];
-    window.title = @"MatrixCode Options";
+    window.title = @"Matrix Code Options";
     window.minSize = NSMakeSize(700, 540);
     self = [super initWithWindow:window];
     if (!self) return nil;
@@ -258,7 +258,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         @"charMs": @(MatrixCodeSettingNumber(storedIntro, @"charMs", 95, 10, 500)),
         @"startDelayMs": @(MatrixCodeSettingNumber(storedIntro, @"startDelayMs", 600, 0, 10000)),
         @"fadeOutMs": @(MatrixCodeSettingNumber(storedIntro, @"fadeOutMs", 900, 0, 10000)),
-        @"rainDuringIntro": @(MatrixCodeSettingBool(storedIntro, @"rainDuringIntro", YES)),
+        @"rainDuringIntro": @(MatrixCodeSettingBool(storedIntro, @"rainDuringIntro", NO)),
         @"postIntroDelayMs": @(MatrixCodeSettingNumber(storedIntro, @"postIntroDelayMs", 0, 0, 10000)),
     } mutableCopy];
     NSArray *storedIntroLines = [storedIntro[@"lines"] isKindOfClass:NSArray.class]
@@ -515,7 +515,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         button.state = [self.controls[toggle[1]] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
         [stack addArrangedSubview:button];
     }
-    NSButton *preview = [NSButton buttonWithTitle:@"Preview Rain" target:self action:@selector(previewRain:)];
+    NSButton *preview = [NSButton buttonWithTitle:@"Preview" target:self action:@selector(previewRain:)];
     [stack addArrangedSubview:preview];
     return scroll;
 }

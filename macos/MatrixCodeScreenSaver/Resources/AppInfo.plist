@@ -8,8 +8,6 @@
 	<string>Matrix Code</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
-	<key>CFBundleIconFile</key>
-	<string>MatrixCode</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -17,7 +15,7 @@
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
-	<string>BNDL</string>
+	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>2.0</string>
 	<key>CFBundleVersion</key>
@@ -27,6 +25,6 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License</string>
 	<key>NSPrincipalClass</key>
-	<string>MatrixCodeScreenSaverView</string>
+	<string>NSApplication</string>
 </dict>
 </plist>

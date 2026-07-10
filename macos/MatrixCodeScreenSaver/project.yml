@@ -21,14 +21,18 @@ targets:
     platform: macOS
     sources:
       - path: Source
+      - path: Resources/Assets.xcassets
+      - path: Resources/MatrixCode.icns
+        buildPhase: resources
       - path: Resources/MatrixCodeShaders.msl
         buildPhase: resources
     info:
       path: Resources/Info.plist
       properties:
         CFBundleDevelopmentRegion: en
-        CFBundleDisplayName: MatrixCode
+        CFBundleDisplayName: Matrix Code
         CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        CFBundleIconFile: MatrixCode
         CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
         CFBundleInfoDictionaryVersion: "6.0"
         CFBundleName: "$(PRODUCT_NAME)"
@@ -51,6 +55,42 @@ targets:
         MACH_O_TYPE: mh_bundle
         SKIP_INSTALL: NO
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @loader_path/../Frameworks"
+  MatrixCodeApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: Source
+      - path: AppSource
+      - path: Resources/Assets.xcassets
+      - path: Resources/MatrixCodeShaders.msl
+        buildPhase: resources
+    info:
+      path: Resources/AppInfo.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleDisplayName: Matrix Code
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: "$(PRODUCT_NAME)"
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "2.0"
+        CFBundleVersion: "2"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSHumanReadableCopyright: MIT License
+        NSPrincipalClass: NSApplication
+    dependencies:
+      - sdk: AppKit.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: ScreenSaver.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.matrixcode.app
+        PRODUCT_NAME: MatrixCode
+        SKIP_INSTALL: NO
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/Source"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
   MatrixCodeNativeTests:
     type: bundle.unit-test
     platform: macOS
@@ -61,6 +101,7 @@ targets:
       - path: Source/MatrixCodeIntroOverlayView.m
       - path: Source/MatrixCodeMetalView.m
       - path: Source/MatrixCodePreferences.m
+      - path: Source/MatrixCodeRainHostView.m
       - path: Source/MatrixCodeRainLifecycle.m
       - path: Source/MatrixCodeSession.m
       - path: Source/MatrixCodeTokenResolver.m
@@ -84,6 +125,7 @@ schemes:
     build:
       targets:
         MatrixCode: all
+        MatrixCodeApp: all
         MatrixCodeNativeTests: [test]
     test:
       targets:

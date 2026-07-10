@@ -70,7 +70,7 @@ describe("toTypeConfig", () => {
 describe("sanitizeIntro — rain fields", () => {
   it("defaults the rain fields when missing", () => {
     const s = sanitizeIntro({});
-    expect(s.rainDuringIntro).toBe(true);
+    expect(s.rainDuringIntro).toBe(false);
     expect(s.postIntroDelayMs).toBe(0);
   });
 
@@ -81,9 +81,10 @@ describe("sanitizeIntro — rain fields", () => {
     expect(lo.postIntroDelayMs).toBe(0);
   });
 
-  it("coerces rainDuringIntro to a boolean, defaulting non-booleans to true", () => {
+  it("coerces rainDuringIntro to a boolean, defaulting non-booleans to false", () => {
     expect(sanitizeIntro({ rainDuringIntro: false }).rainDuringIntro).toBe(false);
-    expect(sanitizeIntro({ rainDuringIntro: "no" }).rainDuringIntro).toBe(true);
+    expect(sanitizeIntro({ rainDuringIntro: true }).rainDuringIntro).toBe(true);
+    expect(sanitizeIntro({ rainDuringIntro: "no" }).rainDuringIntro).toBe(false);
   });
 });
 

@@ -43,6 +43,18 @@
     XCTAssertFalse(view.hasIntro);
 }
 
+- (void)testDefaultIntroWaitsForRainUntilAfterIntro {
+    NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    MatrixCodeTokenResolver *resolver =
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:@{} runStartDate:start];
+    MatrixCodeIntroOverlayView *view =
+        [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSZeroRect
+                                            storedValues:@{}
+                                           tokenResolver:resolver
+                                              completion:^{}];
+    XCTAssertFalse(view.rainDuringIntro);
+}
+
 - (void)testSkipCompletesPlayingIntroImmediately {
     NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
     MatrixCodeTokenResolver *resolver =
