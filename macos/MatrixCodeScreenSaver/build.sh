@@ -20,6 +20,12 @@ SOURCE_SAVER="${DERIVED_DATA}/Build/Products/Release/MatrixCode.saver"
 SOURCE_APP="${DERIVED_DATA}/Build/Products/Release/MatrixCode.app"
 codesign --verify --deep --strict "${SOURCE_SAVER}"
 codesign --verify --deep --strict "${SOURCE_APP}"
+for PRODUCT in "${SOURCE_SAVER}" "${SOURCE_APP}"; do
+  if [[ ! -f "${PRODUCT}/Contents/Resources/MatrixCodeShaders.msl" ]]; then
+    echo "error: ${PRODUCT:t} is missing the native Metal shader resource."
+    exit 1
+  fi
+done
 if otool -L "${SOURCE_SAVER}/Contents/MacOS/MatrixCode" | grep -q WebKit ||
    otool -L "${SOURCE_APP}/Contents/MacOS/MatrixCode" | grep -q WebKit; then
   echo "error: Native macOS products unexpectedly link WebKit."

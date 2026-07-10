@@ -392,6 +392,26 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     XCTAssertFalse([messages[@"enabled"] boolValue]);
 }
 
+- (void)testNKeyTreatsNumericEnabledAsInvalidLikeWebSanitizer {
+    [self.preferences commitValues:@{
+        @"mx-messages": MatrixCodeJSONString(@{
+            @"enabled": @1,
+            @"messages": @[@"NEO"],
+        }),
+    }];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+
+    [hostView keyDown:MatrixCodeLetterKeyEvent(@"n")];
+
+    NSDictionary *messages = MatrixCodeHostStoredMessages(hostView);
+    XCTAssertEqualObjects(messages[@"enabled"], @YES);
+    XCTAssertEqualObjects(messages[@"messages"], @[@"NEO"]);
+}
+
 - (void)testDensityShortcutKeysUseWebMultiplicativeStep {
     [self.preferences commitValues:@{
         @"mx-controls": MatrixCodeJSONString(@{@"density": @2}),

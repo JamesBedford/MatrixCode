@@ -182,7 +182,13 @@ static double MatrixCodeRainHostNumber(NSDictionary *dictionary,
 
 static BOOL MatrixCodeRainHostBool(NSDictionary *dictionary, NSString *key, BOOL fallback) {
     id value = dictionary[key];
-    return [value isKindOfClass:NSNumber.class] ? [value boolValue] : fallback;
+    return [value isKindOfClass:NSNumber.class] &&
+        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()
+        ? [value boolValue] : fallback;
+}
+
+static NSNumber *MatrixCodeRainHostBoolObject(BOOL value) {
+    return (__bridge NSNumber *)(value ? kCFBooleanTrue : kCFBooleanFalse);
 }
 
 static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
@@ -829,7 +835,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
         }
     }
     BOOL enabled = MatrixCodeRainHostBool(messages, @"enabled", NO);
-    messages[@"enabled"] = @(!enabled);
+    messages[@"enabled"] = MatrixCodeRainHostBoolObject(!enabled);
     values[@"mx-messages"] = MatrixCodeRainHostJSONString(messages);
     [self commitShortcutValues:values];
 }

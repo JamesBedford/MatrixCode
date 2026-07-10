@@ -13,6 +13,7 @@
 - (void)moveImage:(NSButton *)sender;
 - (void)moveMessage:(NSButton *)sender;
 - (void)moveMoment:(NSButton *)sender;
+- (void)nudgeDensityByFactor:(double)factor;
 - (void)openEditor:(NSButton *)sender;
 - (NSDictionary<NSString *, NSString *> *)serializedValues;
 - (void)setSettingsPanelVisible:(BOOL)visible immediate:(BOOL)immediate;
@@ -113,6 +114,16 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertTrue([background isKindOfClass:MatrixCodeMetalView.class]);
     XCTAssertFalse(background.isPaused);
     XCTAssertNil([controller valueForKey:@"settingsAnimationTimer"]);
+}
+
+- (void)testSettingsCommitPreservesIntroSeenWrittenAfterControllerOpened {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [self.preferences setImmediateValue:@"1" forKey:@"mx-intro-seen"];
+
+    [controller nudgeDensityByFactor:1.2];
+
+    XCTAssertEqualObjects([self.preferences storedValues][@"mx-intro-seen"], @"1");
 }
 
 - (void)testStandalonePreviewUsesMetalDisplayLinkWithoutDuplicateTimer {
@@ -385,6 +396,105 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertEqual(storedImages.count, (NSUInteger)10);
     XCTAssertEqualObjects(storedImages.firstObject[@"name"], @"Signal");
     XCTAssertEqualObjects(storedImages.firstObject[@"data"], [mask base64EncodedStringWithOptions:0]);
+}
+
+- (void)testImagesEditorMaxVisibilityButtonSetsOnlyVisibilityControls {
+    const uint8_t bytes[] = {0, 255, 255, 0};
+    NSData *mask = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+    NSDictionary *images = @{
+        @"enabled": @NO,
+        @"frequencyMs": @9000,
+        @"persistenceMs": @3000,
+        @"appearMs": @2000,
+        @"disappearMs": @2000,
+        @"flickerOut": @YES,
+        @"brightnessFade": @YES,
+        @"imageScale": @0.25,
+        @"imagePlacementJitter": @0.75,
+        @"images": @[@{@"name": @"Keep Me", @"width": @2, @"height": @2,
+                       @"data": [mask base64EncodedStringWithOptions:0]}],
+    };
+    NSDictionary *controls = @{
+        @"density": @5,
+        @"rampUpMs": @30000,
+        @"trailLength": @0.1,
+        @"trailVariation": @1,
+        @"speed": @2.5,
+        @"glyphScale": @3,
+        @"glow": @2,
+        @"leadBrightness": @2.5,
+        @"vignette": @0.8,
+        @"scanlines": @YES,
+        @"allowOverlap": @YES,
+        @"quality": @"low",
+        @"glyphMode": @"matrix",
+        @"glyphFont": @"matrix",
+        @"glyphRate": @5,
+        @"mirror": @YES,
+        @"preset": @"amber",
+    };
+    NSDictionary *messages = @{
+        @"enabled": @YES,
+        @"messages": @[@"KEEP"],
+        @"frequencyMs": @2222,
+        @"persistenceMs": @3333,
+    };
+    [self.preferences commitValues:@{
+        @"mx-controls": MatrixCodeJSONString(controls),
+        @"mx-images": MatrixCodeJSONString(images),
+        @"mx-messages": MatrixCodeJSONString(messages),
+    }];
+
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSButton *open = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"images");
+    [controller openEditor:open];
+    NSView *card = MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"settings-editor-card-images");
+    NSButton *button = (NSButton *)MatrixCodeDescendantWithIdentifier(card, @"imageMaxVisibility");
+    XCTAssertNotNil(button);
+    XCTAssertEqualObjects(button.title, @"MAX VISIBILITY");
+    [button performClick:nil];
+
+    NSDictionary *storedImages = MatrixCodeJSONDictionary([controller serializedValues][@"mx-images"]);
+    NSDictionary *storedControls = MatrixCodeJSONDictionary([controller serializedValues][@"mx-controls"]);
+    NSDictionary *storedMessages = MatrixCodeJSONDictionary([controller serializedValues][@"mx-messages"]);
+    XCTAssertEqual([storedImages[@"enabled"] boolValue], YES);
+    XCTAssertEqualWithAccuracy([storedImages[@"frequencyMs"] doubleValue], 500, 0.001);
+    XCTAssertEqualWithAccuracy([storedImages[@"persistenceMs"] doubleValue], 60000, 0.001);
+    XCTAssertEqualWithAccuracy([storedImages[@"appearMs"] doubleValue], 0, 0.001);
+    XCTAssertEqualWithAccuracy([storedImages[@"disappearMs"] doubleValue], 0, 0.001);
+    XCTAssertEqual([storedImages[@"flickerOut"] boolValue], NO);
+    XCTAssertEqual([storedImages[@"brightnessFade"] boolValue], NO);
+    XCTAssertEqualWithAccuracy([storedImages[@"imageScale"] doubleValue], 1, 0.001);
+    XCTAssertEqualWithAccuracy([storedImages[@"imagePlacementJitter"] doubleValue], 0, 0.001);
+    XCTAssertEqualObjects([storedImages[@"images"] firstObject][@"name"], @"Keep Me");
+
+    XCTAssertEqualWithAccuracy([storedControls[@"density"] doubleValue], 90, 0.001);
+    XCTAssertEqualWithAccuracy([storedControls[@"rampUpMs"] doubleValue], 0, 0.001);
+    XCTAssertEqualWithAccuracy([storedControls[@"trailLength"] doubleValue], 0.45, 0.001);
+    XCTAssertEqualWithAccuracy([storedControls[@"trailVariation"] doubleValue], 0.2, 0.001);
+    XCTAssertEqualWithAccuracy([storedControls[@"speed"] doubleValue], 0.6, 0.001);
+    XCTAssertEqualWithAccuracy([storedControls[@"glyphScale"] doubleValue], 0.7, 0.001);
+    XCTAssertEqualWithAccuracy([storedControls[@"glow"] doubleValue], 0.6, 0.001);
+    XCTAssertEqualWithAccuracy([storedControls[@"leadBrightness"] doubleValue], 1, 0.001);
+    XCTAssertEqualWithAccuracy([storedControls[@"vignette"] doubleValue], 0, 0.001);
+    XCTAssertEqual([storedControls[@"scanlines"] boolValue], NO);
+    XCTAssertEqual([storedControls[@"allowOverlap"] boolValue], NO);
+    XCTAssertEqualObjects(storedControls[@"quality"], @"high");
+    XCTAssertEqualObjects(storedControls[@"glyphMode"], @"latin");
+    XCTAssertEqualObjects(storedControls[@"glyphFont"], @"mono");
+    XCTAssertEqualWithAccuracy([storedControls[@"glyphRate"] doubleValue], 1, 0.001);
+    XCTAssertEqual([storedControls[@"mirror"] boolValue], NO);
+    XCTAssertEqualObjects(storedControls[@"preset"], @"amber");
+    XCTAssertEqualObjects(storedMessages[@"messages"], (@[@"KEEP"]));
+
+    NSView *updatedCard = MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"settings-editor-card-images");
+    NSTextField *scale = (NSTextField *)MatrixCodeDescendantWithIdentifier(updatedCard,
+                                                                            @"imageScale-percent");
+    XCTAssertEqualWithAccuracy(scale.doubleValue, 100, 0.001);
 }
 
 - (void)testCharacterTabContainsGlyphSettings {

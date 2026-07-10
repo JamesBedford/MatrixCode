@@ -2,6 +2,7 @@
 
 #import "MatrixCodeIntroOverlayView.h"
 #import "MatrixCodeMetalView.h"
+#import "MatrixCodeConstants.h"
 #import "MatrixCodePreferences.h"
 #import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeTokenResolver.h"
@@ -45,6 +46,10 @@ static BOOL MatrixCodeSettingBool(NSDictionary *dictionary, NSString *key, BOOL 
     return [value isKindOfClass:NSNumber.class] &&
         CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()
         ? [value boolValue] : fallback;
+}
+
+static NSNumber *MatrixCodeSettingBoolObject(BOOL value) {
+    return (__bridge NSNumber *)(value ? kCFBooleanTrue : kCFBooleanFalse);
 }
 
 static NSString *MatrixCodeSettingText(id value, NSUInteger maximumLength) {
@@ -307,6 +312,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic, strong) NSStackView *momentsStack;
 @property(nonatomic, strong) MatrixCodeNativePreviewController *previewController;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *originalValues;
+@property(nonatomic, strong) NSMutableSet<NSString *> *explicitlyClearedStorageKeys;
 @property(nonatomic, strong) NSTextField *postIntroDelayField;
 @property(nonatomic, strong) NSDatePicker *defaultCountdownDatePicker;
 @property(nonatomic, strong) NSButton *mirrorButton;
@@ -340,6 +346,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     _preferences = [[MatrixCodePreferences alloc] init];
     _stagedValues = [[_preferences storedValues] mutableCopy];
     _originalValues = [_stagedValues copy];
+    _explicitlyClearedStorageKeys = [NSMutableSet set];
     _closeHandler = [closeHandler copy];
     [self loadModels];
     [self buildInterface];
@@ -354,6 +361,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     _preferences = [[MatrixCodePreferences alloc] init];
     _stagedValues = [[_preferences storedValues] mutableCopy];
     _originalValues = [_stagedValues copy];
+    _explicitlyClearedStorageKeys = [NSMutableSet set];
     _closeHandler = [closeHandler copy];
     [self loadModels];
     [self buildInterface];
@@ -377,11 +385,42 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (void)draftDidChange {
     NSDictionary *values = [self serializedValues];
-    [self publishPreviewValues:values];
     if (!self.editorBackdrop) {
-        [self.preferences commitValues:values];
-        self.originalValues = [values copy];
+        values = [self commitSerializedValues:values];
     }
+    [self publishPreviewValues:values];
+}
+
+- (BOOL)originalValueForKey:(NSString *)key
+    matchesSerializedValues:(NSDictionary<NSString *, NSString *> *)values {
+    NSString *original = self.originalValues[key];
+    NSString *serialized = values[key];
+    return original == serialized || (original && serialized && [original isEqualToString:serialized]);
+}
+
+- (NSDictionary<NSString *, NSString *> *)valuesForCommitFromSerializedValues:
+    (NSDictionary<NSString *, NSString *> *)values {
+    NSMutableDictionary<NSString *, NSString *> *merged = [[self.preferences storedValues] mutableCopy];
+    for (NSString *key in MatrixCodeStorageKeys()) {
+        BOOL changed = ![self originalValueForKey:key matchesSerializedValues:values] ||
+            [self.explicitlyClearedStorageKeys containsObject:key];
+        if (!changed) continue;
+        NSString *value = values[key];
+        if ([value isKindOfClass:NSString.class]) merged[key] = value;
+        else [merged removeObjectForKey:key];
+    }
+    return merged;
+}
+
+- (NSDictionary<NSString *, NSString *> *)commitSerializedValues:
+    (NSDictionary<NSString *, NSString *> *)values {
+    NSDictionary<NSString *, NSString *> *committed =
+        [self valuesForCommitFromSerializedValues:values];
+    [self.preferences commitValues:committed];
+    self.stagedValues = [committed mutableCopy];
+    self.originalValues = [committed copy];
+    [self.explicitlyClearedStorageKeys removeAllObjects];
+    return committed;
 }
 
 - (BOOL)settingsPanelContainsMouse {
@@ -478,7 +517,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         controls[@"vignette"] = @([storedVignette boolValue] ? 0.42 : 0);
     }
     for (NSString *key in @[@"mirror", @"scanlines", @"allowOverlap"]) {
-        controls[key] = @(MatrixCodeSettingBool(storedControls, key, [controls[key] boolValue]));
+        controls[key] = MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedControls, key, [controls[key] boolValue]));
     }
     NSArray *presets = @[@"classic", @"amber", @"gold", @"red", @"pink", @"purple", @"blue", @"white"];
     if ([storedControls[@"preset"] isKindOfClass:NSString.class] &&
@@ -500,7 +540,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         @"charMs": @(MatrixCodeSettingNumber(storedIntro, @"charMs", 95, 10, 500)),
         @"startDelayMs": @(MatrixCodeSettingNumber(storedIntro, @"startDelayMs", 600, 0, 10000)),
         @"fadeOutMs": @(MatrixCodeSettingNumber(storedIntro, @"fadeOutMs", 900, 0, 10000)),
-        @"rainDuringIntro": @(MatrixCodeSettingBool(storedIntro, @"rainDuringIntro", NO)),
+        @"rainDuringIntro": MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedIntro, @"rainDuringIntro", NO)),
         @"postIntroDelayMs": @(MatrixCodeSettingNumber(storedIntro, @"postIntroDelayMs", 0, 0, 10000)),
     } mutableCopy];
     NSArray *storedIntroLines = [storedIntro[@"lines"] isKindOfClass:NSArray.class]
@@ -531,13 +572,16 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         MatrixCodeJSONObject(self.stagedValues[@"mx-messages"], NSDictionary.class);
     NSDictionary *storedMessageDoc = parsedMessageDoc ?: @{};
     self.messages = [@{
-        @"enabled": @(MatrixCodeSettingBool(storedMessageDoc, @"enabled", NO)),
+        @"enabled": MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedMessageDoc, @"enabled", NO)),
         @"frequencyMs": @(MatrixCodeSettingNumber(storedMessageDoc, @"frequencyMs", 8000, 500, 600000)),
         @"persistenceMs": @(MatrixCodeSettingNumber(storedMessageDoc, @"persistenceMs", 10000, 500, 600000)),
         @"appearMs": @(MatrixCodeSettingNumber(storedMessageDoc, @"appearMs", 4000, 0, 600000)),
         @"disappearMs": @(MatrixCodeSettingNumber(storedMessageDoc, @"disappearMs", 4000, 0, 600000)),
-        @"flickerOut": @(MatrixCodeSettingBool(storedMessageDoc, @"flickerOut", YES)),
-        @"brightnessFade": @(MatrixCodeSettingBool(storedMessageDoc, @"brightnessFade", NO)),
+        @"flickerOut": MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedMessageDoc, @"flickerOut", YES)),
+        @"brightnessFade": MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedMessageDoc, @"brightnessFade", NO)),
         @"messageLayout": MatrixCodeSettingChoice(storedMessageDoc, @"messageLayout",
                                                   @[@"row", @"drop"], @"row"),
         @"messageDirection": MatrixCodeSettingChoice(storedMessageDoc, @"messageDirection",
@@ -561,13 +605,16 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     NSDictionary *storedImages =
         MatrixCodeJSONObject(self.stagedValues[@"mx-images"], NSDictionary.class) ?: @{};
     self.images = [@{
-        @"enabled": @(MatrixCodeSettingBool(storedImages, @"enabled", NO)),
+        @"enabled": MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedImages, @"enabled", NO)),
         @"frequencyMs": @(MatrixCodeSettingNumber(storedImages, @"frequencyMs", 14000, 500, 600000)),
         @"persistenceMs": @(MatrixCodeSettingNumber(storedImages, @"persistenceMs", 12000, 500, 600000)),
         @"appearMs": @(MatrixCodeSettingNumber(storedImages, @"appearMs", 4500, 0, 600000)),
         @"disappearMs": @(MatrixCodeSettingNumber(storedImages, @"disappearMs", 4500, 0, 600000)),
-        @"flickerOut": @(MatrixCodeSettingBool(storedImages, @"flickerOut", YES)),
-        @"brightnessFade": @(MatrixCodeSettingBool(storedImages, @"brightnessFade", NO)),
+        @"flickerOut": MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedImages, @"flickerOut", YES)),
+        @"brightnessFade": MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedImages, @"brightnessFade", NO)),
         @"imageScale": @(MatrixCodeSettingNumber(storedImages, @"imageScale", 0.72, 0.05, 1)),
         @"imagePlacementJitter": @(MatrixCodeSettingNumber(storedImages, @"imagePlacementJitter", 0.35, 0, 1)),
     } mutableCopy];
@@ -1137,7 +1184,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (void)toggleMessagesEnabled {
     BOOL enabled = [self.messages[@"enabled"] boolValue];
-    self.messages[@"enabled"] = @(!enabled);
+    self.messages[@"enabled"] = MatrixCodeSettingBoolObject(!enabled);
     [self draftDidChange];
     if ([self.editorKind isEqualToString:@"messages"]) {
         [self presentEditorKind:@"messages"];
@@ -1165,8 +1212,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 - (void)closeEditorSave:(id)sender {
     [self stopCharactersPreview];
     NSDictionary *values = [self serializedValues];
-    [self.preferences commitValues:values];
-    self.originalValues = [values copy];
+    values = [self commitSerializedValues:values];
     [self publishPreviewValues:values];
     [self.editorBackdrop removeFromSuperview];
     self.editorBackdrop = nil;
@@ -1179,6 +1225,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [self stopCharactersPreview];
     if (self.editorSnapshot) {
         self.stagedValues = [self.editorSnapshot mutableCopy];
+        [self.explicitlyClearedStorageKeys removeAllObjects];
         [self loadModels];
         [self publishPreviewValues:[self serializedValues]];
     }
@@ -1572,13 +1619,13 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         }
         if ([key isEqualToString:@"glyphMode"]) {
             BOOL mirror = MatrixCodePreferredMirrorForGlyphMode(selected);
-            self.controls[@"mirror"] = @(mirror);
+            self.controls[@"mirror"] = MatrixCodeSettingBoolObject(mirror);
             self.mirrorButton.state = mirror ? NSControlStateValueOn : NSControlStateValueOff;
         }
     }
     else if ([sender isKindOfClass:NSButton.class]) {
         BOOL enabled = [sender state] == NSControlStateValueOn;
-        self.controls[key] = @(enabled);
+        self.controls[key] = MatrixCodeSettingBoolObject(enabled);
         if ([key isEqualToString:@"scanlines"] || [key isEqualToString:@"allowOverlap"]) {
             [MatrixCodeSettingsTheme.sharedTheme styleToggleButton:sender on:enabled];
         }
@@ -1588,8 +1635,13 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (void)nameChanged:(NSTextField *)sender {
     NSString *name = [sender.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (name.length) self.stagedValues[@"mx-user-name"] = name;
-    else [self.stagedValues removeObjectForKey:@"mx-user-name"];
+    if (name.length) {
+        self.stagedValues[@"mx-user-name"] = name;
+        [self.explicitlyClearedStorageKeys removeObject:@"mx-user-name"];
+    } else {
+        [self.stagedValues removeObjectForKey:@"mx-user-name"];
+        [self.explicitlyClearedStorageKeys addObject:@"mx-user-name"];
+    }
     [self draftDidChange];
 }
 
@@ -1781,12 +1833,14 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [self draftDidChange];
 }
 - (void)introRainChanged:(NSButton *)sender {
-    self.intro[@"rainDuringIntro"] = @(sender.state == NSControlStateValueOn);
+    self.intro[@"rainDuringIntro"] =
+        MatrixCodeSettingBoolObject(sender.state == NSControlStateValueOn);
     self.postIntroDelayField.enabled = sender.state != NSControlStateValueOn;
     [self draftDidChange];
 }
 - (void)replayIntroNextRun:(id)sender {
     [self.stagedValues removeObjectForKey:@"mx-intro-seen"];
+    [self.explicitlyClearedStorageKeys addObject:@"mx-intro-seen"];
     [self draftDidChange];
 }
 
@@ -1905,7 +1959,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [self draftDidChange];
 }
 - (void)messageToggleChanged:(NSButton *)sender {
-    self.messages[sender.identifier] = @(sender.state == NSControlStateValueOn);
+    self.messages[sender.identifier] =
+        MatrixCodeSettingBoolObject(sender.state == NSControlStateValueOn);
     [self draftDidChange];
 }
 
@@ -2034,6 +2089,12 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     enabled.identifier = @"enabled";
     enabled.state = [self.images[@"enabled"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
     [stack addArrangedSubview:enabled];
+
+    NSButton *visibility = [self settingsButton:@"Max Visibility"
+                                         action:@selector(optimizeImageVisibility:)
+                                     identifier:@"imageMaxVisibility"];
+    visibility.toolTip = @"Set image and rain controls for clearer image reveals.";
+    [stack addArrangedSubview:visibility];
 
     self.imageItemsStack = [NSStackView stackViewWithViews:@[]];
     self.imageItemsStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -2187,8 +2248,46 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (void)imageToggleChanged:(NSButton *)sender {
-    self.images[sender.identifier] = @(sender.state == NSControlStateValueOn);
+    self.images[sender.identifier] =
+        MatrixCodeSettingBoolObject(sender.state == NSControlStateValueOn);
     [self draftDidChange];
+}
+
+- (void)optimizeImageVisibility:(id)sender {
+    (void)sender;
+    [self.images addEntriesFromDictionary:@{
+        @"enabled": @YES,
+        @"frequencyMs": @500,
+        @"persistenceMs": @60000,
+        @"appearMs": @0,
+        @"disappearMs": @0,
+        @"flickerOut": @NO,
+        @"brightnessFade": @NO,
+        @"imageScale": @1,
+        @"imagePlacementJitter": @0,
+    }];
+    [self.controls addEntriesFromDictionary:@{
+        @"density": @90,
+        @"rampUpMs": @0,
+        @"trailLength": @0.45,
+        @"trailVariation": @0.2,
+        @"speed": @0.6,
+        @"glyphScale": @0.7,
+        @"glow": @0.6,
+        @"leadBrightness": @1,
+        @"vignette": @0,
+        @"scanlines": @NO,
+        @"allowOverlap": @NO,
+        @"quality": @"high",
+        @"glyphMode": @"latin",
+        @"glyphFont": @"mono",
+        @"glyphRate": @1,
+        @"mirror": @NO,
+    }];
+    [self draftDidChange];
+    if ([self.editorKind isEqualToString:@"images"]) {
+        [self presentEditorKind:@"images"];
+    }
 }
 
 - (NSView *)countdownTab {
@@ -2389,7 +2488,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         return;
     }
     NSDictionary *values = [self serializedValues];
-    [self.preferences commitValues:values];
+    values = [self commitSerializedValues:values];
     [self publishPreviewValues:values];
     [self.settingsHideTimer invalidate];
     self.settingsHideTimer = nil;

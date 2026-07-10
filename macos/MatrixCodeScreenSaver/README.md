@@ -93,7 +93,9 @@ in `mx-images` so Metal can reveal them through falling rain glyph brightness
 and glyph-selection bias without requiring ongoing file access. Users can add
 any number of image masks, choose how much of the rain field width each reveal
 uses, and randomize placement inside the unused area when the reveal is smaller
-than the full screen. These keep
+than the full screen. The Images editor also includes a native-only **Max
+Visibility** action that applies the image and rain settings most likely to make
+image reveals obvious while leaving unrelated content settings untouched. These keep
 keyboard navigation, accessibility, locale handling, Screen Saver Options
 hosting, and native image import aligned with macOS while the standalone app's
 surrounding geometry, typography, palette, and interaction model match the web UI.

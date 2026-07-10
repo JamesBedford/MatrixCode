@@ -17,6 +17,7 @@
                          localCols:(NSInteger)localCols
                          localRows:(NSInteger)localRows;
 - (void)updateActiveImageFrameStateAtTime:(NSTimeInterval)now;
+- (double)updateMeasuredFramesPerSecondAtTime:(NSTimeInterval)time;
 @end
 
 @interface MatrixCodeMetalViewTests : XCTestCase
@@ -88,6 +89,23 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
     XCTAssertNotNil(view.device);
 }
 
+- (void)testStandaloneGeometryTracksViewResizeBeforeRendering {
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 800, 500)
+                                           session:nil
+                                      storedValues:@{}];
+    XCTAssertNotNil(view);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"virtualWidth"] floatValue], 800, 0.001);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"virtualHeight"] floatValue], 500, 0.001);
+
+    [view setFrameSize:NSMakeSize(1920, 1200)];
+    NSData *frame = [view diagnosticBGRAFrameWithWidth:1920 height:1200];
+
+    XCTAssertNotNil(frame);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"virtualWidth"] floatValue], 1920, 0.001);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"virtualHeight"] floatValue], 1200, 0.001);
+}
+
 - (void)testNativeRendererUsesDisplayMaximumFramePacingAndPausesWhenInactive {
     MatrixCodeMetalView *view =
         [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
@@ -130,6 +148,23 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
                                                           displayModeRefreshRate:0
                                                           displayLinkRefreshRate:0],
                    240);
+}
+
+- (void)testMeasuredFPSUsesFrameIntervalsInsteadOfPreferredRate {
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
+                                           session:nil
+                                      storedValues:@{}];
+    view.preferredFramesPerSecond = 120;
+
+    XCTAssertEqualWithAccuracy([view updateMeasuredFramesPerSecondAtTime:1000.0], 0, 0.001);
+    for (NSUInteger frame = 1; frame <= 20; frame++) {
+        [view updateMeasuredFramesPerSecondAtTime:1000.0 + frame / 60.0];
+    }
+
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"measuredFramesPerSecond"] doubleValue],
+                               60,
+                               0.5);
 }
 
 - (void)testNativeRendererProducesVisibleGreenGlyphPixels {
@@ -360,6 +395,38 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
     XCTAssertLessThan([[view valueForKey:@"activeImagePlacementY"] floatValue], 1);
 }
 
+- (void)testRendererDropsStoredImagesWithInvalidDimensions {
+    NSDictionary *images = @{
+        @"enabled": @YES,
+        @"images": @[
+            @{@"name": @"Empty", @"width": @"wide", @"height": @"tall", @"data": @""},
+        ],
+        @"frequencyMs": @500,
+        @"persistenceMs": @10000,
+        @"appearMs": @0,
+        @"disappearMs": @0,
+    };
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+                                           session:@{
+        @"seed": @13579,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"screen-test",
+        @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                        @"width": @420, @"height": @400}],
+    }
+                                      storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
+    NSDictionary *sanitizedImages = [view valueForKey:@"images"];
+    XCTAssertEqual([sanitizedImages[@"images"] count], (NSUInteger)0);
+
+    [view updateImageScheduleAtTime:1700000100.0
+                         globalCols:21
+                         globalRows:20
+                          localCols:21
+                          localRows:20];
+    XCTAssertNil([view valueForKey:@"activeImage"]);
+}
+
 - (void)testActiveImageVisualFrameStillRendersAsRain {
     NSMutableData *mask = [NSMutableData dataWithLength:64];
     uint8_t *bytes = mask.mutableBytes;
@@ -408,6 +475,60 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
     XCTAssertNotNil([view valueForKey:@"activeImage"]);
     XCTAssertGreaterThan(MatrixCodeGreenPixelCount(frame), (NSUInteger)500,
                          @"Image-enabled render should remain animated rain, not a blank mask");
+}
+
+- (void)testZeroMaskImageDoesNotStampInvisibleRectangle {
+    NSMutableData *mask = [NSMutableData dataWithLength:64];
+    NSDictionary *session = @{
+        @"seed": @86420,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"screen-test",
+        @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                        @"width": @640, @"height": @360}],
+    };
+    NSDictionary *controls = @{
+        @"density": @100,
+        @"allowOverlap": @YES,
+        @"quality": @"high",
+        @"rampUpMs": @0,
+        @"glyphRate": @5,
+    };
+    NSDictionary *images = @{
+        @"enabled": @YES,
+        @"images": @[@{@"name": @"Empty", @"width": @8, @"height": @8,
+                       @"data": [mask base64EncodedStringWithOptions:0]}],
+        @"frequencyMs": @500,
+        @"persistenceMs": @10000,
+        @"appearMs": @0,
+        @"disappearMs": @0,
+        @"flickerOut": @NO,
+        @"brightnessFade": @NO,
+        @"imageScale": @1,
+        @"imagePlacementJitter": @0,
+    };
+    MatrixCodeMetalView *baselineView =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+                                           session:session
+                                      storedValues:@{
+        @"mx-controls": MatrixCodeJSONString(controls),
+    }];
+    MatrixCodeMetalView *imageView =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+                                           session:session
+                                      storedValues:@{
+        @"mx-controls": MatrixCodeJSONString(controls),
+        @"mx-images": MatrixCodeJSONString(images),
+    }];
+
+    [baselineView setDensityScale:1 rainElapsed:2.5];
+    [imageView setDensityScale:1 rainElapsed:2.5];
+    NSData *baseline = [baselineView diagnosticBGRAFrameWithWidth:640 height:360];
+    NSData *imageFrame = [imageView diagnosticBGRAFrameWithWidth:640 height:360];
+
+    XCTAssertNotNil(baseline);
+    XCTAssertNotNil(imageFrame);
+    XCTAssertNotNil([imageView valueForKey:@"activeImage"]);
+    XCTAssertEqualObjects(imageFrame, baseline);
 }
 
 - (void)testActiveMessageStillClaimsGlyphsWhenImagesAreEnabled {
@@ -528,6 +649,40 @@ static NSUInteger MatrixCodeMessageClaimedCount(MatrixCodeMetalView *view) {
     XCTAssertEqual(MatrixCodeMessageTargetAt(view, 0), [glyphs[@"A"] integerValue]);
     XCTAssertEqual(MatrixCodeMessageTargetAt(view, 1), [glyphs[@"B"] integerValue]);
     XCTAssertEqual(MatrixCodeMessageTargetAt(view, 2), [glyphs[@"C"] integerValue]);
+}
+
+- (void)testResolvedMessagesTrimWhitespaceBeforeFitAndLayout {
+    NSDictionary *messages = @{
+        @"enabled": @YES,
+        @"messages": @[@" A "],
+        @"frequencyMs": @500,
+        @"persistenceMs": @10000,
+        @"appearMs": @0,
+        @"disappearMs": @0,
+        @"verticalPosition": @0.5,
+        @"verticalJitter": @0,
+        @"flickerOut": @NO,
+        @"brightnessFade": @NO,
+    };
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 60, 120)
+                                           session:@{
+        @"seed": @13579,
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"screen-test",
+        @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                        @"width": @60, @"height": @120}],
+    }
+                                      storedValues:@{@"mx-messages": MatrixCodeJSONString(messages)}];
+    NSTimeInterval now = 1700000001.0;
+    [view updateMessageScheduleAtTime:now globalCols:1 globalRows:6 localCols:1 localRows:6];
+    [view updateActiveMessageFrameStateAtTime:now framesPerSecond:60];
+
+    NSDictionary *glyphs = [view valueForKey:@"messageGlyphs"];
+    XCTAssertNotNil([view valueForKey:@"activeMessageTemplate"]);
+    XCTAssertEqualObjects([view valueForKey:@"activeMessageDisplay"], @"A");
+    XCTAssertEqual([[view valueForKey:@"messageTargetGlyphCount"] integerValue], 1);
+    XCTAssertEqual(MatrixCodeMessageTargetAt(view, 0), [glyphs[@"A"] integerValue]);
 }
 
 - (void)testSingleDropMessageCanReadBottomToTop {
