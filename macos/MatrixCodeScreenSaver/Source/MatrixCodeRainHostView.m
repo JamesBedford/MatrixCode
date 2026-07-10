@@ -142,6 +142,7 @@ NSString * const MatrixCodeRainHostFPSOverlayVisibleKey =
 
 static const double MatrixCodeDensityKeyStep = 1.2;
 static const NSTimeInterval MatrixCodePresentationChromeHideDelay = 2.8;
+static NSString * const MatrixCodeFPSOverlayStorageKey = @"mx-ui-state";
 
 static NSMutableSet<NSString *> *MatrixCodeClaimedScreenIDs;
 static NSTimeInterval MatrixCodeLastScreenClaimAt;
@@ -156,6 +157,13 @@ static id MatrixCodeRainHostJSONObject(NSString *raw, Class expectedClass) {
 static NSString *MatrixCodeRainHostJSONString(id object) {
     NSData *data = [NSJSONSerialization dataWithJSONObject:object options:0 error:nil];
     return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
+}
+
+static BOOL MatrixCodeRainHostStoredFPSOverlayVisible(NSDictionary<NSString *, NSString *> *storedValues) {
+    NSDictionary *state = MatrixCodeRainHostJSONObject(storedValues[MatrixCodeFPSOverlayStorageKey],
+                                                       NSDictionary.class);
+    id visible = state[@"fpsOverlayVisible"];
+    return [visible isKindOfClass:NSNumber.class] && [visible boolValue];
 }
 
 static double MatrixCodeRainHostNumber(NSDictionary *dictionary,
@@ -405,6 +413,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     };
     [self addSubview:self.metalView];
     [self ensureFPSOverlay];
+    [self setFPSOverlayVisible:MatrixCodeRainHostStoredFPSOverlayVisible(storedValues) notify:NO];
     if (!self.suppressesIntroOverlay) {
         self.introOverlay = [[MatrixCodeIntroOverlayView alloc] initWithFrame:self.bounds
                                                                 storedValues:storedValues
@@ -481,6 +490,17 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     self.fpsOverlay = overlay;
 }
 
+- (void)persistFPSOverlayVisible:(BOOL)visible {
+    NSMutableDictionary *state =
+        [MatrixCodeRainHostJSONObject([self.preferences storedValues][MatrixCodeFPSOverlayStorageKey],
+                                      NSDictionary.class) mutableCopy];
+    if (!state) state = [NSMutableDictionary dictionary];
+    if (visible) state[@"fpsOverlayVisible"] = @YES;
+    else [state removeObjectForKey:@"fpsOverlayVisible"];
+    [self.preferences setImmediateValue:state.count ? MatrixCodeRainHostJSONString(state) : nil
+                                 forKey:MatrixCodeFPSOverlayStorageKey];
+}
+
 - (void)setFPSOverlayVisible:(BOOL)visible notify:(BOOL)notify {
     [self ensureFPSOverlay];
     if (self.fpsOverlayVisible == visible && self.fpsOverlay.hidden == !visible) return;
@@ -490,6 +510,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     self.fpsLastDisplayUpdate = 0;
     self.fpsEma = 0;
     if (self.fpsOverlayVisible) self.fpsOverlay.stringValue = @"0 FPS";
+    if (notify) [self persistFPSOverlayVisible:visible];
     if (notify) {
         [NSNotificationCenter.defaultCenter
             postNotificationName:MatrixCodeRainHostFPSOverlayVisibilityDidChangeNotification
@@ -612,7 +633,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 
 - (BOOL)shouldShowPresentationChrome {
     return self.mode == MatrixCodeRainHostModeStandalone &&
-        ![self isStandaloneMultiMonitorPresentation];
+        (![self isStandaloneMultiMonitorPresentation] || [self isStandaloneMultiMonitorControlHost]);
 }
 
 - (MatrixCodePresentationButton *)presentationButtonWithTitle:(NSString *)title
@@ -641,15 +662,24 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     }
     if (self.presentationChrome) return;
 
-    NSButton *fullscreen = [self presentationButtonWithTitle:@"⛶ Fullscreen"
-                                                      action:@selector(toggleStandaloneFullscreen:)
-                                                  identifier:@"presentation-fullscreen"
-                                                     toolTip:@"Fullscreen (F)"];
+    BOOL multiMonitorControls = [self isStandaloneMultiMonitorControlHost];
+    NSMutableArray<NSView *> *buttons = [NSMutableArray array];
+    if (!multiMonitorControls) {
+        NSButton *fullscreen = [self presentationButtonWithTitle:@"⛶ Fullscreen"
+                                                          action:@selector(toggleStandaloneFullscreen:)
+                                                      identifier:@"presentation-fullscreen"
+                                                         toolTip:@"Fullscreen (F)"];
+        [buttons addObject:fullscreen];
+    }
     NSButton *multiMonitor = [self presentationButtonWithTitle:@"▦ Multi-monitor"
                                                         action:@selector(enterStandaloneMultiMonitor:)
-                                                    identifier:@"presentation-multimonitor"
-                                                       toolTip:@"Start multi-monitor mode"];
-    NSStackView *chrome = [NSStackView stackViewWithViews:@[fullscreen, multiMonitor]];
+                                                  identifier:@"presentation-multimonitor"
+                                                       toolTip:multiMonitorControls
+                                                            ? @"Exit multi-monitor mode (⇧⌘M)"
+                                                            : @"Start multi-monitor mode (⇧⌘M)"];
+    if (multiMonitorControls) multiMonitor.title = @"▦ Exit";
+    [buttons addObject:multiMonitor];
+    NSStackView *chrome = [NSStackView stackViewWithViews:buttons];
     chrome.translatesAutoresizingMaskIntoConstraints = NO;
     chrome.identifier = @"presentation-chrome";
     chrome.orientation = NSUserInterfaceLayoutOrientationHorizontal;
@@ -712,17 +742,48 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     [self.window toggleFullScreen:sender ?: self];
 }
 
-- (void)enterStandaloneMultiMonitor:(id)sender {
-    if (self.mode != MatrixCodeRainHostModeStandalone) return;
-    if ([self isStandaloneMultiMonitorPresentation]) return;
+- (BOOL)sendStandalonePresentationRequestToAppDelegate:(SEL)selector object:(id)object {
+    id delegate = NSApp.delegate;
+    if (!delegate || ![delegate respondsToSelector:selector]) return NO;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    [delegate performSelector:selector withObject:object];
+#pragma clang diagnostic pop
+    return YES;
+}
+
+- (void)requestStandaloneMultiMonitor {
+    if ([self sendStandalonePresentationRequestToAppDelegate:NSSelectorFromString(@"enterMultiMonitorFromHost:")
+                                                      object:self]) {
+        return;
+    }
     [NSNotificationCenter.defaultCenter
         postNotificationName:MatrixCodeRainHostRequestMultiMonitorNotification
                       object:self];
 }
 
+- (void)requestStandaloneMultiMonitorExit {
+    if ([self sendStandalonePresentationRequestToAppDelegate:NSSelectorFromString(@"exitMultiMonitor:")
+                                                      object:self]) {
+        return;
+    }
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:MatrixCodeRainHostRequestExitMultiMonitorNotification
+                      object:self];
+}
+
+- (void)enterStandaloneMultiMonitor:(id)sender {
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    if ([self isStandaloneMultiMonitorPresentation]) {
+        [self requestStandaloneMultiMonitorExit];
+        return;
+    }
+    [self requestStandaloneMultiMonitor];
+}
+
 - (void)toggleSettingsOverlay {
     if (self.mode != MatrixCodeRainHostModeStandalone) return;
-    if ([self isStandaloneMultiMonitorPresentation]) return;
+    if ([self isStandaloneMultiMonitorPresentation] && ![self isStandaloneMultiMonitorControlHost]) return;
     if (self.configurationController) {
         [self.configurationController cancelOperation:self];
         [self hidePresentationChrome];
@@ -733,7 +794,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 
 - (void)openSettingsEditorKind:(NSString *)kind {
     if (self.mode != MatrixCodeRainHostModeStandalone) return;
-    if ([self isStandaloneMultiMonitorPresentation]) return;
+    if ([self isStandaloneMultiMonitorPresentation] && ![self isStandaloneMultiMonitorControlHost]) return;
     [self showSettingsOverlay];
     [self.configurationController openEditorKind:kind];
 }
@@ -801,7 +862,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 
 - (void)showSettingsOverlay {
     if (self.mode != MatrixCodeRainHostModeStandalone) return;
-    if ([self isStandaloneMultiMonitorPresentation]) return;
+    if ([self isStandaloneMultiMonitorPresentation] && ![self isStandaloneMultiMonitorControlHost]) return;
     [self revealPresentationChromeForPointerActivity];
     [self ensureMetalView];
     if (!self.configurationController) {
@@ -822,7 +883,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 
 - (void)revealSettingsOverlayForPointerActivity {
     if (self.mode != MatrixCodeRainHostModeStandalone) return;
-    if ([self isStandaloneMultiMonitorPresentation]) return;
+    if ([self isStandaloneMultiMonitorPresentation] && ![self isStandaloneMultiMonitorControlHost]) return;
     [self revealPresentationChromeForPointerActivity];
     [self showSettingsOverlay];
 }
@@ -831,10 +892,49 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     return YES;
 }
 
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    NSEventModifierFlags shortcutFlags =
+        event.modifierFlags & (NSEventModifierFlagCommand |
+                               NSEventModifierFlagShift |
+                               NSEventModifierFlagControl |
+                               NSEventModifierFlagOption);
+    NSString *characters = event.charactersIgnoringModifiers.lowercaseString ?: @"";
+    BOOL commandShiftM = event.type == NSEventTypeKeyDown &&
+        !event.isARepeat &&
+        shortcutFlags == (NSEventModifierFlagCommand | NSEventModifierFlagShift) &&
+        [characters isEqualToString:@"m"];
+
+    if (commandShiftM && self.mode == MatrixCodeRainHostModeStandalone) {
+        if ([self isStandaloneMultiMonitorPresentation]) {
+            [self requestStandaloneMultiMonitorExit];
+        } else {
+            [self enterStandaloneMultiMonitor:self];
+        }
+        return YES;
+    }
+
+    return [super performKeyEquivalent:event];
+}
+
 - (BOOL)isStandaloneMultiMonitorPresentation {
     NSArray *screens = [self.standaloneSession[@"screens"] isKindOfClass:NSArray.class]
         ? self.standaloneSession[@"screens"] : @[];
     return self.mode == MatrixCodeRainHostModeStandalone && screens.count > 1;
+}
+
+- (BOOL)isStandaloneMultiMonitorControlHost {
+    if (![self isStandaloneMultiMonitorPresentation]) return NO;
+    NSString *current = [self.standaloneSession[@"currentScreenId"] isKindOfClass:NSString.class]
+        ? self.standaloneSession[@"currentScreenId"] : nil;
+    NSString *controls = [self.standaloneSession[@"controlsScreenId"] isKindOfClass:NSString.class]
+        ? self.standaloneSession[@"controlsScreenId"] : nil;
+    if (!controls) {
+        NSArray<NSDictionary<NSString *, id> *> *screens =
+            [self.standaloneSession[@"screens"] isKindOfClass:NSArray.class]
+                ? self.standaloneSession[@"screens"] : @[];
+        controls = [MatrixCodeSession centermostScreenIdentifierForDescriptors:screens];
+    }
+    return current && controls && [current isEqualToString:controls];
 }
 
 - (BOOL)isStandaloneFullScreenPresentation {
@@ -845,9 +945,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 
 - (BOOL)exitStandalonePresentationIfNeeded {
     if ([self isStandaloneMultiMonitorPresentation]) {
-        [NSNotificationCenter.defaultCenter
-            postNotificationName:MatrixCodeRainHostRequestExitMultiMonitorNotification
-                          object:self];
+        [self requestStandaloneMultiMonitorExit];
         return YES;
     }
     if ([self isStandaloneFullScreenPresentation]) {
@@ -881,9 +979,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     self.backdropClickCount++;
     if (self.backdropClickCount >= 3) {
         [self resetBackdropClickGesture];
-        [NSNotificationCenter.defaultCenter
-            postNotificationName:MatrixCodeRainHostRequestMultiMonitorNotification
-                          object:self];
+        [self requestStandaloneMultiMonitor];
         return;
     }
     [self.backdropClickTimer invalidate];
@@ -928,7 +1024,8 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     BOOL optionOnly = (deviceIndependentFlags & NSEventModifierFlagOption) != 0 &&
         (deviceIndependentFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) == 0;
     BOOL bareWebShortcut = !hasCommandControlOrOption;
-    if ([self isStandaloneMultiMonitorPresentation]) {
+    BOOL multiMonitorPresentation = [self isStandaloneMultiMonitorPresentation];
+    if (multiMonitorPresentation && ![self isStandaloneMultiMonitorControlHost]) {
         if (event.keyCode == 53 && [self exitStandalonePresentationIfNeeded]) return;
         [super keyDown:event];
         return;
@@ -946,6 +1043,8 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
         [self openSettingsEditorKind:@"intro"];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"m"]) {
         [self openSettingsEditorKind:@"messages"];
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"x"]) {
+        [self openSettingsEditorKind:@"images"];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"c"]) {
         [self openSettingsEditorKind:@"countdown"];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"n"]) {

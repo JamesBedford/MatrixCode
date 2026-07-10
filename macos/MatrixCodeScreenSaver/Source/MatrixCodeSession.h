@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (NSDictionary<NSString *, id> *)sessionForScreen:(NSScreen *)screen;
 + (NSDictionary<NSString *, id> *)descriptorForScreen:(NSScreen *)screen desktopMaxY:(CGFloat)desktopMaxY;
++ (nullable NSString *)centermostScreenIdentifierForDescriptors:(NSArray<NSDictionary<NSString *, id> *> *)descriptors;
 + (NSRect)topLeftRectForFrame:(NSRect)frame desktopMaxY:(CGFloat)desktopMaxY;
 + (NSString *)identifierForScreen:(NSScreen *)screen;
 + (CGFloat)localOriginForVirtualOffset:(CGFloat)virtualOffset

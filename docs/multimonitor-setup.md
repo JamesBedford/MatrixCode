@@ -6,6 +6,8 @@ fullscreen window per display, all rendering one continuous rain that respects
 your physical monitor arrangement (a column that falls off the bottom of one
 screen reappears on the screen below it; side-by-side screens line up). Press
 **Escape** (or close any window) to end the show everywhere at once.
+The controls remain available only on the centremost display, so the rest of
+the wall stays clean while live rain settings can still be adjusted.
 
 - Double-click still toggles ordinary single-monitor fullscreen; `F` does too.
 - Triple-clicking the rain is a shortcut for the **Multi-monitor** button.

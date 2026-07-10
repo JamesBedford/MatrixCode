@@ -18,6 +18,10 @@ static NSView *MatrixCodeVisualDescendant(NSView *view, NSString *identifier) {
     return nil;
 }
 
+static NSRect MatrixCodeFrameInView(NSView *view, NSView *container) {
+    return [view.superview convertRect:view.frame toView:container];
+}
+
 static NSBitmapImageRep *MatrixCodeRenderView(NSView *view) {
     [view layoutSubtreeIfNeeded];
     [view displayIfNeeded];
@@ -159,6 +163,53 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
         XCTAssertGreaterThan(MatrixCodeGreenPixelsAlongBorder(bitmap), 20,
                              @"Drawn panel border lost its accent at %@", sizeValue);
     }
+}
+
+- (void)testPrimaryPanelUsesFullWidthWebStyleControlRows {
+    MatrixCodeConfigurationController *controller =
+        [self controllerWithContentSize:NSMakeSize(920, 700)];
+    NSView *panel = MatrixCodeVisualDescendant(controller.window.contentView, @"settings-panel");
+    [panel layoutSubtreeIfNeeded];
+
+    NSView *densityRow = MatrixCodeVisualDescendant(panel, @"row-density");
+    NSTextField *densityLabel = (NSTextField *)MatrixCodeVisualDescendant(panel, @"density-label");
+    NSTextField *densityReadout = (NSTextField *)MatrixCodeVisualDescendant(panel, @"density-value");
+    NSSlider *densitySlider = (NSSlider *)MatrixCodeVisualDescendant(panel, @"density");
+    NSPopUpButton *preset = (NSPopUpButton *)MatrixCodeVisualDescendant(panel, @"preset");
+    NSView *actions = MatrixCodeVisualDescendant(panel, @"settings-panel-actions");
+    NSButton *characters = (NSButton *)MatrixCodeVisualDescendant(panel, @"characters");
+    NSButton *reset = (NSButton *)MatrixCodeVisualDescendant(panel, @"reset-controls");
+
+    XCTAssertNotNil(densityRow);
+    XCTAssertTrue([densityLabel isKindOfClass:NSTextField.class]);
+    XCTAssertTrue([densityReadout isKindOfClass:NSTextField.class]);
+    XCTAssertTrue([densitySlider isKindOfClass:NSSlider.class]);
+    XCTAssertTrue([preset isKindOfClass:NSPopUpButton.class]);
+    XCTAssertNotNil(actions);
+    XCTAssertTrue([characters isKindOfClass:NSButton.class]);
+    XCTAssertTrue([reset isKindOfClass:NSButton.class]);
+
+    NSRect rowFrame = MatrixCodeFrameInView(densityRow, panel);
+    NSRect labelFrame = MatrixCodeFrameInView(densityLabel, densityRow);
+    NSRect readoutFrame = MatrixCodeFrameInView(densityReadout, densityRow);
+    NSRect sliderFrame = MatrixCodeFrameInView(densitySlider, densityRow);
+    NSRect presetFrame = MatrixCodeFrameInView(preset, panel);
+    NSRect actionsFrame = MatrixCodeFrameInView(actions, panel);
+    NSRect charactersFrame = MatrixCodeFrameInView(characters, actions);
+    NSRect resetFrame = MatrixCodeFrameInView(reset, actions);
+
+    XCTAssertEqualWithAccuracy(NSMinX(rowFrame), 18, 0.5);
+    XCTAssertEqualWithAccuracy(NSWidth(rowFrame), 284, 0.5);
+    XCTAssertLessThanOrEqual(NSMinX(labelFrame), 1.0);
+    XCTAssertGreaterThanOrEqual(NSMaxX(readoutFrame), 282);
+    XCTAssertLessThanOrEqual(NSMaxX(readoutFrame), 288);
+    XCTAssertGreaterThan(NSMinX(readoutFrame), NSMaxX(labelFrame) + 32);
+    XCTAssertEqualWithAccuracy(NSWidth(sliderFrame), 284, 0.5);
+    XCTAssertEqualWithAccuracy(NSMaxX(presetFrame), 302, 1.0);
+    XCTAssertEqualWithAccuracy(NSMinX(actionsFrame), 18, 0.5);
+    XCTAssertEqualWithAccuracy(NSWidth(actionsFrame), 284, 0.5);
+    XCTAssertEqualWithAccuracy(NSWidth(charactersFrame), 284, 0.5);
+    XCTAssertEqualWithAccuracy(NSWidth(resetFrame), 284, 0.5);
 }
 
 - (void)testIntroEditorCardRendersWithoutObviousClippingAtDefaultAndMinimumSizes {

@@ -79,30 +79,38 @@ System Settings for the screen saver, where ScreenSaver.framework requires
 Apple's configure-sheet container.
 
 The settings UI mirrors the browser's Matrix-terminal surface with
-preset-coloured native controls and centered Characters, Intro, Messages, and
-Countdown editor cards. The root settings session is transactional: **Save**
+preset-coloured native controls and centered Characters, Intro, Messages,
+Images, and Countdown editor cards. The root settings session is transactional: **Save**
 commits all changes and **Cancel** discards them; editor cards also provide
 their web-equivalent scoped reset and save/cancel actions.
 
 The implementation uses AppKit controls throughout—there is no embedded web
-runtime. Two intentional platform differences remain: System Settings supplies
-standard sheet chrome for Screen Saver Options, and date/time values use the
-native `NSDatePicker` rather than the browser's `datetime-local` control. These
-keep keyboard navigation, accessibility, locale handling, and Screen Saver
-Options hosting native while the standalone app's surrounding geometry,
-typography, palette, and interaction model match the web UI.
+runtime. Three intentional platform differences remain: System Settings supplies
+standard sheet chrome for Screen Saver Options; date/time values use the native
+`NSDatePicker` rather than the browser's `datetime-local` control; and the
+Images editor is currently native-only, storing compact imported luminance masks
+in `mx-images` so Metal can reveal them through falling rain glyph brightness
+and glyph-selection bias without requiring ongoing file access. Users can add
+any number of image masks, choose how much of the rain field width each reveal
+uses, and randomize placement inside the unused area when the reveal is smaller
+than the full screen. These keep
+keyboard navigation, accessibility, locale handling, Screen Saver Options
+hosting, and native image import aligned with macOS while the standalone app's
+surrounding geometry, typography, palette, and interaction model match the web UI.
 
 In the standalone app, double-click the rain to toggle native
-fullscreen and triple-click it to start the continuous multi-monitor
-presentation. Press `P` to pause or resume the animation; the presentation
-commands are also available from the **View** menu. The standalone app restores
+fullscreen and triple-click the rain or press `Shift-Command-M` to start the
+continuous multi-monitor presentation. Press `P` to pause or resume the
+animation; the presentation commands are also available from the **View** menu.
+The standalone app restores
 the saved window frame on launch and, if quit while presenting, re-enters
 fullscreen or multi-monitor mode on the next launch. The browser build cannot
 mirror that launch restoration because browsers require a fresh user gesture
 before entering fullscreen or the Window Management API. Native multi-monitor
-windows join every Space and move to the active Space before presenting, so a
-display currently showing another fullscreen app is taken over instead of
-leaving the Matrix window hidden on a different Space.
+windows join every Space, including fullscreen auxiliary Spaces, so the Matrix
+presentation can appear across displays without being stranded on a different
+desktop. During multi-monitor presentation, the controls and settings overlay
+remain available on the centremost display only.
 During normal screen-saver playback, macOS treats mouse and keyboard input as an
 exit request, so fullscreen and multi-display presentation are automatic rather
 than gesture-driven.
@@ -119,8 +127,8 @@ than gesture-driven.
   presentation windows, and embeds
   `MatrixCodeRainHostView`.
 - `MatrixCodeMetalView` owns the Metal device, render loop, rain state,
-  multi-display virtual-grid mapping, themes, glow, scanlines, vignette, and
-  in-rain message rendering.
+  multi-display virtual-grid mapping, themes, glow, scanlines, vignette,
+  in-rain message rendering, and native-only image-mask rain biasing.
 - `MatrixCodeRainLifecycle` mirrors the web load/intro ramp and deterministic
   weighted glyph selection.
 - `MatrixCodeIntroOverlayView` renders the native typewriter intro and resolves
@@ -148,6 +156,8 @@ other codebase:
 - themes, post-processing controls, scanlines, vignette, and glow semantics;
 - intro timing, skip behavior, rain ramp, and reduced-motion behavior;
 - message scheduling, message placement, token re-resolution, and countdowns;
+- native-only `mx-images` settings and rendering, until/unless the browser app
+  gains an equivalent image-rain feature;
 - multi-monitor geometry, seam continuity, and per-display message placement;
 - tests and documentation.
 

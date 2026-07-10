@@ -3,13 +3,14 @@
 // (getScreenDetails + requestFullscreen({ screen })). Each monitor gets its own
 // browser window rendering a slice of one shared virtual grid (see multiMonitorGrid.ts);
 // the slices are kept in lockstep by a shared seed + wall-clock epoch, so no
-// per-frame data crosses windows. Cross-window messaging is limited to a single
-// BroadcastChannel used to exit the whole show at once.
+// per-frame data crosses windows. Cross-window messaging is limited to
+// BroadcastChannels for exiting the show and mirroring control changes.
 //
 // Degrades gracefully: on a single monitor, an unsupported browser, or a denied
 // permission, the caller falls back to ordinary fullscreen on the current screen.
 
-import { computeVirtualGrid, type GridSlice, type ScreenRect } from "./multiMonitorGrid.ts";
+import { centermostScreenId, computeVirtualGrid, type GridSlice, type ScreenRect } from "./multiMonitorGrid.ts";
+import type { Controls } from "../types.ts";
 
 /** Everything a window needs to render its slice of the shared rain in lockstep. */
 export interface MultiMonitorConfig {
@@ -23,6 +24,12 @@ export interface MultiMonitorConfig {
   vRows: number;
   /** Session-wide placement rule captured from the controller's vignette setting. */
   perDisplayMessages?: boolean;
+  /** Physical screen this config renders; used for rebuilding geometry when glyph size changes. */
+  screenId?: string;
+  /** Full session screen layout; omitted only in legacy hashes. */
+  screens?: ScreenRect[];
+  /** Whether this window should keep the controls UI available in multi-monitor mode. */
+  showControls?: boolean;
   slice: GridSlice;
 }
 
@@ -40,6 +47,7 @@ export type MultiMonitorSessionResult =
   | { kind: "popupsBlocked" };
 
 const CHANNEL_NAME = "mx-multimonitor-fullscreen";
+const CONTROLS_CHANNEL_NAME = "mx-multimonitor-controls";
 const HASH_KEY = "multimonitor";
 const LEGACY_HASH_KEY = "superfs";
 
@@ -78,6 +86,24 @@ export async function prefetchScreens(): Promise<void> {
   } catch {
     /* permission API or name unsupported — fall back to fetching on demand */
   }
+}
+
+async function cacheScreenDetails(): Promise<ScreenDetails | null> {
+  try {
+    cachedDetails = await getScreenDetails();
+    return cachedDetails;
+  } catch {
+    return null;
+  }
+}
+
+function screenIsExtended(): boolean {
+  const screen = window.screen as Screen & { isExtended?: boolean };
+  return screen.isExtended === true;
+}
+
+function cachedDetailsMayBeStale(details: ScreenDetails): boolean {
+  return (details.screens?.length ?? 0) <= 1 && screenIsExtended();
 }
 
 /** A screen's rectangle is the *full* screen (fullscreen ignores menu bar/dock). */
@@ -135,39 +161,25 @@ export async function startMultiMonitorSession(
 ): Promise<MultiMonitorSessionResult> {
   if (!isSupported()) return { kind: "fallback" };
 
-  // Granting the permission shows a prompt that consumes this click's transient
-  // activation, so we can't also open windows + go fullscreen in the same gesture.
-  // Resolve it first (caching the screens) and let the next multi-monitor request launch.
-  if (!cachedDetails) {
-    let state = "granted";
-    try {
-      state = (
-        await navigator.permissions.query({ name: "window-management" } as unknown as PermissionDescriptor)
-      ).state;
-    } catch {
-      /* permissions API/name unsupported — assume it's grantable in-gesture */
-    }
-    if (state !== "granted") {
-      try {
-        cachedDetails = await getScreenDetails();
-      } catch {
-        return { kind: "denied" };
-      }
-      return (cachedDetails.screens?.length ?? 0) > 1 ? { kind: "needsRetry" } : { kind: "fallback" };
-    }
+  if (cachedDetails && cachedDetailsMayBeStale(cachedDetails)) {
+    cachedDetails = null;
   }
 
-  let details: ScreenDetails;
-  try {
-    details = cachedDetails ?? (await getScreenDetails());
-    cachedDetails = details;
-  } catch {
-    return { kind: "denied" };
+  // An uncached getScreenDetails() can prompt, or otherwise spend enough of the
+  // click's activation budget that window.open/requestFullscreen may be blocked
+  // by the browser. Cache the details first, then launch from the next gesture.
+  if (!cachedDetails) {
+    const details = await cacheScreenDetails();
+    if (!details) return { kind: "denied" };
+    return (details.screens?.length ?? 0) > 1 ? { kind: "needsRetry" } : { kind: "fallback" };
   }
+
+  const details = cachedDetails;
   if (!details.screens || details.screens.length <= 1) return { kind: "fallback" };
 
   const rects = toRects(details.screens);
   const grid = computeVirtualGrid(rects, cell);
+  const controlsScreenId = centermostScreenId(rects);
   const seed = Math.floor(Math.random() * 0xffffffff) >>> 0;
   const epoch = Date.now();
   const curIdx = indexOfCurrent(details);
@@ -180,6 +192,9 @@ export async function startMultiMonitorSession(
     vCols: grid.vCols,
     vRows: grid.vRows,
     perDisplayMessages,
+    screenId: rects[i]!.id,
+    screens: rects,
+    showControls: rects[i]!.id === controlsScreenId,
     slice: grid.slices[rects[i]!.id]!,
   });
 
@@ -257,6 +272,40 @@ export function openExitChannel(onExit: () => void): { broadcastExit: () => void
     broadcastExit: () => {
       try {
         ch?.postMessage({ type: "exit" });
+      } catch {
+        /* ignore */
+      }
+    },
+    close: () => {
+      try {
+        ch?.close();
+      } catch {
+        /* ignore */
+      }
+      ch = null;
+    },
+  };
+}
+
+export function openControlsChannel(
+  onControls: (controls: Partial<Controls>) => void,
+): { broadcastControls: (controls: Controls) => void; close: () => void } {
+  let ch: BroadcastChannel | null = null;
+  try {
+    ch = new BroadcastChannel(CONTROLS_CHANNEL_NAME);
+    ch.onmessage = (e: MessageEvent): void => {
+      const data = e.data as { type?: string; controls?: Partial<Controls> } | undefined;
+      if (data?.type === "controls" && data.controls && typeof data.controls === "object") {
+        onControls(data.controls);
+      }
+    };
+  } catch {
+    ch = null;
+  }
+  return {
+    broadcastControls: (controls: Controls) => {
+      try {
+        ch?.postMessage({ type: "controls", controls });
       } catch {
         /* ignore */
       }

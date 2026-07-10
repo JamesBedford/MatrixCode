@@ -39,6 +39,35 @@ export interface VirtualGrid {
   slices: Record<string, GridSlice>;
 }
 
+/** Return the screen whose center is closest to the center of the full display arrangement. */
+export function centermostScreenId(screens: ScreenRect[]): string | null {
+  if (screens.length === 0) return null;
+  let minL = Infinity;
+  let minT = Infinity;
+  let maxR = -Infinity;
+  let maxB = -Infinity;
+  for (const s of screens) {
+    minL = Math.min(minL, s.left);
+    minT = Math.min(minT, s.top);
+    maxR = Math.max(maxR, s.left + s.width);
+    maxB = Math.max(maxB, s.top + s.height);
+  }
+  const centerX = (minL + maxR) / 2;
+  const centerY = (minT + maxB) / 2;
+  let best = screens[0]!;
+  let bestDistance = Infinity;
+  for (const s of screens) {
+    const dx = s.left + s.width / 2 - centerX;
+    const dy = s.top + s.height / 2 - centerY;
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      best = s;
+      bestDistance = distance;
+    }
+  }
+  return best.id;
+}
+
 /**
  * Build the shared virtual grid and each screen's slice. The origin is the
  * top-left of the screens' bounding box; the grid spans to the far edges. Cell

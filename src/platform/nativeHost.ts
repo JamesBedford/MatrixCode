@@ -1,6 +1,6 @@
 import type { Controls } from "../types.ts";
 import { DEFAULT_SIM_CONFIG } from "../config/simConfig.ts";
-import { computeVirtualGrid, type ScreenRect } from "../multimonitor/multiMonitorGrid.ts";
+import { centermostScreenId, computeVirtualGrid, type ScreenRect } from "../multimonitor/multiMonitorGrid.ts";
 import type { MultiMonitorConfig } from "../multimonitor/multiMonitorFullscreen.ts";
 
 export const NATIVE_STORAGE_KEYS = [
@@ -8,6 +8,7 @@ export const NATIVE_STORAGE_KEYS = [
   "mx-intro",
   "mx-messages",
   "mx-countdown",
+  "mx-ui-state",
   "mx-user-name",
   "mx-intro-seen",
 ] as const;
@@ -23,6 +24,7 @@ export interface NativeSession {
   warmupSeconds: number;
   screens: NativeScreen[];
   currentScreenId: string;
+  controlsScreenId?: string;
 }
 
 export interface NativeHostPayload {
@@ -112,12 +114,17 @@ export function sanitizeNativePayload(raw: unknown): NativeHostPayload | null {
       typeof s.currentScreenId === "string" &&
       screens.some((screen) => screen.id === s.currentScreenId)
     ) {
+      const controlsScreenId = typeof s.controlsScreenId === "string" &&
+        screens.some((screen) => screen.id === s.controlsScreenId)
+        ? s.controlsScreenId
+        : undefined;
       session = {
         seed: s.seed >>> 0,
         epoch: s.epoch,
         warmupSeconds: Math.max(0, s.warmupSeconds),
         screens,
         currentScreenId: s.currentScreenId,
+        ...(controlsScreenId ? { controlsScreenId } : {}),
       };
     }
   }
@@ -194,6 +201,9 @@ export function nativeMultiMonitorConfig(controls: Controls): MultiMonitorConfig
     vCols: virtual.vCols,
     vRows: virtual.vRows,
     perDisplayMessages: controls.vignette > 0,
+    screenId: session.currentScreenId,
+    screens: session.screens,
+    showControls: session.currentScreenId === (session.controlsScreenId ?? centermostScreenId(session.screens)),
     slice,
   };
 }

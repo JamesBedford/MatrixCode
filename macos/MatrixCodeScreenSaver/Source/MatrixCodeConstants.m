@@ -11,6 +11,8 @@ NSArray<NSString *> *MatrixCodeStorageKeys(void) {
             @"mx-controls",
             @"mx-intro",
             @"mx-messages",
+            @"mx-images",
+            @"mx-ui-state",
             @"mx-countdown",
             @"mx-user-name",
             @"mx-intro-seen",

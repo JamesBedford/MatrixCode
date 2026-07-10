@@ -14,6 +14,10 @@ NSString * const MatrixCodePreviewValuesKey = @"values";
 
 static const NSTimeInterval MatrixCodeSettingsFadeDuration = 0.24;
 static const NSTimeInterval MatrixCodeSettingsHideDelay = 2.8;
+static const CGFloat MatrixCodeSettingsPanelWidth = 320.0;
+static const CGFloat MatrixCodeSettingsPanelContentWidth = 284.0;
+static const NSUInteger MatrixCodeImageMaskMaxDimension = 96;
+static const NSUInteger MatrixCodeImageMaskMaxStoredCharacters = 49152;
 
 static NSDictionary *MatrixCodeJSONObject(NSString *raw, Class expectedClass) {
     if (![raw isKindOfClass:NSString.class]) return nil;
@@ -58,9 +62,31 @@ static NSString *MatrixCodeSettingChoice(NSDictionary *dictionary,
         ? value : fallback;
 }
 
+static BOOL MatrixCodeIsValidIndex(NSInteger index, NSUInteger count) {
+    return index >= 0 && (NSUInteger)index < count;
+}
+
 static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return [glyphMode isEqualToString:@"matrix"] ||
         [glyphMode isEqualToString:@"katakana"];
+}
+
+static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
+    if (![item isKindOfClass:NSDictionary.class]) return nil;
+    NSInteger width = (NSInteger)MatrixCodeSettingNumber(item, @"width", 0, 1, MatrixCodeImageMaskMaxDimension);
+    NSInteger height = (NSInteger)MatrixCodeSettingNumber(item, @"height", 0, 1, MatrixCodeImageMaskMaxDimension);
+    NSString *data = MatrixCodeSettingText(item[@"data"], MatrixCodeImageMaskMaxStoredCharacters);
+    NSData *mask = [[NSData alloc] initWithBase64EncodedString:data options:0];
+    if (width <= 0 || height <= 0 || mask.length != (NSUInteger)(width * height)) return nil;
+    NSString *name = MatrixCodeSettingText(item[@"name"], 80);
+    name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!name.length) name = @"Image";
+    return [@{
+        @"name": name,
+        @"width": @(width),
+        @"height": @(height),
+        @"data": data,
+    } mutableCopy];
 }
 
 @interface MatrixCodeFlippedDocumentView : NSView
@@ -159,13 +185,15 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 @property(nonatomic, strong) NSDate *startDate;
 @property(nonatomic) BOOL showsIntro;
 @property(nonatomic) BOOL showsMessage;
+@property(nonatomic) BOOL showsImage;
 @end
 
 @implementation MatrixCodeNativePreviewController
 
 - (instancetype)initWithStoredValues:(NSDictionary<NSString *, NSString *> *)values
                            showIntro:(BOOL)showIntro
-                         showMessage:(BOOL)showMessage {
+                         showMessage:(BOOL)showMessage
+                           showImage:(BOOL)showImage {
     NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 500)
                                                   styleMask:NSWindowStyleMaskTitled |
                                                             NSWindowStyleMaskClosable |
@@ -178,6 +206,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     window.delegate = self;
     _showsIntro = showIntro;
     _showsMessage = showMessage;
+    _showsImage = showImage;
     _startDate = NSDate.date;
     NSDictionary *previewValues = [self previewValuesFromValues:values];
     _metalView = [[MatrixCodeMetalView alloc] initWithFrame:window.contentView.bounds
@@ -215,6 +244,14 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         messages[@"enabled"] = @YES;
         messages[@"frequencyMs"] = @500;
         previewValues[@"mx-messages"] = MatrixCodeJSONString(messages);
+    }
+    if (self.showsImage) {
+        NSMutableDictionary *images =
+            [MatrixCodeJSONObject(previewValues[@"mx-images"], NSDictionary.class) mutableCopy];
+        if (!images) images = [NSMutableDictionary dictionary];
+        images[@"enabled"] = @YES;
+        images[@"frequencyMs"] = @500;
+        previewValues[@"mx-images"] = MatrixCodeJSONString(images);
     }
     return previewValues;
 }
@@ -259,11 +296,14 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 @property(nonatomic, strong) NSMutableArray<NSMutableDictionary *> *introLines;
 @property(nonatomic, strong) NSMutableDictionary *messages;
 @property(nonatomic, strong) NSMutableArray<NSString *> *messageLines;
+@property(nonatomic, strong) NSMutableDictionary *images;
+@property(nonatomic, strong) NSMutableArray<NSMutableDictionary *> *imageItems;
 @property(nonatomic, strong) NSMutableDictionary *countdown;
 @property(nonatomic, strong) NSMutableArray<NSMutableDictionary *> *moments;
 @property(nonatomic, copy) dispatch_block_t closeHandler;
 @property(nonatomic, strong) NSStackView *introLinesStack;
 @property(nonatomic, strong) NSStackView *messageLinesStack;
+@property(nonatomic, strong) NSStackView *imageItemsStack;
 @property(nonatomic, strong) NSStackView *momentsStack;
 @property(nonatomic, strong) MatrixCodeNativePreviewController *previewController;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *originalValues;
@@ -518,6 +558,27 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         }
     }
 
+    NSDictionary *storedImages =
+        MatrixCodeJSONObject(self.stagedValues[@"mx-images"], NSDictionary.class) ?: @{};
+    self.images = [@{
+        @"enabled": @(MatrixCodeSettingBool(storedImages, @"enabled", NO)),
+        @"frequencyMs": @(MatrixCodeSettingNumber(storedImages, @"frequencyMs", 14000, 500, 600000)),
+        @"persistenceMs": @(MatrixCodeSettingNumber(storedImages, @"persistenceMs", 12000, 500, 600000)),
+        @"appearMs": @(MatrixCodeSettingNumber(storedImages, @"appearMs", 4500, 0, 600000)),
+        @"disappearMs": @(MatrixCodeSettingNumber(storedImages, @"disappearMs", 4500, 0, 600000)),
+        @"flickerOut": @(MatrixCodeSettingBool(storedImages, @"flickerOut", YES)),
+        @"brightnessFade": @(MatrixCodeSettingBool(storedImages, @"brightnessFade", NO)),
+        @"imageScale": @(MatrixCodeSettingNumber(storedImages, @"imageScale", 0.72, 0.05, 1)),
+        @"imagePlacementJitter": @(MatrixCodeSettingNumber(storedImages, @"imagePlacementJitter", 0.35, 0, 1)),
+    } mutableCopy];
+    self.imageItems = [NSMutableArray array];
+    NSArray *storedImageItems = [storedImages[@"images"] isKindOfClass:NSArray.class]
+        ? storedImages[@"images"] : @[];
+    for (NSUInteger index = 0; index < storedImageItems.count; index++) {
+        NSMutableDictionary *image = MatrixCodeSanitizedImageItem(storedImageItems[index]);
+        if (image) [self.imageItems addObject:image];
+    }
+
     NSDictionary *storedCountdown =
         MatrixCodeJSONObject(self.stagedValues[@"mx-countdown"], NSDictionary.class) ?: @{};
     NSNumber *target = [storedCountdown[@"targetMs"] isKindOfClass:NSNumber.class] &&
@@ -627,7 +688,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         [panel.leadingAnchor constraintEqualToAnchor:overlay.leadingAnchor constant:16],
         [panel.topAnchor constraintEqualToAnchor:overlay.topAnchor constant:16],
         [panel.bottomAnchor constraintEqualToAnchor:overlay.bottomAnchor constant:-16],
-        [panel.widthAnchor constraintEqualToConstant:320],
+        [panel.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelWidth],
     ]];
     if (self.settingsMetalView) {
         [NSLayoutConstraint activateConstraints:@[
@@ -664,6 +725,15 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return button;
 }
 
+- (NSView *)panelFlexibleSpacer {
+    NSView *spacer = [[NSView alloc] initWithFrame:NSZeroRect];
+    [spacer setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                       forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [spacer setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
+                                     forOrientation:NSLayoutConstraintOrientationHorizontal];
+    return spacer;
+}
+
 - (NSPopUpButton *)settingsPopupWithIdentifier:(NSString *)identifier
                                  selectedValue:(NSString *)selectedValue
                                          items:(NSArray<NSArray<NSString *> *> *)items
@@ -686,6 +756,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                     min:(double)minimum
                     max:(double)maximum {
     NSTextField *name = [NSTextField labelWithString:label];
+    name.identifier = [key stringByAppendingString:@"-label"];
     [self styleLabel:name uppercase:YES];
     NSSlider *slider = [NSSlider sliderWithValue:[self.controls[key] doubleValue]
                                         minValue:minimum
@@ -699,22 +770,31 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     value.alignment = NSTextAlignmentRight;
     [MatrixCodeSettingsTheme.sharedTheme styleSlider:slider readout:value];
     [value.widthAnchor constraintEqualToConstant:58].active = YES;
-    NSStackView *header = [NSStackView stackViewWithViews:@[name, value]];
+    NSStackView *header = [NSStackView stackViewWithViews:@[name, [self panelFlexibleSpacer], value]];
     header.distribution = NSStackViewDistributionFill;
+    header.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    header.alignment = NSLayoutAttributeCenterY;
+    header.spacing = 8;
     NSStackView *row = [NSStackView stackViewWithViews:@[header, slider]];
     row.orientation = NSUserInterfaceLayoutOrientationVertical;
-    row.spacing = 2;
+    row.alignment = NSLayoutAttributeLeading;
+    row.spacing = 3;
     row.identifier = [@"row-" stringByAppendingString:key];
+    [row.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
+    [header.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
+    [slider.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
     return row;
 }
 
 - (NSView *)panelInlineRow:(NSString *)label control:(NSView *)control {
     NSTextField *name = [NSTextField labelWithString:label];
     [self styleLabel:name uppercase:YES];
-    NSStackView *row = [NSStackView stackViewWithViews:@[name, control]];
+    NSStackView *row = [NSStackView stackViewWithViews:@[name, [self panelFlexibleSpacer], control]];
     row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     row.alignment = NSLayoutAttributeCenterY;
     row.distribution = NSStackViewDistributionFill;
+    row.spacing = 8;
+    [row.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
     return row;
 }
 
@@ -745,13 +825,14 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.alignment = NSLayoutAttributeLeading;
-    stack.spacing = 6;
+    stack.spacing = 9;
     stack.edgeInsets = NSEdgeInsetsMake(16, 18, 18, 18);
 
     NSTextField *title = [NSTextField labelWithString:@"MATRIX"];
     title.identifier = @"settings-title";
     [MatrixCodeSettingsTheme.sharedTheme styleHeading:title level:1];
     [stack addArrangedSubview:title];
+    [stack setCustomSpacing:10 afterView:title];
 
     NSTextField *name = [[NSTextField alloc] initWithFrame:NSZeroRect];
     name.placeholderString = @"Neo";
@@ -762,8 +843,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     name.delegate = self;
     [MatrixCodeSettingsTheme.sharedTheme styleTextField:name];
     self.panelNameField = name;
-    [name.widthAnchor constraintEqualToConstant:130].active = YES;
-    [stack addArrangedSubview:[self panelInlineRow:@"Viewer name" control:name]];
+    [name.widthAnchor constraintEqualToConstant:142].active = YES;
+    NSView *nameRow = [self panelInlineRow:@"Viewer name" control:name];
+    [stack addArrangedSubview:nameRow];
+    [stack setCustomSpacing:12 afterView:nameRow];
 
     NSArray *specs = @[
         @[@"Density", @"density", @0.2, @100],
@@ -779,7 +862,6 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     for (NSArray *spec in specs) {
         NSView *row = [self panelSlider:spec[0] key:spec[1]
                                    min:[spec[2] doubleValue] max:[spec[3] doubleValue]];
-        [row.widthAnchor constraintEqualToConstant:284].active = YES;
         [stack addArrangedSubview:row];
     }
 
@@ -794,26 +876,38 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     ]];
     [stack addArrangedSubview:[self panelInlineRow:@"Quality" control:quality]];
     [stack addArrangedSubview:[self panelInlineRow:@"Scanlines" control:[self panelToggle:@"Scanlines" key:@"scanlines"]]];
-    [stack addArrangedSubview:[self panelInlineRow:@"Allow overlap" control:[self panelToggle:@"Allow overlap" key:@"allowOverlap"]]];
+    NSView *overlapRow = [self panelInlineRow:@"Allow overlap" control:[self panelToggle:@"Allow overlap" key:@"allowOverlap"]];
+    [stack addArrangedSubview:overlapRow];
+    [stack setCustomSpacing:12 afterView:overlapRow];
+
+    NSStackView *actions = [NSStackView stackViewWithViews:@[]];
+    actions.identifier = @"settings-panel-actions";
+    actions.orientation = NSUserInterfaceLayoutOrientationVertical;
+    actions.alignment = NSLayoutAttributeLeading;
+    actions.spacing = 8;
+    actions.edgeInsets = NSEdgeInsetsMake(2, 0, 0, 0);
+    [actions.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
 
     NSArray *buttons = @[
         @[@"▦ Characters", @"characters"],
         @[@"▷ Replay intro", @"replay"],
         @[@"✎ Edit intro", @"intro"],
         @[@"✎ Edit messages", @"messages"],
+        @[@"▧ Edit images", @"images"],
         @[@"⏱ Edit countdown", @"countdowns"],
     ];
     for (NSArray *spec in buttons) {
         SEL action = [spec[1] isEqualToString:@"replay"] ? @selector(previewIntro:) : @selector(openEditor:);
         NSButton *button = [self settingsButton:spec[0] action:action identifier:spec[1]];
-        [button.widthAnchor constraintEqualToConstant:284].active = YES;
-        [stack addArrangedSubview:button];
+        [button.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
+        [actions addArrangedSubview:button];
     }
     NSButton *reset = [self settingsButton:@"↺ Reset to defaults"
                                     action:@selector(resetControls:)
                                 identifier:@"reset-controls"];
-    [reset.widthAnchor constraintEqualToConstant:284].active = YES;
-    [stack addArrangedSubview:reset];
+    [reset.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
+    [actions addArrangedSubview:reset];
+    [stack addArrangedSubview:actions];
 
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
@@ -821,7 +915,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     scroll.hasVerticalScroller = YES;
     scroll.autohidesScrollers = YES;
     [MatrixCodeSettingsTheme.sharedTheme styleScrollView:scroll];
-    MatrixCodeFlippedDocumentView *document = [[MatrixCodeFlippedDocumentView alloc] initWithFrame:NSMakeRect(0, 0, 320, 690)];
+    MatrixCodeFlippedDocumentView *document = [[MatrixCodeFlippedDocumentView alloc]
+        initWithFrame:NSMakeRect(0, 0, MatrixCodeSettingsPanelWidth, 760)];
     [document addSubview:stack];
     scroll.documentView = document;
     [surface addSubview:scroll];
@@ -842,6 +937,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     if ([kind isEqualToString:@"characters"]) return [self charactersTab];
     if ([kind isEqualToString:@"intro"]) return [self introTab];
     if ([kind isEqualToString:@"messages"]) return [self messagesTab];
+    if ([kind isEqualToString:@"images"]) return [self imagesTab];
     return [self countdownTab];
 }
 
@@ -884,6 +980,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         BOOL switchLike =
             [button.title isEqualToString:@"Rain during intro"] ||
             [button.title isEqualToString:@"Enable messages"] ||
+            [button.title isEqualToString:@"Enable images"] ||
             [button.title isEqualToString:@"Flicker dissolve"] ||
             [button.title isEqualToString:@"Brightness fade"] ||
             [button.title isEqualToString:@"Enable default target"] ||
@@ -1012,6 +1109,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     if ([kind isEqualToString:@"characters"]) return @"characters";
     if ([kind isEqualToString:@"intro"]) return @"intro";
     if ([kind isEqualToString:@"messages"]) return @"messages";
+    if ([kind isEqualToString:@"images"]) return @"images";
     if ([kind isEqualToString:@"countdown"] || [kind isEqualToString:@"countdowns"]) {
         return @"countdowns";
     }
@@ -1105,7 +1203,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     } else {
         NSMutableDictionary *values = [[self serializedValues] mutableCopy];
         NSString *key = [self.editorKind isEqualToString:@"intro"] ? @"mx-intro" :
-            ([self.editorKind isEqualToString:@"messages"] ? @"mx-messages" : @"mx-countdown");
+            ([self.editorKind isEqualToString:@"messages"] ? @"mx-messages" :
+             ([self.editorKind isEqualToString:@"images"] ? @"mx-images" : @"mx-countdown"));
         [values removeObjectForKey:key];
         self.stagedValues = values;
         [self loadModels];
@@ -1277,6 +1376,11 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         ?: [NSMutableDictionary dictionary];
     messages[@"enabled"] = @NO;
     previewValues[@"mx-messages"] = MatrixCodeJSONString(messages);
+    NSMutableDictionary *images =
+        [MatrixCodeJSONObject(previewValues[@"mx-images"], NSDictionary.class) mutableCopy]
+        ?: [NSMutableDictionary dictionary];
+    images[@"enabled"] = @NO;
+    previewValues[@"mx-images"] = MatrixCodeJSONString(images);
     return previewValues;
 }
 
@@ -1502,6 +1606,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         [self introLineChanged:field];
     } else if ([identifier isEqualToString:@"messageText"]) {
         [self messageLineChanged:field];
+    } else if ([identifier isEqualToString:@"imageName"]) {
+        [self imageItemChanged:field];
     } else if ([identifier isEqualToString:@"momentName"]) {
         [self momentChanged:field];
     } else if ([identifier isEqualToString:@"charMs"] ||
@@ -1514,8 +1620,14 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                [identifier hasPrefix:@"appearMs"] ||
                [identifier hasPrefix:@"disappearMs"] ||
                [identifier hasPrefix:@"verticalPosition"] ||
-               [identifier hasPrefix:@"verticalJitter"]) {
-        [self messageNumberChanged:field];
+               [identifier hasPrefix:@"verticalJitter"] ||
+               [identifier hasPrefix:@"image"]) {
+        if ([self.editorKind isEqualToString:@"images"] ||
+            ([identifier hasPrefix:@"image"] && ![identifier hasPrefix:@"imageName"])) {
+            [self imageNumberChanged:field];
+        } else {
+            [self messageNumberChanged:field];
+        }
     }
 }
 
@@ -1627,9 +1739,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 }
 
 - (void)introLineChanged:(NSTextField *)sender {
-    if (sender.tag >= self.introLines.count) return;
+    if (!MatrixCodeIsValidIndex(sender.tag, self.introLines.count)) return;
+    NSUInteger index = (NSUInteger)sender.tag;
     NSString *key = [sender.identifier stringByReplacingOccurrencesOfString:@"-seconds" withString:@""];
-    self.introLines[sender.tag][key] =
+    self.introLines[index][key] =
         [key isEqualToString:@"text"]
             ? MatrixCodeSettingText(sender.stringValue, 120)
             : @(MIN(20000, MAX(0, sender.doubleValue * 1000.0)));
@@ -1642,15 +1755,19 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [self draftDidChange];
 }
 - (void)removeIntroLine:(NSButton *)sender {
-    if (self.introLines.count > 1 && sender.tag < self.introLines.count)
-        [self.introLines removeObjectAtIndex:sender.tag];
+    if (self.introLines.count > 1 && MatrixCodeIsValidIndex(sender.tag, self.introLines.count))
+        [self.introLines removeObjectAtIndex:(NSUInteger)sender.tag];
     [self rebuildIntroLines];
     [self draftDidChange];
 }
 - (void)moveIntroLine:(NSButton *)sender {
-    NSInteger destination = sender.tag + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
-    if (destination >= 0 && destination < self.introLines.count)
-        [self.introLines exchangeObjectAtIndex:sender.tag withObjectAtIndex:destination];
+    NSInteger source = sender.tag;
+    NSInteger destination = source + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
+    if (MatrixCodeIsValidIndex(source, self.introLines.count) &&
+        MatrixCodeIsValidIndex(destination, self.introLines.count)) {
+        [self.introLines exchangeObjectAtIndex:(NSUInteger)source
+                             withObjectAtIndex:(NSUInteger)destination];
+    }
     [self rebuildIntroLines];
     [self draftDidChange];
 }
@@ -1746,8 +1863,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     }];
 }
 - (void)messageLineChanged:(NSTextField *)sender {
-    if (sender.tag < self.messageLines.count)
-        self.messageLines[sender.tag] = MatrixCodeSettingText(sender.stringValue, 120);
+    if (MatrixCodeIsValidIndex(sender.tag, self.messageLines.count))
+        self.messageLines[(NSUInteger)sender.tag] = MatrixCodeSettingText(sender.stringValue, 120);
     [self draftDidChange];
 }
 - (void)addMessage:(id)sender {
@@ -1756,14 +1873,19 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [self draftDidChange];
 }
 - (void)removeMessage:(NSButton *)sender {
-    if (sender.tag < self.messageLines.count) [self.messageLines removeObjectAtIndex:sender.tag];
+    if (MatrixCodeIsValidIndex(sender.tag, self.messageLines.count))
+        [self.messageLines removeObjectAtIndex:(NSUInteger)sender.tag];
     [self rebuildMessageLines];
     [self draftDidChange];
 }
 - (void)moveMessage:(NSButton *)sender {
-    NSInteger destination = sender.tag + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
-    if (destination >= 0 && destination < self.messageLines.count)
-        [self.messageLines exchangeObjectAtIndex:sender.tag withObjectAtIndex:destination];
+    NSInteger source = sender.tag;
+    NSInteger destination = source + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
+    if (MatrixCodeIsValidIndex(source, self.messageLines.count) &&
+        MatrixCodeIsValidIndex(destination, self.messageLines.count)) {
+        [self.messageLines exchangeObjectAtIndex:(NSUInteger)source
+                               withObjectAtIndex:(NSUInteger)destination];
+    }
     [self rebuildMessageLines];
     [self draftDidChange];
 }
@@ -1795,6 +1917,278 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     if ([sender.identifier isEqualToString:@"messageLayout"]) {
         [self presentEditorKind:@"messages"];
     }
+}
+
+- (NSImage *)thumbnailForImageItem:(NSDictionary *)item {
+    NSMutableDictionary *image = MatrixCodeSanitizedImageItem(item);
+    if (!image) return nil;
+    NSInteger width = [image[@"width"] integerValue];
+    NSInteger height = [image[@"height"] integerValue];
+    NSData *mask = [[NSData alloc] initWithBase64EncodedString:image[@"data"] options:0];
+    if (!mask || mask.length != (NSUInteger)(width * height)) return nil;
+    NSBitmapImageRep *rep =
+        [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+                                                pixelsWide:width
+                                                pixelsHigh:height
+                                             bitsPerSample:8
+                                           samplesPerPixel:4
+                                                  hasAlpha:YES
+                                                  isPlanar:NO
+                                            colorSpaceName:NSCalibratedRGBColorSpace
+                                               bytesPerRow:width * 4
+                                              bitsPerPixel:32];
+    if (!rep.bitmapData) return nil;
+    const uint8_t *source = mask.bytes;
+    uint8_t *dest = rep.bitmapData;
+    for (NSInteger index = 0; index < width * height; index++) {
+        uint8_t value = source[index];
+        dest[index * 4 + 0] = value;
+        dest[index * 4 + 1] = value;
+        dest[index * 4 + 2] = value;
+        dest[index * 4 + 3] = 255;
+    }
+    NSImage *thumbnail = [[NSImage alloc] initWithSize:NSMakeSize(width, height)];
+    [thumbnail addRepresentation:rep];
+    return thumbnail;
+}
+
+- (NSMutableDictionary *)imageItemFromURL:(NSURL *)url {
+    NSImage *source = [[NSImage alloc] initWithContentsOfURL:url];
+    if (!source || source.size.width <= 0 || source.size.height <= 0) return nil;
+    NSRect proposed = NSMakeRect(0, 0, source.size.width, source.size.height);
+    CGImageRef cgImage = [source CGImageForProposedRect:&proposed context:nil hints:nil];
+    if (!cgImage) return nil;
+    size_t sourceWidth = CGImageGetWidth(cgImage);
+    size_t sourceHeight = CGImageGetHeight(cgImage);
+    if (sourceWidth == 0 || sourceHeight == 0) return nil;
+
+    CGFloat scale = MIN((CGFloat)MatrixCodeImageMaskMaxDimension / (CGFloat)sourceWidth,
+                        (CGFloat)MatrixCodeImageMaskMaxDimension / (CGFloat)sourceHeight);
+    scale = MIN(1.0, MAX(scale, 1.0 / MAX(sourceWidth, sourceHeight)));
+    NSInteger width = MAX(1, (NSInteger)lround((CGFloat)sourceWidth * scale));
+    NSInteger height = MAX(1, (NSInteger)lround((CGFloat)sourceHeight * scale));
+    width = MIN((NSInteger)MatrixCodeImageMaskMaxDimension, width);
+    height = MIN((NSInteger)MatrixCodeImageMaskMaxDimension, height);
+
+    NSMutableData *rgba = [NSMutableData dataWithLength:(NSUInteger)(width * height * 4)];
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(rgba.mutableBytes,
+                                                 (size_t)width,
+                                                 (size_t)height,
+                                                 8,
+                                                 (size_t)width * 4,
+                                                 colorSpace,
+                                                 (CGBitmapInfo)kCGImageAlphaPremultipliedLast |
+                                                 kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(colorSpace);
+    if (!context) return nil;
+    CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), cgImage);
+    CGContextRelease(context);
+
+    NSUInteger count = (NSUInteger)(width * height);
+    float *luminance = calloc(count, sizeof(float));
+    if (!luminance) return nil;
+    const uint8_t *pixels = rgba.bytes;
+    float minimum = 1;
+    float maximum = 0;
+    for (NSUInteger index = 0; index < count; index++) {
+        float alpha = pixels[index * 4 + 3] / 255.0f;
+        float red = pixels[index * 4 + 0] / 255.0f;
+        float green = pixels[index * 4 + 1] / 255.0f;
+        float blue = pixels[index * 4 + 2] / 255.0f;
+        float value = (0.2126f * red + 0.7152f * green + 0.0722f * blue) * alpha;
+        luminance[index] = value;
+        minimum = fminf(minimum, value);
+        maximum = fmaxf(maximum, value);
+    }
+    NSMutableData *mask = [NSMutableData dataWithLength:count];
+    uint8_t *bytes = mask.mutableBytes;
+    float range = maximum - minimum;
+    for (NSUInteger index = 0; index < count; index++) {
+        float value = range > 0.035f ? (luminance[index] - minimum) / range : luminance[index];
+        value = powf(fminf(1, fmaxf(0, value)), 0.82f);
+        bytes[index] = (uint8_t)lroundf(value * 255.0f);
+    }
+    free(luminance);
+
+    NSString *name = url.lastPathComponent.stringByDeletingPathExtension;
+    name = MatrixCodeSettingText(name, 80);
+    name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!name.length) name = @"Image";
+    return [@{
+        @"name": name,
+        @"width": @(width),
+        @"height": @(height),
+        @"data": [mask base64EncodedStringWithOptions:0],
+    } mutableCopy];
+}
+
+- (NSView *)imagesTab {
+    NSStackView *stack;
+    NSView *scroll = [self scrollingStack:&stack];
+    [stack addArrangedSubview:[self heading:@"In-rain Images"]];
+    NSButton *enabled = [NSButton checkboxWithTitle:@"Enable images"
+                                             target:self
+                                             action:@selector(imageToggleChanged:)];
+    enabled.identifier = @"enabled";
+    enabled.state = [self.images[@"enabled"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
+    [stack addArrangedSubview:enabled];
+
+    self.imageItemsStack = [NSStackView stackViewWithViews:@[]];
+    self.imageItemsStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    self.imageItemsStack.spacing = 8;
+    [stack addArrangedSubview:self.imageItemsStack];
+    [self rebuildImageItems];
+    [stack addArrangedSubview:[NSButton buttonWithTitle:@"Add Image" target:self action:@selector(addImage:)]];
+
+    for (NSArray *field in @[@[@"Show one every (s)", @"frequencyMs"],
+                              @[@"Appear over (s)", @"appearMs"],
+                              @[@"Each stays for (s)", @"persistenceMs"],
+                              @[@"Disappear over (s)", @"disappearMs"],
+                              @[@"Screen width (%)", @"imageScale"],
+                              @[@"Placement randomness (%)", @"imagePlacementJitter"]]) {
+        BOOL percent = [field[1] hasPrefix:@"image"];
+        NSTextField *number = percent
+            ? [self percentField:[self.images[field[1]] doubleValue]
+                      identifier:field[1] action:@selector(imageNumberChanged:)]
+            : [self secondsField:[self.images[field[1]] doubleValue]
+                      identifier:field[1] action:@selector(imageNumberChanged:)];
+        [stack addArrangedSubview:[self rowWithLabel:field[0]
+                                            control:number]];
+    }
+    for (NSArray *toggle in @[@[@"Flicker dissolve", @"flickerOut"],
+                               @[@"Brightness fade", @"brightnessFade"]]) {
+        NSButton *button = [NSButton checkboxWithTitle:toggle[0]
+                                                target:self
+                                                action:@selector(imageToggleChanged:)];
+        button.identifier = toggle[1];
+        button.state = [self.images[toggle[1]] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
+        [stack addArrangedSubview:button];
+    }
+    [stack addArrangedSubview:[NSButton buttonWithTitle:@"Preview Image" target:self action:@selector(previewImage:)]];
+    return scroll;
+}
+
+- (void)rebuildImageItems {
+    for (NSView *view in self.imageItemsStack.arrangedSubviews.copy) {
+        [self.imageItemsStack removeArrangedSubview:view]; [view removeFromSuperview];
+    }
+    [self.imageItems enumerateObjectsUsingBlock:^(NSMutableDictionary *image, NSUInteger index, BOOL *stop) {
+        NSImageView *thumbnail = [[NSImageView alloc] initWithFrame:NSZeroRect];
+        thumbnail.image = [self thumbnailForImageItem:image];
+        thumbnail.imageScaling = NSImageScaleProportionallyUpOrDown;
+        [thumbnail.widthAnchor constraintEqualToConstant:52].active = YES;
+        [thumbnail.heightAnchor constraintEqualToConstant:40].active = YES;
+
+        NSTextField *name = [[NSTextField alloc] initWithFrame:NSZeroRect];
+        name.placeholderString = @"Image";
+        name.stringValue = [image[@"name"] isKindOfClass:NSString.class] ? image[@"name"] : @"";
+        name.tag = index;
+        name.identifier = @"imageName";
+        name.target = self;
+        name.action = @selector(imageItemChanged:);
+        name.delegate = self;
+        [name.widthAnchor constraintEqualToConstant:210].active = YES;
+
+        NSString *dimensions = [NSString stringWithFormat:@"%@×%@",
+                                image[@"width"] ?: @0,
+                                image[@"height"] ?: @0];
+        NSTextField *size = [NSTextField labelWithString:dimensions];
+        [size.widthAnchor constraintEqualToConstant:62].active = YES;
+
+        NSButton *up = [NSButton buttonWithTitle:@"↑" target:self action:@selector(moveImage:)];
+        up.tag = index; up.identifier = @"up"; up.enabled = index > 0;
+        NSButton *down = [NSButton buttonWithTitle:@"↓" target:self action:@selector(moveImage:)];
+        down.tag = index; down.identifier = @"down"; down.enabled = index + 1 < self.imageItems.count;
+        NSButton *remove = [NSButton buttonWithTitle:@"−" target:self action:@selector(removeImage:)];
+        remove.tag = index;
+
+        NSStackView *row = [NSStackView stackViewWithViews:@[thumbnail, name, size, up, down, remove]];
+        row.spacing = 6;
+        row.alignment = NSLayoutAttributeCenterY;
+        [self.imageItemsStack addArrangedSubview:[self settingsCardContainingView:row]];
+    }];
+}
+
+- (void)addImage:(id)sender {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.allowsMultipleSelection = YES;
+    panel.canChooseDirectories = NO;
+    panel.canChooseFiles = YES;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    panel.allowedFileTypes = @[@"png", @"jpg", @"jpeg", @"heic", @"tif", @"tiff", @"gif", @"bmp"];
+#pragma clang diagnostic pop
+    __weak typeof(self) weakSelf = self;
+    void (^completion)(NSModalResponse) = ^(NSModalResponse response) {
+        if (response != NSModalResponseOK) return;
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        for (NSURL *url in panel.URLs) {
+            NSMutableDictionary *image = [self imageItemFromURL:url];
+            if (image) [self.imageItems addObject:image];
+        }
+        [self rebuildImageItems];
+        [self draftDidChange];
+    };
+    NSWindow *window = self.editorCard.window ?: self.window;
+    if (window) {
+        [panel beginSheetModalForWindow:window completionHandler:completion];
+    } else {
+        completion([panel runModal]);
+    }
+}
+
+- (void)imageItemChanged:(NSTextField *)sender {
+    if (MatrixCodeIsValidIndex(sender.tag, self.imageItems.count)) {
+        NSString *name = MatrixCodeSettingText(sender.stringValue, 80);
+        name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        self.imageItems[(NSUInteger)sender.tag][@"name"] = name.length ? name : @"Image";
+    }
+    [self draftDidChange];
+}
+
+- (void)removeImage:(NSButton *)sender {
+    if (MatrixCodeIsValidIndex(sender.tag, self.imageItems.count)) {
+        [self.imageItems removeObjectAtIndex:(NSUInteger)sender.tag];
+    }
+    [self rebuildImageItems];
+    [self draftDidChange];
+}
+
+- (void)moveImage:(NSButton *)sender {
+    NSInteger source = sender.tag;
+    NSInteger destination = source + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
+    if (MatrixCodeIsValidIndex(source, self.imageItems.count) &&
+        MatrixCodeIsValidIndex(destination, self.imageItems.count)) {
+        [self.imageItems exchangeObjectAtIndex:(NSUInteger)source
+                             withObjectAtIndex:(NSUInteger)destination];
+    }
+    [self rebuildImageItems];
+    [self draftDidChange];
+}
+
+- (void)imageNumberChanged:(NSTextField *)sender {
+    BOOL percent = [sender.identifier hasSuffix:@"-percent"];
+    BOOL seconds = [sender.identifier hasSuffix:@"-seconds"];
+    NSString *key = [[sender.identifier stringByReplacingOccurrencesOfString:@"-percent" withString:@""]
+        stringByReplacingOccurrencesOfString:@"-seconds" withString:@""];
+    double value = sender.doubleValue * (percent ? 0.01 : (seconds ? 1000.0 : 1.0));
+    if ([key isEqualToString:@"imageScale"]) value = MIN(1, MAX(0.05, value));
+    else if ([key isEqualToString:@"imagePlacementJitter"]) value = MIN(1, MAX(0, value));
+    else {
+        BOOL minimumGap = [key isEqualToString:@"frequencyMs"] ||
+            [key isEqualToString:@"persistenceMs"];
+        value = MIN(600000, MAX(minimumGap ? 500 : 0, value));
+    }
+    self.images[key] = @(value);
+    [self draftDidChange];
+}
+
+- (void)imageToggleChanged:(NSButton *)sender {
+    self.images[sender.identifier] = @(sender.state == NSControlStateValueOn);
+    [self draftDidChange];
 }
 
 - (NSView *)countdownTab {
@@ -1881,25 +2275,31 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [self draftDidChange];
 }
 - (void)moveMoment:(NSButton *)sender {
-    NSInteger destination = sender.tag + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
-    if (destination >= 0 && destination < self.moments.count)
-        [self.moments exchangeObjectAtIndex:sender.tag withObjectAtIndex:destination];
+    NSInteger source = sender.tag;
+    NSInteger destination = source + ([sender.identifier isEqualToString:@"up"] ? -1 : 1);
+    if (MatrixCodeIsValidIndex(source, self.moments.count) &&
+        MatrixCodeIsValidIndex(destination, self.moments.count)) {
+        [self.moments exchangeObjectAtIndex:(NSUInteger)source
+                          withObjectAtIndex:(NSUInteger)destination];
+    }
     [self rebuildMoments];
     [self draftDidChange];
 }
 - (void)removeMoment:(NSButton *)sender {
-    if (sender.tag < self.moments.count) [self.moments removeObjectAtIndex:sender.tag];
+    if (MatrixCodeIsValidIndex(sender.tag, self.moments.count))
+        [self.moments removeObjectAtIndex:(NSUInteger)sender.tag];
     [self rebuildMoments];
     [self draftDidChange];
 }
 - (void)momentChanged:(id)sender {
     NSInteger index = [sender tag];
-    if (index >= self.moments.count) return;
+    if (!MatrixCodeIsValidIndex(index, self.moments.count)) return;
+    NSUInteger momentIndex = (NSUInteger)index;
     if ([[sender identifier] isEqualToString:@"momentName"]) {
         NSString *name = MatrixCodeSettingText([sender stringValue], 40);
         NSCharacterSet *illegal = [NSCharacterSet characterSetWithCharactersInString:@":{}"];
         name = [[name componentsSeparatedByCharactersInSet:illegal] componentsJoinedByString:@""];
-        self.moments[index][@"name"] = [name stringByTrimmingCharactersInSet:
+        self.moments[momentIndex][@"name"] = [name stringByTrimmingCharactersInSet:
             NSCharacterSet.whitespaceAndNewlineCharacterSet];
     } else if ([[sender identifier] isEqualToString:@"enabled"]) {
         BOOL enabled = [sender state] == NSControlStateValueOn;
@@ -1907,11 +2307,11 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         for (NSView *view in [sender superview].subviews) {
             if ([view isKindOfClass:NSDatePicker.class]) datePicker = (NSDatePicker *)view;
         }
-        self.moments[index][@"targetMs"] = enabled && datePicker
+        self.moments[momentIndex][@"targetMs"] = enabled && datePicker
             ? @(datePicker.dateValue.timeIntervalSince1970 * 1000.0) : NSNull.null;
         [self rebuildMoments];
     } else {
-        self.moments[index][@"targetMs"] = @([[sender dateValue] timeIntervalSince1970] * 1000.0);
+        self.moments[momentIndex][@"targetMs"] = @([[sender dateValue] timeIntervalSince1970] * 1000.0);
     }
     [self draftDidChange];
 }
@@ -1931,6 +2331,13 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     }
     self.messages[@"messages"] = sanitizedMessages;
     values[@"mx-messages"] = MatrixCodeJSONString(self.messages);
+    NSMutableArray<NSDictionary *> *sanitizedImages = [NSMutableArray array];
+    for (NSUInteger index = 0; index < self.imageItems.count; index++) {
+        NSMutableDictionary *image = MatrixCodeSanitizedImageItem(self.imageItems[index]);
+        if (image) [sanitizedImages addObject:image];
+    }
+    self.images[@"images"] = sanitizedImages;
+    values[@"mx-images"] = MatrixCodeJSONString(self.images);
     NSMutableArray<NSDictionary *> *sanitizedMoments = [NSMutableArray array];
     NSMutableSet<NSString *> *names = [NSMutableSet set];
     for (NSUInteger index = 0; index < MIN((NSUInteger)12, self.moments.count); index++) {
@@ -1957,16 +2364,20 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return values;
 }
 
-- (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message {
+- (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message image:(BOOL)image {
     NSDictionary *values = [self serializedValues];
     self.previewController = [[MatrixCodeNativePreviewController alloc]
-        initWithStoredValues:values showIntro:intro showMessage:message];
+        initWithStoredValues:values showIntro:intro showMessage:message showImage:image];
     [self.previewController showWindow:nil];
     [self.previewController.window makeKeyAndOrderFront:nil];
 }
-- (void)previewRain:(id)sender { [self showPreviewWithIntro:NO message:NO]; }
-- (void)previewIntro:(id)sender { [self showPreviewWithIntro:YES message:NO]; }
-- (void)previewMessage:(id)sender { [self showPreviewWithIntro:NO message:YES]; }
+- (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message {
+    [self showPreviewWithIntro:intro message:message image:NO];
+}
+- (void)previewRain:(id)sender { [self showPreviewWithIntro:NO message:NO image:NO]; }
+- (void)previewIntro:(id)sender { [self showPreviewWithIntro:YES message:NO image:NO]; }
+- (void)previewMessage:(id)sender { [self showPreviewWithIntro:NO message:YES image:NO]; }
+- (void)previewImage:(id)sender { [self showPreviewWithIntro:NO message:NO image:YES]; }
 
 - (void)resetAll:(id)sender {
     [self resetControls:sender];

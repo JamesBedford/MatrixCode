@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { loadUiState, sanitizeUiState, setActiveSettingsSurface } from "../src/config/uiState.ts";
+import {
+  loadUiState,
+  sanitizeUiState,
+  setActiveSettingsSurface,
+  setFpsOverlayVisible,
+} from "../src/config/uiState.ts";
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -34,6 +39,8 @@ describe("ui state", () => {
     expect(sanitizeUiState({ activeSettingsSurface: "characters" }).activeSettingsSurface).toBe("characters");
     expect(sanitizeUiState({ activeSettingsSurface: "unknown" }).activeSettingsSurface).toBeNull();
     expect(sanitizeUiState(null).activeSettingsSurface).toBeNull();
+    expect(sanitizeUiState({ fpsOverlayVisible: true }).fpsOverlayVisible).toBe(true);
+    expect(sanitizeUiState({ fpsOverlayVisible: "true" }).fpsOverlayVisible).toBe(false);
   });
 
   it("persists and clears the active settings surface", () => {
@@ -45,6 +52,24 @@ describe("ui state", () => {
     setActiveSettingsSurface(null, storage);
     expect(storage.getItem("mx-ui-state")).toBeNull();
     expect(loadUiState(storage).activeSettingsSurface).toBeNull();
+  });
+
+  it("persists FPS overlay visibility alongside other UI state", () => {
+    const storage = new MemoryStorage();
+
+    setActiveSettingsSurface("intro", storage);
+    setFpsOverlayVisible(true, storage);
+
+    expect(loadUiState(storage)).toEqual({
+      activeSettingsSurface: "intro",
+      fpsOverlayVisible: true,
+    });
+
+    setActiveSettingsSurface(null, storage);
+    expect(loadUiState(storage).fpsOverlayVisible).toBe(true);
+
+    setFpsOverlayVisible(false, storage);
+    expect(storage.getItem("mx-ui-state")).toBeNull();
   });
 
   it("falls back safely for malformed stored JSON", () => {

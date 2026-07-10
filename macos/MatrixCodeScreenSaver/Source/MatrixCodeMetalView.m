@@ -112,6 +112,107 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary *dictionary) {
     return [value isKindOfClass:NSString.class] && [value isEqualToString:@"bottomToTop"];
 }
 
+static NSMutableDictionary *MatrixCodeSanitizedRenderImageItem(id item) {
+    if (![item isKindOfClass:NSDictionary.class]) return nil;
+    NSDictionary *dictionary = item;
+    NSInteger width = (NSInteger)MatrixCodeNumber(dictionary, @"width", 0, 1, 128);
+    NSInteger height = (NSInteger)MatrixCodeNumber(dictionary, @"height", 0, 1, 128);
+    id rawData = dictionary[@"data"];
+    if (![rawData isKindOfClass:NSString.class]) return nil;
+    NSString *encoded = rawData;
+    if (encoded.length > 49152) return nil;
+    NSData *mask = [[NSData alloc] initWithBase64EncodedString:encoded options:0];
+    if (!mask || mask.length != (NSUInteger)(width * height)) return nil;
+    NSString *name = [dictionary[@"name"] isKindOfClass:NSString.class]
+        ? dictionary[@"name"] : @"Image";
+    return [@{
+        @"name": [name substringToIndex:MIN((NSUInteger)80, name.length)],
+        @"width": @(width),
+        @"height": @(height),
+        @"data": encoded,
+    } mutableCopy];
+}
+
+static NSArray<NSDictionary *> *MatrixCodeSanitizedRenderImages(NSDictionary *dictionary) {
+    NSArray *configured = [dictionary[@"images"] isKindOfClass:NSArray.class]
+        ? dictionary[@"images"] : @[];
+    NSMutableArray<NSDictionary *> *images = [NSMutableArray array];
+    for (NSUInteger index = 0; index < configured.count; index++) {
+        NSMutableDictionary *image = MatrixCodeSanitizedRenderImageItem(configured[index]);
+        if (image) [images addObject:image];
+    }
+    return images;
+}
+
+static float MatrixCodeImageSampleMask(NSData *mask, NSInteger width, NSInteger height, float u, float v) {
+    if (!mask || width <= 0 || height <= 0 ||
+        mask.length != (NSUInteger)(width * height) ||
+        u < 0 || u > 1 || v < 0 || v > 1) {
+        return 0;
+    }
+    const uint8_t *bytes = mask.bytes;
+    float x = fminf(width - 1, fmaxf(0, u * (width - 1)));
+    float y = fminf(height - 1, fmaxf(0, v * (height - 1)));
+    NSInteger x0 = (NSInteger)floorf(x);
+    NSInteger y0 = (NSInteger)floorf(y);
+    NSInteger x1 = MIN(width - 1, x0 + 1);
+    NSInteger y1 = MIN(height - 1, y0 + 1);
+    float tx = x - x0;
+    float ty = y - y0;
+    float a = bytes[y0 * width + x0] / 255.0f;
+    float b = bytes[y0 * width + x1] / 255.0f;
+    float c = bytes[y1 * width + x0] / 255.0f;
+    float d = bytes[y1 * width + x1] / 255.0f;
+    return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
+}
+
+static float MatrixCodeImageFallingGate(NSInteger globalColumn,
+                                        NSInteger globalRow,
+                                        float rainElapsed,
+                                        uint32_t seed) {
+    uint32_t columnKey = seed ^ (uint32_t)(int32_t)globalColumn * 0x9e3779b9U ^ 0x748f4a15U;
+    float speed = 4.5f + MatrixCodeUnit(columnKey ^ 0x85ebca6bU) * 8.0f;
+    float span = 9.0f + MatrixCodeUnit(columnKey ^ 0x27d4eb2dU) * 12.0f;
+    float offset = MatrixCodeUnit(columnKey ^ 0xd3a2646cU) * span;
+    float phase = fmodf((float)globalRow - rainElapsed * speed + offset, span);
+    if (phase < 0) phase += span;
+    float head = expf(-phase * 0.55f);
+    float afterglow = phase < span * 0.42f ? powf(1.0f - phase / (span * 0.42f), 2.0f) : 0;
+    return fminf(1, fmaxf(head, afterglow * 0.65f));
+}
+
+static NSInteger MatrixCodeImageGlyphForLuminance(float luminance,
+                                                  uint32_t key,
+                                                  NSString *glyphMode) {
+    float value = fminf(1, fmaxf(0, luminance));
+    NSInteger level = MIN(6, MAX(0, (NSInteger)floorf(value * 7.0f)));
+    if ([glyphMode isEqualToString:@"binary"]) {
+        return MatrixCodeRainDigitStartIndex() + (value >= 0.58f ? 0 : 1);
+    }
+    if ([glyphMode isEqualToString:@"digits"]) {
+        static const NSInteger digits[7] = {1, 7, 4, 2, 5, 8, 0};
+        return MatrixCodeRainDigitStartIndex() + digits[level];
+    }
+    if ([glyphMode isEqualToString:@"latin"]) {
+        static const NSInteger letters[7] = {8, 11, 19, 0, 13, 12, 22};
+        return MatrixCodeRainLatinStartIndex() + letters[level];
+    }
+    if ([glyphMode isEqualToString:@"symbols"]) {
+        static const NSInteger symbols[7] = {1, 6, 4, 5, 2, 3, 0};
+        return MatrixCodeRainSymbolsStartIndex() + symbols[level];
+    }
+    if ([glyphMode isEqualToString:@"katakana"]) {
+        return (NSInteger)(MatrixCodeUnit(key ^ (uint32_t)level * 0x45d9f3bU) *
+            MatrixCodeRainDigitStartIndex());
+    }
+    if (value < 0.16f) return MatrixCodeRainSymbolsStartIndex() + 1;
+    if (value < 0.32f) return MatrixCodeRainDigitStartIndex() + 1;
+    if (value < 0.48f) return MatrixCodeRainLatinStartIndex() + 8;
+    if (value < 0.64f) return MatrixCodeRainLatinStartIndex() + 12;
+    return (NSInteger)(MatrixCodeUnit(key ^ (uint32_t)level * 0x45d9f3bU) *
+        MatrixCodeRainDigitStartIndex());
+}
+
 static NSString *MatrixCodeGlyphMode(NSDictionary *dictionary) {
     id value = dictionary[@"glyphMode"];
     NSArray<NSString *> *modes = @[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"];
@@ -430,6 +531,18 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
 @property(nonatomic) NSInteger messageTargetGlyphCount;
 @property(nonatomic) float activeMessageFrameIntensity;
 @property(nonatomic) float activeMessageFrameScramble;
+@property(nonatomic, copy) NSDictionary<NSString *, id> *images;
+@property(nonatomic, copy, nullable) NSDictionary<NSString *, id> *activeImage;
+@property(nonatomic, strong) NSData *activeImageMaskData;
+@property(nonatomic) NSInteger activeImageWidth;
+@property(nonatomic) NSInteger activeImageHeight;
+@property(nonatomic) NSTimeInterval nextImageFire;
+@property(nonatomic) NSTimeInterval activeImageStart;
+@property(nonatomic) NSTimeInterval activeImageEnd;
+@property(nonatomic) float activeImageFrameIntensity;
+@property(nonatomic) float activeImageFrameScramble;
+@property(nonatomic) float activeImagePlacementX;
+@property(nonatomic) float activeImagePlacementY;
 @property(nonatomic, strong) NSMutableData *glyphStateData;
 @property(nonatomic) NSInteger glyphStateColumns;
 @property(nonatomic) NSInteger glyphStateRows;
@@ -447,6 +560,12 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
 - (void)ensureActiveMessageTargetCapacityForCount:(NSInteger)count;
 - (void)updateActiveMessageFrameStateAtTime:(NSTimeInterval)now
                             framesPerSecond:(double)framesPerSecond;
+- (void)updateImageScheduleAtTime:(NSTimeInterval)now
+                        globalCols:(NSInteger)globalCols
+                        globalRows:(NSInteger)globalRows
+                         localCols:(NSInteger)localCols
+                         localRows:(NSInteger)localRows;
+- (void)updateActiveImageFrameStateAtTime:(NSTimeInterval)now;
 @end
 
 @implementation MatrixCodeMetalView
@@ -599,6 +718,26 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
         @"verticalPosition": @0.475,
         @"verticalJitter": @0.25,
     };
+    NSDictionary *images = nil;
+    NSString *imagesRaw = storedValues[@"mx-images"];
+    if ([imagesRaw isKindOfClass:NSString.class]) {
+        NSData *data = [imagesRaw dataUsingEncoding:NSUTF8StringEncoding];
+        id object = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        if ([object isKindOfClass:NSDictionary.class]) images = object;
+    }
+    NSDictionary *storedImages = images ?: @{};
+    self.images = @{
+        @"images": MatrixCodeSanitizedRenderImages(storedImages),
+        @"enabled": @(MatrixCodeBool(storedImages, @"enabled", NO)),
+        @"frequencyMs": @(MatrixCodeNumber(storedImages, @"frequencyMs", 14000, 500, 600000)),
+        @"persistenceMs": @(MatrixCodeNumber(storedImages, @"persistenceMs", 12000, 500, 600000)),
+        @"appearMs": @(MatrixCodeNumber(storedImages, @"appearMs", 4500, 0, 600000)),
+        @"disappearMs": @(MatrixCodeNumber(storedImages, @"disappearMs", 4500, 0, 600000)),
+        @"flickerOut": @(MatrixCodeBool(storedImages, @"flickerOut", YES)),
+        @"brightnessFade": @(MatrixCodeBool(storedImages, @"brightnessFade", NO)),
+        @"imageScale": @(MatrixCodeNumber(storedImages, @"imageScale", 0.72, 0.05, 1)),
+        @"imagePlacementJitter": @(MatrixCodeNumber(storedImages, @"imagePlacementJitter", 0.35, 0, 1)),
+    };
     self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
                                                                   runStartDate:[NSDate dateWithTimeIntervalSince1970:self.epochSeconds]];
     self.activeMessageTemplate = nil;
@@ -612,11 +751,24 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
     self.activeMessageStartRow = 0;
     self.activeMessagePlacementColumns = 0;
     self.activeMessagePlacementRows = 0;
+    self.activeImage = nil;
+    self.activeImageMaskData = nil;
+    self.activeImageWidth = 0;
+    self.activeImageHeight = 0;
+    self.activeImageStart = 0;
+    self.activeImageEnd = 0;
+    self.activeImageFrameIntensity = 1;
+    self.activeImageFrameScramble = 0;
+    self.activeImagePlacementX = 0.5f;
+    self.activeImagePlacementY = 0.5f;
     float frequency = MatrixCodeNumber(self.messages, @"frequencyMs", 8000, 500, 600000) / 1000.0f;
+    float imageFrequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0f;
     NSTimeInterval scheduleBase = self.animationActive
         ? NSDate.date.timeIntervalSince1970 : self.epochSeconds;
     self.nextMessageFire = scheduleBase + frequency *
         (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ 0xa511e9b3U));
+    self.nextImageFire = scheduleBase + imageFrequency *
+        (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ 0x6d2b79f5U));
     [self updatePalette];
     BOOL nextMirror = MatrixCodeBool(self.controls, @"mirror", YES);
     NSString *nextGlyphMode = MatrixCodeGlyphMode(self.controls);
@@ -922,7 +1074,7 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
                                            framesPerSecond:self.preferredFramesPerSecond];
         BOOL renderable = NO;
         for (NSUInteger index = 0; index < display.length; index++) {
-            if (self.messageGlyphs[[display substringWithRange:NSMakeRange(index, 1)]]) {
+            if (self.messageGlyphs[[display substringWithRange:NSMakeRange(index, 1)]] != nil) {
                 renderable = YES;
                 break;
             }
@@ -967,7 +1119,7 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
 
 - (BOOL)messageDisplayHasRenderableGlyph:(NSString *)display {
     for (NSUInteger index = 0; index < display.length; index++) {
-        if (self.messageGlyphs[[display substringWithRange:NSMakeRange(index, 1)]]) {
+        if (self.messageGlyphs[[display substringWithRange:NSMakeRange(index, 1)]] != nil) {
             return YES;
         }
     }
@@ -1007,7 +1159,7 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
     for (NSInteger offset = 0; offset < self.messageTargetGlyphCount; offset++) {
         NSString *character = [display substringWithRange:NSMakeRange((NSUInteger)offset, 1)];
         NSNumber *glyph = self.messageGlyphs[character];
-        NSInteger target = glyph ? glyph.integerValue : NSNotFound;
+        NSInteger target = glyph != nil ? glyph.integerValue : NSNotFound;
         if (targets[offset] != target) {
             targets[offset] = target;
             claimed[offset] = 0;
@@ -1039,6 +1191,92 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
     }
     self.activeMessageFrameIntensity = MatrixCodeBool(self.messages, @"brightnessFade", NO) ? fade : 1;
     self.activeMessageFrameScramble = MatrixCodeBool(self.messages, @"flickerOut", YES) ? flicker : 0;
+}
+
+- (void)resetActiveImageState {
+    self.activeImage = nil;
+    self.activeImageMaskData = nil;
+    self.activeImageWidth = 0;
+    self.activeImageHeight = 0;
+    self.activeImageStart = 0;
+    self.activeImageEnd = 0;
+    self.activeImageFrameIntensity = 1;
+    self.activeImageFrameScramble = 0;
+    self.activeImagePlacementX = 0.5f;
+    self.activeImagePlacementY = 0.5f;
+}
+
+- (void)updateImageScheduleAtTime:(NSTimeInterval)now
+                        globalCols:(NSInteger)globalCols
+                        globalRows:(NSInteger)globalRows
+                         localCols:(NSInteger)localCols
+                         localRows:(NSInteger)localRows {
+    (void)globalCols;
+    (void)globalRows;
+    (void)localCols;
+    (void)localRows;
+    BOOL enabled = MatrixCodeBool(self.images, @"enabled", NO);
+    NSArray<NSDictionary *> *configured = [self.images[@"images"] isKindOfClass:NSArray.class]
+        ? self.images[@"images"] : @[];
+    if (!enabled || !configured.count) {
+        [self resetActiveImageState];
+        return;
+    }
+    if (self.activeImage && now >= self.activeImageEnd) {
+        [self resetActiveImageState];
+        float frequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0f;
+        uint32_t cycle = (uint32_t)floor(now - self.epochSeconds);
+        self.nextImageFire = now + frequency *
+            (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ cycle ^ 0x6d2b79f5U));
+    }
+    if (!self.activeImage && now >= self.nextImageFire) {
+        uint32_t activation = (uint32_t)floor((now - self.epochSeconds) * 10);
+        NSUInteger selected = MatrixCodeHash(self.seed ^ activation ^ 0x3f4d1c23U) % configured.count;
+        NSDictionary *image = configured[selected];
+        NSData *mask = [[NSData alloc] initWithBase64EncodedString:image[@"data"] options:0];
+        NSInteger width = [image[@"width"] integerValue];
+        NSInteger height = [image[@"height"] integerValue];
+        if (!mask || mask.length != (NSUInteger)(width * height)) {
+            float frequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0f;
+            self.nextImageFire = now + frequency *
+                (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ activation ^ 0x6d2b79f5U));
+            return;
+        }
+        self.activeImage = image;
+        self.activeImageMaskData = mask;
+        self.activeImageWidth = width;
+        self.activeImageHeight = height;
+        self.activeImageStart = now;
+        self.activeImagePlacementX = MatrixCodeUnit(self.seed ^ activation ^ 0x731f4a7dU);
+        self.activeImagePlacementY = MatrixCodeUnit(self.seed ^ activation ^ 0x4c2d65bfU);
+        float appear = MatrixCodeNumber(self.images, @"appearMs", 4500, 0, 600000) / 1000.0f;
+        float hold = MatrixCodeNumber(self.images, @"persistenceMs", 12000, 500, 600000) / 1000.0f;
+        float disappear = MatrixCodeNumber(self.images, @"disappearMs", 4500, 0, 600000) / 1000.0f;
+        self.activeImageEnd = now + appear + hold + disappear;
+    }
+}
+
+- (void)updateActiveImageFrameStateAtTime:(NSTimeInterval)now {
+    if (!self.activeImage || !self.activeImageMaskData) {
+        self.activeImageFrameIntensity = 1;
+        self.activeImageFrameScramble = 0;
+        return;
+    }
+    float appear = MatrixCodeNumber(self.images, @"appearMs", 4500, 0, 600000) / 1000.0f;
+    float disappear = MatrixCodeNumber(self.images, @"disappearMs", 4500, 0, 600000) / 1000.0f;
+    float elapsed = (float)(now - self.activeImageStart);
+    float remaining = (float)(self.activeImageEnd - now);
+    float fade = 1;
+    float flicker = 0;
+    if (appear > 0 && elapsed < appear) {
+        fade = fmaxf(0, elapsed / appear);
+        flicker = 1 - fade;
+    } else if (disappear > 0 && remaining < disappear) {
+        fade = fmaxf(0, remaining / disappear);
+        flicker = 1 - fade;
+    }
+    self.activeImageFrameIntensity = MatrixCodeBool(self.images, @"brightnessFade", NO) ? fade : 1;
+    self.activeImageFrameScramble = MatrixCodeBool(self.images, @"flickerOut", YES) ? flicker : 0;
 }
 
 - (void)updatePalette {
@@ -1176,8 +1414,14 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
                           globalRows:(NSInteger)virtualRows
                            localCols:columns
                            localRows:rows];
+    [self updateImageScheduleAtTime:now
+                          globalCols:(NSInteger)virtualColumns
+                          globalRows:(NSInteger)virtualRows
+                           localCols:columns
+                           localRows:rows];
     [self updateActiveMessageFrameStateAtTime:now
                               framesPerSecond:self.preferredFramesPerSecond];
+    [self updateActiveImageFrameStateAtTime:now];
     float glyphDt = [self advanceGlyphStateClockToTime:rainElapsed];
     MatrixCodeGlyphCellState *glyphStates = [self glyphStatesForColumns:columns
                                                                    rows:rows
@@ -1206,6 +1450,37 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
     NSInteger messageStartRow = self.activeMessageStartRow;
     float messageIntensity = self.activeMessageFrameIntensity;
     float messageScramble = self.activeMessageFrameScramble;
+    BOOL imageActive =
+        self.activeImage &&
+        self.activeImageMaskData &&
+        self.activeImageWidth > 0 &&
+        self.activeImageHeight > 0 &&
+        self.activeImageMaskData.length == (NSUInteger)(self.activeImageWidth * self.activeImageHeight);
+    float imageColumns = 0;
+    float imageRows = 0;
+    float imageOriginColumn = 0;
+    float imageOriginRow = 0;
+    if (imageActive) {
+        float scale = MatrixCodeNumber(self.images, @"imageScale", 0.72, 0.05, 1);
+        float targetColumns = fmaxf(1, virtualColumns * scale);
+        float imageAspect = (float)self.activeImageWidth / fmaxf(1, (float)self.activeImageHeight);
+        imageColumns = fminf(virtualColumns, targetColumns);
+        imageRows = imageColumns / fmaxf(0.001f, imageAspect);
+        if (imageRows > virtualRows) {
+            imageRows = virtualRows;
+            imageColumns = fminf(virtualColumns, imageRows * imageAspect);
+        }
+        float remainingColumns = fmaxf(0, virtualColumns - imageColumns);
+        float remainingRows = fmaxf(0, virtualRows - imageRows);
+        float jitter = scale >= 0.999f ? 0 :
+            MatrixCodeNumber(self.images, @"imagePlacementJitter", 0.35, 0, 1);
+        float placementX = 0.5f + (self.activeImagePlacementX - 0.5f) * jitter;
+        float placementY = 0.5f + (self.activeImagePlacementY - 0.5f) * jitter;
+        imageOriginColumn = remainingColumns * fminf(1, fmaxf(0, placementX));
+        imageOriginRow = remainingRows * fminf(1, fmaxf(0, placementY));
+    }
+    float imageIntensity = self.activeImageFrameIntensity;
+    float imageScramble = self.activeImageFrameScramble;
     float *columnBrightness = (float *)self.columnBrightnessData.mutableBytes;
     uint8_t *columnHead = (uint8_t *)self.columnHeadData.mutableBytes;
     uint8_t *columnWhiteHead = (uint8_t *)self.columnWhiteHeadData.mutableBytes;
@@ -1274,6 +1549,52 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
                 if (glyphState->phase < 1) {
                     glyphState->phase = fminf(1, glyphState->phase + crossfadeStep);
                 }
+                float imageInfluence = 0;
+                float imageLuminance = 0;
+                float imageFallGate = 0;
+                NSInteger imageGlyph = NSNotFound;
+                if (imageActive && lane == 0 && imageColumns > 0 && imageRows > 0) {
+                    float u = ((float)globalColumn + 0.5f - imageOriginColumn) / imageColumns;
+                    float v = ((float)globalRow + 0.5f - imageOriginRow) / imageRows;
+                    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
+                        imageLuminance = MatrixCodeImageSampleMask(self.activeImageMaskData,
+                                                                   self.activeImageWidth,
+                                                                   self.activeImageHeight,
+                                                                   u,
+                                                                   v);
+                        float contrastSignal = fabsf(imageLuminance - 0.5f) * 2.0f;
+                        float brightSignal = imageLuminance * 0.72f;
+                        float signal = fmaxf(contrastSignal, brightSignal);
+                        float trailGate = fminf(1, fmaxf(0, (brightness - 0.028f) / 0.42f));
+                        imageFallGate = MatrixCodeImageFallingGate(globalColumn,
+                                                                   globalRow,
+                                                                   rainElapsed,
+                                                                   self.seed);
+                        float revealGate = fmaxf(trailGate, imageFallGate * 0.48f);
+                        float dissolve = 1;
+                        if (imageScramble > 0) {
+                            uint32_t bucket = (uint32_t)floorf((float)(now - self.epochSeconds) * 18.0f);
+                            float roll = MatrixCodeUnit(identity ^ bucket * 0x9e3779b9U ^ 0xb4b82e39U);
+                            dissolve = roll >= imageScramble ? 1 : 0;
+                        }
+                        imageInfluence = fminf(1, signal * revealGate * imageIntensity * dissolve);
+                        if (imageInfluence > 0.001f) {
+                            uint32_t imageKey = identity ^ (uint32_t)floorf(imageLuminance * 255.0f) * 0x85ebca6bU;
+                            imageGlyph = MatrixCodeImageGlyphForLuminance(imageLuminance,
+                                                                           imageKey,
+                                                                           glyphMode);
+                            float bright = fmaxf(0, (imageLuminance - 0.38f) / 0.62f);
+                            float dark = fmaxf(0, (0.58f - imageLuminance) / 0.58f);
+                            brightness *= (1.0f - 0.46f * dark * imageInfluence);
+                            brightness = fmaxf(brightness,
+                                               bright * imageInfluence *
+                                               (0.12f + 0.48f * imageFallGate));
+                            brightness = fminf(1.45f,
+                                               brightness + bright * imageInfluence *
+                                               fmaxf(columnBrightness[row], 0.08f) * 0.58f);
+                        }
+                    }
+                }
                 NSInteger messageGlyph = NSNotFound;
                 NSInteger messageOffset = NSNotFound;
                 if (messageActive && lane == 0) {
@@ -1315,13 +1636,26 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
                         } else {
                             glyphState->glyphNew = (uint8_t)messageGlyph;
                         }
+                    } else if (imageGlyph != NSNotFound &&
+                               MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState)) <
+                                   fminf(0.96f, 0.18f + imageInfluence * 0.78f)) {
+                        if (imageScramble > 0 &&
+                            MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState)) < imageScramble * 0.75f) {
+                            glyphState->glyphNew = (uint8_t)randomGlyph;
+                        } else {
+                            glyphState->glyphNew = (uint8_t)imageGlyph;
+                        }
                     } else {
                         glyphState->glyphNew = (uint8_t)randomGlyph;
                     }
                     glyphState->phase = 1;
-                } else if (!head && brightness > 0.05f && mutationChance > 0) {
+                } else if (!head && brightness > 0.05f &&
+                           (mutationChance > 0 || imageGlyph != NSNotFound)) {
                     float roll = MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState));
-                    if (roll < mutationChance) {
+                    float imageMutationChance = imageGlyph != NSNotFound
+                        ? fminf(0.72f, 0.08f + imageInfluence * 0.46f)
+                        : 0;
+                    if (roll < fmaxf(mutationChance, imageMutationChance)) {
                         NSInteger randomGlyph = MatrixCodeRainGlyphIndex(
                             MatrixCodeNextGlyphEventKey(glyphState), glyphMode);
                         if (messageGlyph != NSNotFound) {
@@ -1334,6 +1668,17 @@ static NSInteger MatrixCodeDisplayFramesPerSecond(NSScreen *screen) {
                             if (messageScramble <= 0 ||
                                 MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState)) >= messageScramble) {
                                 nextGlyph = messageGlyph;
+                            }
+                            if (nextGlyph != glyphState->glyphNew) {
+                                glyphState->glyphOld = glyphState->glyphNew;
+                                glyphState->glyphNew = (uint8_t)nextGlyph;
+                                glyphState->phase = 0;
+                            }
+                        } else if (imageGlyph != NSNotFound) {
+                            NSInteger nextGlyph = randomGlyph;
+                            if (imageScramble <= 0 ||
+                                MatrixCodeUnit(MatrixCodeNextGlyphEventKey(glyphState)) >= imageScramble * 0.75f) {
+                                nextGlyph = imageGlyph;
                             }
                             if (nextGlyph != glyphState->glyphNew) {
                                 glyphState->glyphOld = glyphState->glyphNew;

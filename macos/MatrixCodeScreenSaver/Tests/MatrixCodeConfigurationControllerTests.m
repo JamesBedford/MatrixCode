@@ -7,7 +7,12 @@
 
 @interface MatrixCodeConfigurationController (Testing)
 - (void)controlChanged:(id)sender;
+- (void)imageNumberChanged:(NSTextField *)sender;
 - (void)messageChoiceChanged:(NSPopUpButton *)sender;
+- (void)moveIntroLine:(NSButton *)sender;
+- (void)moveImage:(NSButton *)sender;
+- (void)moveMessage:(NSButton *)sender;
+- (void)moveMoment:(NSButton *)sender;
 - (void)openEditor:(NSButton *)sender;
 - (NSDictionary<NSString *, NSString *> *)serializedValues;
 - (void)setSettingsPanelVisible:(BOOL)visible immediate:(BOOL)immediate;
@@ -90,7 +95,7 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     [controller.window.contentView layoutSubtreeIfNeeded];
     XCTAssertEqualWithAccuracy(panel.frame.size.width, 320, 0.5);
     XCTAssertNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView, @"Rain"));
-    for (NSString *identifier in @[@"characters", @"intro", @"messages", @"countdowns",
+    for (NSString *identifier in @[@"characters", @"intro", @"messages", @"images", @"countdowns",
                                     @"reset-controls"]) {
         XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(panel, identifier), @"%@", identifier);
     }
@@ -150,7 +155,7 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
 - (void)testEditorButtonsOpenCenteredCustomCards {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    for (NSString *kind in @[@"characters", @"intro", @"messages", @"countdowns"]) {
+    for (NSString *kind in @[@"characters", @"intro", @"messages", @"images", @"countdowns"]) {
         NSButton *button = (NSButton *)MatrixCodeDescendantWithIdentifier(
             controller.window.contentView, kind);
         XCTAssertTrue([button isKindOfClass:NSButton.class]);
@@ -174,7 +179,7 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
 - (void)testEditorBackdropClicksDoNotDismissCustomCards {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    for (NSString *kind in @[@"characters", @"intro", @"messages", @"countdowns"]) {
+    for (NSString *kind in @[@"characters", @"intro", @"messages", @"images", @"countdowns"]) {
         NSButton *button = (NSButton *)MatrixCodeDescendantWithIdentifier(
             controller.window.contentView, kind);
         [controller openEditor:button];
@@ -310,6 +315,76 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     NSDictionary *stored = MatrixCodeJSONDictionary([controller serializedValues][@"mx-messages"]);
     XCTAssertEqualObjects(stored[@"messageLayout"], @"row");
     XCTAssertEqualObjects(stored[@"messageDirection"], @"topToBottom");
+}
+
+- (void)testImagesEditorPersistsImportedMasksAndTimingControls {
+    const uint8_t bytes[] = {0, 64, 128, 255};
+    NSData *mask = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+    NSDictionary *images = @{
+        @"enabled": @YES,
+        @"frequencyMs": @250,
+        @"persistenceMs": @1200,
+        @"appearMs": @300,
+        @"disappearMs": @400,
+        @"flickerOut": @NO,
+        @"brightnessFade": @YES,
+        @"imageScale": @0.4,
+        @"imagePlacementJitter": @0.2,
+        @"images": @[
+            @{@"name": @"Signal", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 2", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 3", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 4", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 5", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 6", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 7", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 8", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 9", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Signal 10", @"width": @2, @"height": @2,
+              @"data": [mask base64EncodedStringWithOptions:0]},
+        ],
+    };
+    [self.preferences commitValues:@{@"mx-images": MatrixCodeJSONString(images)}];
+
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSButton *open = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"images");
+    [controller openEditor:open];
+    NSView *card = MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"settings-editor-card-images");
+    XCTAssertNotNil(card);
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(card, @"imageName"));
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(card, @"imageScale-percent"));
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(card, @"imagePlacementJitter-percent"));
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Screen width (%)"));
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Placement randomness (%)"));
+
+    NSTextField *scale = (NSTextField *)MatrixCodeDescendantWithIdentifier(card, @"imageScale-percent");
+    scale.doubleValue = 85;
+    [controller imageNumberChanged:scale];
+    NSTextField *jitter = (NSTextField *)MatrixCodeDescendantWithIdentifier(card, @"imagePlacementJitter-percent");
+    jitter.doubleValue = 60;
+    [controller imageNumberChanged:jitter];
+
+    NSDictionary *stored = MatrixCodeJSONDictionary([controller serializedValues][@"mx-images"]);
+    XCTAssertEqual([stored[@"enabled"] boolValue], YES);
+    XCTAssertEqualWithAccuracy([stored[@"frequencyMs"] doubleValue], 500, 0.001);
+    XCTAssertEqualWithAccuracy([stored[@"imageScale"] doubleValue], 0.85, 0.001);
+    XCTAssertEqualWithAccuracy([stored[@"imagePlacementJitter"] doubleValue], 0.6, 0.001);
+    NSArray *storedImages = stored[@"images"];
+    XCTAssertEqual(storedImages.count, (NSUInteger)10);
+    XCTAssertEqualObjects(storedImages.firstObject[@"name"], @"Signal");
+    XCTAssertEqualObjects(storedImages.firstObject[@"data"], [mask base64EncodedStringWithOptions:0]);
 }
 
 - (void)testCharacterTabContainsGlyphSettings {
@@ -492,6 +567,52 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     NSDictionary *controls = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     XCTAssertEqualWithAccuracy([controls[@"speed"] doubleValue], 2.25, 0.001);
     [NSNotificationCenter.defaultCenter removeObserver:observer];
+}
+
+- (void)testEditorMoveActionsIgnoreInvalidSourceTags {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSMutableArray *introLines = [@[
+        [@{@"text": @"wake", @"holdMs": @2800, @"pauseMs": @0} mutableCopy],
+        [@{@"text": @"up", @"holdMs": @2800, @"pauseMs": @0} mutableCopy],
+    ] mutableCopy];
+    NSMutableArray *messageLines = [@[@"NEO", @"TRINITY"] mutableCopy];
+    NSMutableArray *imageItems = [@[
+        [@{@"name": @"one", @"width": @1, @"height": @1, @"data": @"AA=="} mutableCopy],
+        [@{@"name": @"two", @"width": @1, @"height": @1, @"data": @"AA=="} mutableCopy],
+    ] mutableCopy];
+    NSMutableArray *moments = [@[
+        [@{@"name": @"one", @"targetMs": NSNull.null} mutableCopy],
+        [@{@"name": @"two", @"targetMs": NSNull.null} mutableCopy],
+    ] mutableCopy];
+    [controller setValue:introLines forKey:@"introLines"];
+    [controller setValue:messageLines forKey:@"messageLines"];
+    [controller setValue:imageItems forKey:@"imageItems"];
+    [controller setValue:moments forKey:@"moments"];
+
+    NSButton *introMove = [NSButton buttonWithTitle:@"" target:nil action:nil];
+    introMove.identifier = @"up";
+    introMove.tag = introLines.count;
+    XCTAssertNoThrow([controller moveIntroLine:introMove]);
+    XCTAssertEqualObjects([controller valueForKey:@"introLines"], introLines);
+
+    NSButton *messageMove = [NSButton buttonWithTitle:@"" target:nil action:nil];
+    messageMove.identifier = @"up";
+    messageMove.tag = messageLines.count;
+    XCTAssertNoThrow([controller moveMessage:messageMove]);
+    XCTAssertEqualObjects([controller valueForKey:@"messageLines"], messageLines);
+
+    NSButton *imageMove = [NSButton buttonWithTitle:@"" target:nil action:nil];
+    imageMove.identifier = @"up";
+    imageMove.tag = imageItems.count;
+    XCTAssertNoThrow([controller moveImage:imageMove]);
+    XCTAssertEqualObjects([controller valueForKey:@"imageItems"], imageItems);
+
+    NSButton *momentMove = [NSButton buttonWithTitle:@"" target:nil action:nil];
+    momentMove.identifier = @"up";
+    momentMove.tag = moments.count;
+    XCTAssertNoThrow([controller moveMoment:momentMove]);
+    XCTAssertEqualObjects([controller valueForKey:@"moments"], moments);
 }
 
 @end

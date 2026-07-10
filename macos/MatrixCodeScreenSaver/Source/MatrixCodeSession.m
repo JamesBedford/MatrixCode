@@ -1,5 +1,7 @@
 #import "MatrixCodeSession.h"
 
+#import <float.h>
+#import <math.h>
 #import <ScreenSaver/ScreenSaver.h>
 
 #import "MatrixCodeConstants.h"
@@ -44,7 +46,8 @@ static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
             ? descriptor[@"width"] : nil;
         NSNumber *height = [descriptor[@"height"] isKindOfClass:NSNumber.class]
             ? descriptor[@"height"] : nil;
-        if (!identifier || !width || !height || [claimed containsObject:identifier]) continue;
+        if (identifier == nil || width == nil || height == nil ||
+            [claimed containsObject:identifier]) continue;
         if (fabs(width.doubleValue - size.width) > 1 ||
             fabs(height.doubleValue - size.height) > 1) continue;
         if (match) return nil; // Ambiguous until more known screens are claimed.
@@ -62,6 +65,53 @@ static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
         @"width": @(rect.size.width),
         @"height": @(rect.size.height),
     };
+}
+
++ (nullable NSString *)centermostScreenIdentifierForDescriptors:(NSArray<NSDictionary<NSString *,id> *> *)descriptors {
+    CGFloat minX = CGFLOAT_MAX;
+    CGFloat minY = CGFLOAT_MAX;
+    CGFloat maxX = -CGFLOAT_MAX;
+    CGFloat maxY = -CGFLOAT_MAX;
+    NSMutableArray<NSDictionary<NSString *, id> *> *valid = [NSMutableArray array];
+    for (NSDictionary<NSString *, id> *descriptor in descriptors) {
+        NSString *identifier = [descriptor[@"id"] isKindOfClass:NSString.class] ? descriptor[@"id"] : nil;
+        NSNumber *left = [descriptor[@"left"] isKindOfClass:NSNumber.class] ? descriptor[@"left"] : nil;
+        NSNumber *top = [descriptor[@"top"] isKindOfClass:NSNumber.class] ? descriptor[@"top"] : nil;
+        NSNumber *width = [descriptor[@"width"] isKindOfClass:NSNumber.class] ? descriptor[@"width"] : nil;
+        NSNumber *height = [descriptor[@"height"] isKindOfClass:NSNumber.class] ? descriptor[@"height"] : nil;
+        if (!identifier || !left || !top || !width || !height) continue;
+        CGFloat x = left.doubleValue;
+        CGFloat y = top.doubleValue;
+        CGFloat w = width.doubleValue;
+        CGFloat h = height.doubleValue;
+        if (!isfinite(x) || !isfinite(y) || !isfinite(w) || !isfinite(h) || w <= 0 || h <= 0) continue;
+        [valid addObject:descriptor];
+        minX = MIN(minX, x);
+        minY = MIN(minY, y);
+        maxX = MAX(maxX, x + w);
+        maxY = MAX(maxY, y + h);
+    }
+    if (valid.count == 0) return nil;
+
+    CGFloat centerX = (minX + maxX) / 2.0;
+    CGFloat centerY = (minY + maxY) / 2.0;
+    NSString *bestIdentifier = nil;
+    double bestDistance = DBL_MAX;
+    for (NSDictionary<NSString *, id> *descriptor in valid) {
+        NSString *identifier = (NSString *)descriptor[@"id"];
+        CGFloat x = [descriptor[@"left"] doubleValue];
+        CGFloat y = [descriptor[@"top"] doubleValue];
+        CGFloat w = [descriptor[@"width"] doubleValue];
+        CGFloat h = [descriptor[@"height"] doubleValue];
+        double dx = x + w / 2.0 - centerX;
+        double dy = y + h / 2.0 - centerY;
+        double distance = dx * dx + dy * dy;
+        if (distance < bestDistance) {
+            bestIdentifier = identifier;
+            bestDistance = distance;
+        }
+    }
+    return bestIdentifier;
 }
 
 + (NSDictionary<NSString *, id> *)sessionForScreen:(NSScreen *)screen {
@@ -102,13 +152,16 @@ static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
     for (NSScreen *candidate in screens) {
         [descriptors addObject:[self descriptorForScreen:candidate desktopMaxY:desktopMaxY]];
     }
-    return @{
+    NSString *controlsScreenId = [self centermostScreenIdentifierForDescriptors:descriptors];
+    NSMutableDictionary<NSString *, id> *session = [@{
         @"seed": identity[@"seed"],
         @"epoch": identity[@"epoch"],
         @"warmupSeconds": @(MatrixCodeWarmupSeconds),
         @"screens": descriptors,
         @"currentScreenId": [self identifierForScreen:screen],
-    };
+    } mutableCopy];
+    if (controlsScreenId) session[@"controlsScreenId"] = controlsScreenId;
+    return session;
 }
 
 @end

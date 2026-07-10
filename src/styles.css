@@ -44,9 +44,9 @@ body {
 }
 
 /* Multi-monitor mode: an uninterrupted backdrop — no overlays. */
-#app.mx-multimonitor .mx-ui,
+#app.mx-multimonitor:not(.mx-multimonitor-controls) .mx-ui,
 #app.mx-multimonitor .mx-message,
-#app.mx-multimonitor .mx-modal-backdrop {
+#app.mx-multimonitor:not(.mx-multimonitor-controls) .mx-modal-backdrop {
   display: none !important;
 }
 

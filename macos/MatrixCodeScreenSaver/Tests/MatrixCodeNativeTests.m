@@ -20,6 +20,8 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
 - (void)testStorageWhitelistAcceptsOnlySupportedKeys {
     XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-controls"]);
     XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-intro-seen"]);
+    XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-images"]);
+    XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-ui-state"]);
     XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"unknown"]);
     XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"MatrixCodeNativeSession"]);
     XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"MatrixCodeAppPresentationMode"]);
@@ -97,12 +99,12 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
     XCTAssertFalse(rightHost.fpsOverlayVisible);
 }
 
-- (void)testMultiMonitorWindowsJoinFullscreenSpacesAndMoveActive {
+- (void)testMultiMonitorWindowsJoinAllSpacesIncludingFullscreenAuxiliarySpaces {
     NSWindowCollectionBehavior behavior = MatrixCodeMultiMonitorWindowCollectionBehavior();
 
     XCTAssertTrue((behavior & NSWindowCollectionBehaviorCanJoinAllSpaces) != 0);
-    XCTAssertTrue((behavior & NSWindowCollectionBehaviorMoveToActiveSpace) != 0);
     XCTAssertTrue((behavior & NSWindowCollectionBehaviorFullScreenAuxiliary) != 0);
+    XCTAssertFalse((behavior & NSWindowCollectionBehaviorMoveToActiveSpace) != 0);
     XCTAssertTrue((behavior & NSWindowCollectionBehaviorStationary) != 0);
     XCTAssertTrue((behavior & NSWindowCollectionBehaviorIgnoresCycle) != 0);
 }
@@ -122,6 +124,25 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
     NSRect lower = [MatrixCodeSession topLeftRectForFrame:NSMakeRect(0, 0, 1920, 1080)
                                               desktopMaxY:2160];
     XCTAssertEqualWithAccuracy(NSMaxY(upper), lower.origin.y, 0.001);
+}
+
+- (void)testCentermostScreenIdentifierChoosesMiddleDisplay {
+    NSArray *screens = @[
+        @{@"id": @"left", @"left": @(-1920), @"top": @0, @"width": @1920, @"height": @1080},
+        @{@"id": @"center", @"left": @0, @"top": @0, @"width": @1920, @"height": @1080},
+        @{@"id": @"right", @"left": @1920, @"top": @0, @"width": @1920, @"height": @1080},
+    ];
+    XCTAssertEqualObjects([MatrixCodeSession centermostScreenIdentifierForDescriptors:screens], @"center");
+}
+
+- (void)testCentermostScreenIdentifierChoosesCenterOfTLayout {
+    NSArray *screens = @[
+        @{@"id": @"upper", @"left": @(-112), @"top": @0, @"width": @1920, @"height": @1200},
+        @{@"id": @"left", @"left": @(-1920), @"top": @1200, @"width": @1920, @"height": @1200},
+        @{@"id": @"center", @"left": @0, @"top": @1200, @"width": @1710, @"height": @1112},
+        @{@"id": @"right", @"left": @1710, @"top": @1200, @"width": @1920, @"height": @1200},
+    ];
+    XCTAssertEqualObjects([MatrixCodeSession centermostScreenIdentifierForDescriptors:screens], @"center");
 }
 
 - (void)testDisplaySlicePreservesPartialCellAtMonitorBoundary {

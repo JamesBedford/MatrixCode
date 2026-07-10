@@ -25,9 +25,8 @@
 
 NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior(void) {
     return NSWindowCollectionBehaviorCanJoinAllSpaces |
-        NSWindowCollectionBehaviorMoveToActiveSpace |
-        NSWindowCollectionBehaviorStationary |
         NSWindowCollectionBehaviorFullScreenAuxiliary |
+        NSWindowCollectionBehaviorStationary |
         NSWindowCollectionBehaviorIgnoresCycle;
 }
 
@@ -217,7 +216,11 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
     self.preMultiMonitorKeyWindow = requestingHost.window ?: NSApp.keyWindow;
     [NSApp activateIgnoringOtherApps:YES];
     NSDictionary<NSString *, id> *sharedSession = [MatrixCodeSession sessionForScreen:screens.firstObject];
+    NSString *controlsScreenId = [sharedSession[@"controlsScreenId"] isKindOfClass:NSString.class]
+        ? sharedSession[@"controlsScreenId"] : nil;
     BOOL showFPSOverlay = requestingHost.fpsOverlayVisible;
+    NSWindow *controlsWindow = nil;
+    MatrixCodeRainHostView *controlsHostView = nil;
 
     for (NSScreen *screen in screens) {
         NSRect frame = screen.frame;
@@ -251,14 +254,24 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
         if (showFPSOverlay) {
             [hostView setFPSOverlayVisible:YES];
         }
+        if (controlsScreenId &&
+            [controlsScreenId isEqualToString:[MatrixCodeSession identifierForScreen:screen]]) {
+            controlsWindow = window;
+            controlsHostView = hostView;
+        }
 
         [self.multiMonitorWindows addObject:window];
         [window makeKeyAndOrderFront:nil];
         [window orderFrontRegardless];
+        [window setFrame:frame display:YES];
+        [window displayIfNeeded];
         [window makeFirstResponder:hostView];
     }
 
-    [self.multiMonitorWindows.firstObject makeKeyAndOrderFront:nil];
+    NSWindow *keyWindow = controlsWindow ?: self.multiMonitorWindows.firstObject;
+    MatrixCodeRainHostView *keyHostView = controlsHostView ?: [self hostViewInWindow:keyWindow];
+    [keyWindow makeKeyAndOrderFront:nil];
+    if (keyHostView) [keyWindow makeFirstResponder:keyHostView];
     [self persistPresentationMode:MatrixCodeAppPresentationModeMultiMonitor];
 }
 

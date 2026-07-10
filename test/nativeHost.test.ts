@@ -74,13 +74,13 @@ describe("native host payload", () => {
     const result = sanitizeNativePayload({
       mode: "configuration",
       bootstrapId: "sheet-1",
-      storage: { "mx-controls": "{}", unknown: "nope" },
+      storage: { "mx-controls": "{}", "mx-ui-state": "{\"fpsOverlayVisible\":true}", unknown: "nope" },
     });
 
     expect(result).toEqual({
       mode: "configuration",
       bootstrapId: "sheet-1",
-      storage: { "mx-controls": "{}" },
+      storage: { "mx-controls": "{}", "mx-ui-state": "{\"fpsOverlayVisible\":true}" },
     });
   });
 
@@ -116,7 +116,7 @@ describe("native host payload", () => {
     storage.setItem("mx-controls", "edited");
     bootstrapNativeHost(storage);
     expect(storage.getItem("mx-controls")).toBe("edited");
-    expect(NATIVE_STORAGE_KEYS).toHaveLength(6);
+    expect(NATIVE_STORAGE_KEYS).toHaveLength(7);
   });
 
   it("derives a tested virtual-grid slice from native screen geometry", () => {
@@ -129,6 +129,7 @@ describe("native host payload", () => {
         epoch: 456,
         warmupSeconds: 2.5,
         currentScreenId: "right",
+        controlsScreenId: "right",
         screens: [
           { id: "left", left: 0, top: 0, width: 1920, height: 1080 },
           { id: "right", left: 1920, top: 0, width: 1920, height: 1080 },
@@ -142,6 +143,8 @@ describe("native host payload", () => {
       epoch: 456,
       vCols: 214,
       vRows: 60,
+      screenId: "right",
+      showControls: true,
       slice: { colStart: 106, rowStart: 0, cols: 108, rows: 60, originX: -12, originY: 0 },
     });
   });

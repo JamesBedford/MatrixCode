@@ -26,10 +26,16 @@ import { MessagesStore } from "./config/messagesStore.ts";
 import { MessagesEditor } from "./ui/messagesEditor.ts";
 import { CountdownStore } from "./config/countdownStore.ts";
 import { CountdownEditor } from "./ui/countdownEditor.ts";
-import { loadUiState, setActiveSettingsSurface, type ActiveSettingsSurface } from "./config/uiState.ts";
+import {
+  loadFpsOverlayVisible,
+  loadUiState,
+  setActiveSettingsSurface,
+  setFpsOverlayVisible,
+  type ActiveSettingsSurface,
+} from "./config/uiState.ts";
 import { MODAL_OPEN_CHANGE_EVENT } from "./ui/modalKit.ts";
 import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
-import { stepsToAdvance, extractSlice } from "./multimonitor/multiMonitorGrid.ts";
+import { computeVirtualGrid, stepsToAdvance, extractSlice } from "./multimonitor/multiMonitorGrid.ts";
 import {
   type MultiMonitorConfig,
   type MultiMonitorSessionResult,
@@ -37,6 +43,7 @@ import {
   parsePanelConfig,
   enterPanelFullscreen,
   openExitChannel,
+  openControlsChannel,
   prefetchScreens,
 } from "./multimonitor/multiMonitorFullscreen.ts";
 import {
@@ -118,7 +125,7 @@ function showNotice(parent: HTMLElement, text: string): HTMLElement {
   return n;
 }
 
-/** A tiny diagnostics overlay (smoothed FPS · render scale · backing resolution), shown with ?hud. */
+/** A tiny diagnostics overlay (smoothed FPS · render scale · backing resolution). */
 function createHud(parent: HTMLElement): HTMLElement {
   const d = document.createElement("div");
   d.style.cssText =
@@ -195,8 +202,11 @@ export async function mountMatrixRain(
   // drops under sustained load to keep the rain smooth. Disable with ?adaptive=0.
   let renderScale = 1;
   const adaptiveRes = new AdaptiveResolution();
-  const adaptiveEnabled = new URLSearchParams(location.search).get("adaptive") !== "0";
-  const hud = new URLSearchParams(location.search).has("hud") ? createHud(container) : null;
+  const urlParams = new URLSearchParams(location.search);
+  const adaptiveEnabled = urlParams.get("adaptive") !== "0";
+  const hudRequested = urlParams.has("hud");
+  if (hudRequested) setFpsOverlayVisible(true);
+  let hud = hudRequested || loadFpsOverlayVisible() ? createHud(container) : null;
   let pending: { w: number; h: number } | null = null;
   let running = false;
   let hostActive = true;
@@ -219,8 +229,13 @@ export async function mountMatrixRain(
   // Multi-monitor mode: this window is a panel iff the URL carries a slice config.
   const nativeHosted = isNativeHosted();
   const panelConfig = nativeMultiMonitorConfig(controls.get()) ?? parsePanelConfig();
+  const panelShowsControls = panelConfig?.showControls === true;
+  const hasSettingsUi = !panelConfig || panelShowsControls;
+  const hasIntroUi = !panelConfig;
   let multiMonitorState: MultiMonitorState | null = null;
   let exitChan: ReturnType<typeof openExitChannel> | null = null;
+  let controlsChan: ReturnType<typeof openControlsChannel> | null = null;
+  let applyingRemoteControls = false;
 
   // Size the canvas backing + renderer targets to the full device resolution times the current
   // adaptive render scale. The CSS size stays full-viewport, so a scale < 1 simply renders fewer
@@ -335,8 +350,8 @@ export async function mountMatrixRain(
   }
 
   // ---------- Overlays ----------
-  // Panels are a pure backdrop — no intro, no controls UI.
-  const introStore = panelConfig ? null : new IntroStore();
+  // Multi-monitor panels never play the intro, but the centremost panel can expose settings.
+  const introStore = hasIntroUi ? new IntroStore() : null;
   // Multi-monitor mode panels have no editor UI, but they still need the same persisted message and
   // countdown documents as the controller so every window can schedule an identical virtual-grid message.
   const messagesStore = new MessagesStore();
@@ -369,7 +384,7 @@ export async function mountMatrixRain(
     return scheduler;
   };
   let messageScheduler = createMessageScheduler();
-  const message = panelConfig ? null : new MessageOverlay(container, { resolveText: resolveMessageText });
+  const message = hasIntroUi ? new MessageOverlay(container, { resolveText: resolveMessageText }) : null;
 
   // Reflect the stored script onto the live overlay (raw lines; tokens resolve per-frame).
   const seedOverlay = (): void => {
@@ -465,7 +480,7 @@ export async function mountMatrixRain(
   });
 
   let editor: IntroEditor | null = null;
-  if (!panelConfig && introStore && message) {
+  if (hasIntroUi && introStore && message) {
     editor = new IntroEditor(container, introStore, {
       onPreview: previewIntro,
       onSave: saveIntro,
@@ -492,7 +507,7 @@ export async function mountMatrixRain(
   }
 
   let characterEditor: CharacterSettingsEditor | null = null;
-  if (!panelConfig) {
+  if (hasSettingsUi) {
     characterEditor = new CharacterSettingsEditor(container, controls);
   }
 
@@ -519,17 +534,18 @@ export async function mountMatrixRain(
     else setActiveSettingsSurface(null);
   };
 
-  const panel = panelConfig
-    ? null
-    : new ControlsPanel(container, controls, {
+  const panel = hasSettingsUi
+    ? new ControlsPanel(container, controls, {
         onToggleFullscreen: () => toggleFullscreen(),
         onEnterMultiMonitor: () => { void enterMultiMonitor(); },
+        onExitMultiMonitor: () => exitMultiMonitor(true),
         onReplayIntro: () => { if (introStore) startIntroSequence(introStore.get()); },
         onEditCharacters: () => openSettingsSurface("characters"),
         onEditIntro: () => openSettingsSurface("intro"),
         onEditMessages: () => openSettingsSurface("messages"),
         onEditCountdown: () => openSettingsSurface("countdown"),
-      });
+      }, { multiMonitor: panelConfig !== null, introControls: hasIntroUi, documentEditors: !panelConfig })
+    : null;
 
   const reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -708,6 +724,26 @@ export async function mountMatrixRain(
     renderer.resize(deviceW, deviceH, controls.get().quality);
   };
 
+  const rebuildMultiMonitorGeometry = (): void => {
+    const state = multiMonitorState;
+    if (!state?.config.screens || !state.config.screenId) return;
+    const cell = DEFAULT_SIM_CONFIG.targetCellPx * controls.get().glyphScale;
+    const virtual = computeVirtualGrid(state.config.screens, cell);
+    const slice = virtual.slices[state.config.screenId];
+    if (!slice) return;
+    enterMultiMonitorRender(
+      {
+        ...state.config,
+        cell,
+        vCols: virtual.vCols,
+        vRows: virtual.vRows,
+        slice,
+      },
+      state.isController,
+      state.openedWindows,
+    );
+  };
+
   // ---------- Resize ----------
   const handleResize = (w: number, h: number): void => {
     if (multiMonitorState) {
@@ -769,7 +805,8 @@ export async function mountMatrixRain(
   // ---------- Multi-monitor mode (all monitors) ----------
   // Switch this window's rain into a slice of the shared virtual grid.
   const enterMultiMonitorRender = (config: MultiMonitorConfig, isController: boolean, openedWindows: Window[]): void => {
-    container.classList.add("mx-multimonitor"); // hides the controls/intro overlays via CSS
+    container.classList.add("mx-multimonitor");
+    container.classList.toggle("mx-multimonitor-controls", config.showControls === true);
     sim = new RainSim({ cols: config.vCols, rows: config.vRows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: config.seed });
     sim.warmUpDistributed(controls.get(), config.warmupSeconds);
     // The controller's normal-mode scheduler has already consumed random values while panel schedulers
@@ -787,6 +824,14 @@ export async function mountMatrixRain(
       localState: new Uint8Array(lc * lr * 4),
       simClock: config.warmupSeconds,
     };
+    controlsChan ??= openControlsChannel((remoteControls) => {
+      applyingRemoteControls = true;
+      try {
+        controls.set(remoteControls);
+      } finally {
+        applyingRemoteControls = false;
+      }
+    });
     pending = null; // discard any normal-mode resize queued before the switch
     applyMultiMonitorDeviceSize();
     start();
@@ -799,8 +844,11 @@ export async function mountMatrixRain(
     if (broadcast) exitChan?.broadcastExit();
     exitChan?.close();
     exitChan = null;
+    controlsChan?.close();
+    controlsChan = null;
     multiMonitorState = null;
     container.classList.remove("mx-multimonitor");
+    container.classList.remove("mx-multimonitor-controls");
     if (document.fullscreenElement) void document.exitFullscreen();
     if (isController) {
       for (const w of openedWindows) {
@@ -882,6 +930,21 @@ export async function mountMatrixRain(
     messagesEditor?.syncEnabled(doc.enabled);
   };
 
+  const setHudVisible = (visible: boolean): void => {
+    if (visible === Boolean(hud)) return;
+    if (visible) {
+      hud = createHud(container);
+    } else {
+      hud?.remove();
+      hud = null;
+    }
+    setFpsOverlayVisible(visible);
+  };
+
+  const toggleHud = (): void => {
+    setHudVisible(!hud);
+  };
+
   const isTextInputEvent = (e: KeyboardEvent): boolean => {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return false;
@@ -893,7 +956,7 @@ export async function mountMatrixRain(
 
   const onKey = (e: KeyboardEvent): void => {
     let handled = false;
-    if (multiMonitorState) {
+    if (multiMonitorState && multiMonitorState.config.showControls !== true) {
       if (e.key === "Escape") {
         exitMultiMonitor(true);
         handled = true;
@@ -905,9 +968,19 @@ export async function mountMatrixRain(
       return;
     }
     if (e.key === "Escape" && panel?.dismiss()) handled = true;
+    else if (multiMonitorState && e.key === "Escape") {
+      exitMultiMonitor(true);
+      handled = true;
+    }
     if (!handled && isTextInputEvent(e)) return;
-    if (!handled) {
-      if (e.key === "f" || e.key === "F") { toggleFullscreen(); handled = true; }
+    if (!handled && multiMonitorState) {
+      if (!e.repeat && e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyF") { toggleHud(); handled = true; }
+      else if (e.key === "h" || e.key === "H") { panel?.toggleVisible(); handled = true; }
+      else if (e.key === "-" || e.key === "_") { nudgeDensity(1 / DENSITY_KEY_STEP); handled = true; }
+      else if (e.key === "=" || e.key === "+") { nudgeDensity(DENSITY_KEY_STEP); handled = true; }
+    } else if (!handled) {
+      if (!e.repeat && e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyF") { toggleHud(); handled = true; }
+      else if (e.key === "f" || e.key === "F") { toggleFullscreen(); handled = true; }
       else if (e.key === "h" || e.key === "H") { panel?.toggleVisible(); handled = true; }
       else if (e.key === "i" || e.key === "I") { openSettingsSurface("intro"); handled = true; }
       else if (e.key === "m" || e.key === "M") { openSettingsSurface("messages"); handled = true; }
@@ -1006,14 +1079,18 @@ export async function mountMatrixRain(
   canvas.addEventListener("webglcontextrestored", () => void onRestored(), false);
 
   // ---------- React to control changes ----------
-  const unsubscribe = controls.subscribe((_state, changed) => {
+  const unsubscribe = controls.subscribe((state, changed) => {
+    if (multiMonitorState && controlsChan && !applyingRemoteControls) {
+      controlsChan.broadcastControls(state);
+    }
     if (changed.has("preset")) {
       const preset = getPreset(controls.get().preset);
       applyChromeAccent(preset);
       applyFavicon(preset);
     }
-    if (changed.has("glyphScale") && !multiMonitorState) {
-      applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
+    if (changed.has("glyphScale")) {
+      if (multiMonitorState) rebuildMultiMonitorGeometry();
+      else applySize(cssW, cssH); // recomputes the grid and resizes the sim/state/renderer
     }
     if (changed.has("glyphMode")) {
       glyphSet.setGlyphMode(controls.get().glyphMode);
@@ -1094,6 +1171,7 @@ export async function mountMatrixRain(
     },
     destroy: () => {
       if (multiMonitorState) exitMultiMonitor(false);
+      controlsChan?.close();
       stop();
       window.clearTimeout(rampPreviewTimer);
       ro.disconnect();
@@ -1103,6 +1181,7 @@ export async function mountMatrixRain(
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("click", panelConfig ? onPanelClick : onCanvasClick);
+      hud?.remove();
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       window.removeEventListener("beforeunload", onBeforeUnload);
       canvas.removeEventListener("webglcontextlost", onLost);

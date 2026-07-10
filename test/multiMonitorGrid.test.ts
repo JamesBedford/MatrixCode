@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  centermostScreenId,
   computeVirtualGrid,
   extractSlice,
   stepsToAdvance,
@@ -100,6 +101,29 @@ describe("computeVirtualGrid", () => {
     expect(g2.originX).toBe(-W);
     expect(g2.slices.left).toMatchObject({ colStart: 0 });
     expect(g2.slices.primary).toMatchObject({ colStart: COLS });
+  });
+});
+
+describe("centermostScreenId", () => {
+  it("chooses the middle monitor in a horizontal three-display layout", () => {
+    expect(centermostScreenId([
+      { id: "left", left: -W, top: 0, width: W, height: H },
+      { id: "center", left: 0, top: 0, width: W, height: H },
+      { id: "right", left: W, top: 0, width: W, height: H },
+    ])).toBe("center");
+  });
+
+  it("chooses the display nearest the virtual desktop center in a T-shaped layout", () => {
+    expect(centermostScreenId([
+      { id: "upper", left: -112, top: 0, width: 1920, height: 1200 },
+      { id: "left", left: -1920, top: 1200, width: 1920, height: 1200 },
+      { id: "center", left: 0, top: 1200, width: 1710, height: 1112 },
+      { id: "right", left: 1710, top: 1200, width: 1920, height: 1200 },
+    ])).toBe("center");
+  });
+
+  it("returns null for an empty display list", () => {
+    expect(centermostScreenId([])).toBeNull();
   });
 });
 

@@ -22,9 +22,27 @@
 
 @end
 
+@interface MatrixCodeMultiMonitorDelegateProbe : NSObject <NSApplicationDelegate>
+@property(nonatomic, weak) MatrixCodeRainHostView *enteredHost;
+@property(nonatomic, weak) id exitSender;
+@end
+
+@implementation MatrixCodeMultiMonitorDelegateProbe
+
+- (void)enterMultiMonitorFromHost:(MatrixCodeRainHostView *)hostView {
+    self.enteredHost = hostView;
+}
+
+- (void)exitMultiMonitor:(id)sender {
+    self.exitSender = sender;
+}
+
+@end
+
 @interface MatrixCodeRainHostViewTests : XCTestCase
 @property(nonatomic, strong) MatrixCodePreferences *preferences;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *originalStoredValues;
+@property(nonatomic, weak) id<NSApplicationDelegate> originalAppDelegate;
 @end
 
 @implementation MatrixCodeRainHostViewTests
@@ -33,10 +51,13 @@
     [super setUp];
     self.preferences = [[MatrixCodePreferences alloc] init];
     self.originalStoredValues = [self.preferences storedValues];
+    self.originalAppDelegate = NSApp.delegate;
     [self.preferences commitValues:@{}];
 }
 
 - (void)tearDown {
+    NSApp.delegate = self.originalAppDelegate;
+    self.originalAppDelegate = nil;
     [self.preferences commitValues:self.originalStoredValues ?: @{}];
     self.originalStoredValues = nil;
     self.preferences = nil;
@@ -81,6 +102,14 @@ static NSEvent *MatrixCodeFKeyEvent(BOOL repeat) {
 
 static NSEvent *MatrixCodeOptionFKeyEvent(BOOL repeat) {
     return MatrixCodeKeyEventWithFlags(nil, @"f", 3, NSEventModifierFlagOption, repeat);
+}
+
+static NSEvent *MatrixCodeCommandShiftMKeyEvent(BOOL repeat) {
+    return MatrixCodeKeyEventWithFlags(nil,
+                                       @"M",
+                                       46,
+                                       NSEventModifierFlagCommand | NSEventModifierFlagShift,
+                                       repeat);
 }
 
 static NSEvent *MatrixCodeLetterKeyEvent(NSString *letter) {
@@ -261,6 +290,7 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     NSArray<NSArray<NSString *> *> *shortcuts = @[
         @[@"i", @"intro"],
         @[@"m", @"messages"],
+        @[@"x", @"images"],
         @[@"c", @"countdowns"],
     ];
     for (NSArray<NSString *> *shortcut in shortcuts) {
@@ -406,7 +436,7 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     XCTAssertNotNil(chrome);
     XCTAssertFalse(chrome.hidden);
     XCTAssertEqualObjects(fullscreen.toolTip, @"Fullscreen (F)");
-    XCTAssertEqualObjects(multiMonitor.toolTip, @"Start multi-monitor mode");
+    XCTAssertEqualObjects(multiMonitor.toolTip, @"Start multi-monitor mode (⇧⌘M)");
     XCTAssertEqualWithAccuracy(fullscreen.layer.cornerRadius, 6.0, 0.001);
     XCTAssertEqualWithAccuracy(multiMonitor.layer.cornerRadius, 6.0, 0.001);
 
@@ -426,6 +456,115 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     XCTAssertTrue(requestedMultiMonitor);
 }
 
+- (void)testStandaloneMultiMonitorButtonDispatchesToAppDelegateWhenAvailable {
+    MatrixCodeEscapeTestWindow *window =
+        [[MatrixCodeEscapeTestWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                                      styleMask:NSWindowStyleMaskTitled
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    window.contentView = hostView;
+    [hostView mouseMoved:MatrixCodeMouseMovedEvent(window)];
+    [hostView layoutSubtreeIfNeeded];
+
+    MatrixCodeMultiMonitorDelegateProbe *probe = [[MatrixCodeMultiMonitorDelegateProbe alloc] init];
+    NSApp.delegate = probe;
+    NSButton *multiMonitor = (NSButton *)MatrixCodeHostDescendantWithIdentifier(
+        hostView, @"presentation-multimonitor");
+
+    [multiMonitor performClick:nil];
+
+    XCTAssertEqual(probe.enteredHost, hostView);
+}
+
+- (void)testCentremostMultiMonitorHostShowsControlsAndSettings {
+    NSDictionary *session = @{
+        @"screens": @[@{}, @{}],
+        @"currentScreenId": @"center",
+        @"controlsScreenId": @"center",
+    };
+    MatrixCodeEscapeTestWindow *window =
+        [[MatrixCodeEscapeTestWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                                      styleMask:NSWindowStyleMaskBorderless
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:session
+                                suppressesIntroOverlay:YES];
+    window.contentView = hostView;
+
+    [hostView mouseMoved:MatrixCodeMouseMovedEvent(window)];
+    [hostView layoutSubtreeIfNeeded];
+
+    NSButton *multiMonitor = (NSButton *)MatrixCodeHostDescendantWithIdentifier(
+        hostView, @"presentation-multimonitor");
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"presentation-chrome"));
+    XCTAssertEqualObjects(multiMonitor.title, @"▦ EXIT");
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"presentation-fullscreen"));
+
+    [hostView showSettingsOverlay];
+    XCTAssertNotNil([hostView valueForKey:@"configurationController"]);
+}
+
+- (void)testLegacyMultiMonitorSessionComputesControlHost {
+    NSDictionary *session = @{
+        @"screens": @[
+            @{@"id": @"left", @"left": @(-1920), @"top": @0, @"width": @1920, @"height": @1080},
+            @{@"id": @"center", @"left": @0, @"top": @0, @"width": @1920, @"height": @1080},
+            @{@"id": @"right", @"left": @1920, @"top": @0, @"width": @1920, @"height": @1080},
+        ],
+        @"currentScreenId": @"center",
+    };
+    MatrixCodeEscapeTestWindow *window =
+        [[MatrixCodeEscapeTestWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                                      styleMask:NSWindowStyleMaskBorderless
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:session
+                                suppressesIntroOverlay:YES];
+    window.contentView = hostView;
+
+    [hostView mouseMoved:MatrixCodeMouseMovedEvent(window)];
+    [hostView layoutSubtreeIfNeeded];
+
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"presentation-chrome"));
+}
+
+- (void)testNonCentremostMultiMonitorHostKeepsControlsHidden {
+    NSDictionary *session = @{
+        @"screens": @[@{}, @{}],
+        @"currentScreenId": @"left",
+        @"controlsScreenId": @"center",
+    };
+    MatrixCodeEscapeTestWindow *window =
+        [[MatrixCodeEscapeTestWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                                      styleMask:NSWindowStyleMaskBorderless
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:session
+                                suppressesIntroOverlay:YES];
+    window.contentView = hostView;
+
+    [hostView mouseMoved:MatrixCodeMouseMovedEvent(window)];
+    [hostView layoutSubtreeIfNeeded];
+    [hostView showSettingsOverlay];
+
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"presentation-chrome"));
+    XCTAssertNil([hostView valueForKey:@"configurationController"]);
+}
+
 - (void)testFKeyTogglesStandaloneFullScreen {
     MatrixCodeEscapeTestWindow *window =
         [[MatrixCodeEscapeTestWindow alloc] initWithContentRect:NSMakeRect(0, 0, 640, 480)
@@ -443,6 +582,69 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
 
     XCTAssertTrue(window.toggledFullScreen);
     XCTAssertFalse(hostView.fpsOverlayVisible);
+}
+
+- (void)testCommandShiftMKeyEquivalentRequestsStandaloneMultiMonitor {
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+
+    __block BOOL requestedMultiMonitor = NO;
+    id observer = [NSNotificationCenter.defaultCenter
+        addObserverForName:MatrixCodeRainHostRequestMultiMonitorNotification
+                    object:hostView
+                     queue:nil
+                usingBlock:^(NSNotification *notification) {
+        requestedMultiMonitor = YES;
+    }];
+
+    BOOL handled = [hostView performKeyEquivalent:MatrixCodeCommandShiftMKeyEvent(NO)];
+
+    [NSNotificationCenter.defaultCenter removeObserver:observer];
+    XCTAssertTrue(handled);
+    XCTAssertTrue(requestedMultiMonitor);
+}
+
+- (void)testCommandShiftMKeyEquivalentExitsStandaloneMultiMonitor {
+    NSDictionary *session = @{@"screens": @[@{}, @{}]};
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:session
+                                suppressesIntroOverlay:YES];
+
+    __block BOOL requestedExit = NO;
+    id observer = [NSNotificationCenter.defaultCenter
+        addObserverForName:MatrixCodeRainHostRequestExitMultiMonitorNotification
+                    object:hostView
+                     queue:nil
+                usingBlock:^(NSNotification *notification) {
+        requestedExit = YES;
+    }];
+
+    BOOL handled = [hostView performKeyEquivalent:MatrixCodeCommandShiftMKeyEvent(NO)];
+
+    [NSNotificationCenter.defaultCenter removeObserver:observer];
+    XCTAssertTrue(handled);
+    XCTAssertTrue(requestedExit);
+}
+
+- (void)testCommandShiftMKeyEquivalentDispatchesExitToAppDelegateWhenAvailable {
+    NSDictionary *session = @{@"screens": @[@{}, @{}]};
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:session
+                                suppressesIntroOverlay:YES];
+    MatrixCodeMultiMonitorDelegateProbe *probe = [[MatrixCodeMultiMonitorDelegateProbe alloc] init];
+    NSApp.delegate = probe;
+
+    BOOL handled = [hostView performKeyEquivalent:MatrixCodeCommandShiftMKeyEvent(NO)];
+
+    XCTAssertTrue(handled);
+    XCTAssertEqual(probe.exitSender, hostView);
 }
 
 - (void)testPKeyTogglesUserPauseWithoutRepeating {
@@ -531,6 +733,8 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     XCTAssertFalse(overlay.hidden);
     XCTAssertEqualObjects(overlay.stringValue, @"0 FPS");
     XCTAssertEqualObjects(notifiedVisible, @YES);
+    NSDictionary *storedUIState = MatrixCodeJSONDictionary([self.preferences storedValues][@"mx-ui-state"]);
+    XCTAssertEqualObjects(storedUIState[@"fpsOverlayVisible"], @YES);
     XCTAssertNil([hostView valueForKey:@"animationTimer"]);
 
     MatrixCodeMetalFrameHandler handler = metalView.frameHandler;
@@ -547,7 +751,33 @@ static NSDictionary *MatrixCodeHostStoredMessages(MatrixCodeRainHostView *hostVi
     [hostView keyDown:MatrixCodeOptionFKeyEvent(NO)];
     XCTAssertTrue(overlay.hidden);
     XCTAssertEqualObjects(notifiedVisible, @NO);
+    XCTAssertNil([self.preferences storedValues][@"mx-ui-state"]);
     [NSNotificationCenter.defaultCenter removeObserver:observer];
+}
+
+- (void)testStoredFPSOverlayVisibilityIsRestoredOnLaunch {
+    [self.preferences commitValues:@{
+        @"mx-ui-state": MatrixCodeJSONString(@{@"fpsOverlayVisible": @YES}),
+    }];
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 640, 480)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = YES;
+    window.contentView = hostView;
+    [hostView startAnimation];
+
+    NSTextField *overlay = (NSTextField *)MatrixCodeHostDescendantWithIdentifier(hostView, @"fps-overlay");
+    XCTAssertNotNil(overlay);
+    XCTAssertTrue(hostView.fpsOverlayVisible);
+    XCTAssertFalse(overlay.hidden);
+    XCTAssertEqualObjects(overlay.stringValue, @"0 FPS");
 }
 
 @end

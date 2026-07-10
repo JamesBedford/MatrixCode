@@ -5,11 +5,18 @@ import { isNativeConfiguration, nativeStorageDidChange } from "../platform/nativ
 export interface PanelCallbacks {
   onToggleFullscreen: () => void;
   onEnterMultiMonitor: () => void;
+  onExitMultiMonitor: () => void;
   onReplayIntro: () => void;
   onEditCharacters: () => void;
   onEditIntro: () => void;
   onEditMessages: () => void;
   onEditCountdown: () => void;
+}
+
+export interface PanelOptions {
+  multiMonitor?: boolean;
+  introControls?: boolean;
+  documentEditors?: boolean;
 }
 
 const HIDE_DELAY_MS = 2800;
@@ -25,7 +32,12 @@ export class ControlsPanel {
   private rangeSyncers = new Map<keyof Controls, (c: Controls) => void>();
   private unsubscribe?: () => void;
 
-  constructor(parent: HTMLElement, private controls: ControlsStore, private cb: PanelCallbacks) {
+  constructor(
+    parent: HTMLElement,
+    private controls: ControlsStore,
+    private cb: PanelCallbacks,
+    options: PanelOptions = {},
+  ) {
     const c = controls.get();
 
     this.el = document.createElement("div");
@@ -34,11 +46,15 @@ export class ControlsPanel {
     // Top-right floating buttons.
     const fab = document.createElement("div");
     fab.className = "mx-fab";
-    const fsBtn = this.button("⛶ Fullscreen", () => this.cb.onToggleFullscreen());
-    fsBtn.title = "Fullscreen (F)";
-    fab.appendChild(fsBtn);
-    const multiMonitorBtn = this.button("▦ Multi-monitor", () => this.cb.onEnterMultiMonitor());
-    multiMonitorBtn.title = "Start multi-monitor mode";
+    if (!options.multiMonitor) {
+      const fsBtn = this.button("⛶ Fullscreen", () => this.cb.onToggleFullscreen());
+      fsBtn.title = "Fullscreen (F)";
+      fab.appendChild(fsBtn);
+    }
+    const multiMonitorBtn = options.multiMonitor
+      ? this.button("▦ Exit", () => this.cb.onExitMultiMonitor())
+      : this.button("▦ Multi-monitor", () => this.cb.onEnterMultiMonitor());
+    multiMonitorBtn.title = options.multiMonitor ? "Exit multi-monitor mode" : "Start multi-monitor mode";
     fab.appendChild(multiMonitorBtn);
     this.el.appendChild(fab);
 
@@ -103,41 +119,47 @@ export class ControlsPanel {
     characters.style.marginTop = "6px";
     this.panel.appendChild(characters);
 
-    const replay = this.button("▷ Replay intro", () => {
-      this.cb.onReplayIntro();
-      this.forceHide(); // dismiss the panel so the replayed intro plays unobstructed
-    });
-    replay.style.marginTop = "6px";
-    this.panel.appendChild(replay);
+    if (options.introControls !== false) {
+      const replay = this.button("▷ Replay intro", () => {
+        this.cb.onReplayIntro();
+        this.forceHide(); // dismiss the panel so the replayed intro plays unobstructed
+      });
+      replay.style.marginTop = "6px";
+      this.panel.appendChild(replay);
 
-    const edit = this.button("✎ Edit intro", () => this.cb.onEditIntro());
-    edit.title = "Edit intro (I)";
-    edit.style.marginTop = "6px";
-    this.panel.appendChild(edit);
+      const edit = this.button("✎ Edit intro", () => this.cb.onEditIntro());
+      edit.title = "Edit intro (I)";
+      edit.style.marginTop = "6px";
+      this.panel.appendChild(edit);
+    }
 
-    const editMsgs = this.button("✎ Edit messages", () => this.cb.onEditMessages());
-    editMsgs.title = "Edit messages (M)";
-    editMsgs.style.marginTop = "6px";
-    this.panel.appendChild(editMsgs);
+    if (options.documentEditors !== false) {
+      const editMsgs = this.button("✎ Edit messages", () => this.cb.onEditMessages());
+      editMsgs.title = "Edit messages (M)";
+      editMsgs.style.marginTop = "6px";
+      this.panel.appendChild(editMsgs);
 
-    const editCountdown = this.button("⏱ Edit countdown", () => this.cb.onEditCountdown());
-    editCountdown.title = "Edit countdown (C)";
-    editCountdown.style.marginTop = "6px";
-    this.panel.appendChild(editCountdown);
+      const editCountdown = this.button("⏱ Edit countdown", () => this.cb.onEditCountdown());
+      editCountdown.title = "Edit countdown (C)";
+      editCountdown.style.marginTop = "6px";
+      this.panel.appendChild(editCountdown);
+    }
 
     // Resets the tunable controls only — the user's custom intro (mx-intro) and
     // messages (mx-messages) live in separate stores and are intentionally left
     // untouched; each has its own "Reset to default" button inside its edit modal.
     const reset = this.button("↺ Reset to defaults", () => {
       controls.set(DEFAULT_CONTROLS);
-      location.reload();
+      if (!options.multiMonitor) location.reload();
     });
     reset.style.marginTop = "6px";
     this.panel.appendChild(reset);
 
     const hint = document.createElement("p");
     hint.className = "mx-hint";
-    hint.innerHTML = "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>N</kbd> toggle msgs · <kbd>C</kbd> countdown · <kbd>−</kbd>/<kbd>=</kbd> density";
+    hint.innerHTML = options.multiMonitor
+      ? "<kbd>H</kbd> panel · <kbd>−</kbd>/<kbd>=</kbd> density · <kbd>Esc</kbd> exit"
+      : "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>N</kbd> toggle msgs · <kbd>C</kbd> countdown · <kbd>−</kbd>/<kbd>=</kbd> density";
     this.panel.appendChild(hint);
 
     this.el.appendChild(this.panel);
