@@ -40,6 +40,7 @@ RESOURCES = ROOT / "macos" / "MatrixCodeScreenSaver" / "Resources"
 APPICONSET = RESOURCES / "Assets.xcassets" / "AppIcon.appiconset"
 ICONSET = RESOURCES / "MatrixCode.iconset"
 ICNS_PATH = RESOURCES / "MatrixCode.icns"
+WEB_ICONS = ROOT / "public" / "icons"
 
 # Classic preset colors (keep in sync with src/config/colorPresets.ts).
 BACKGROUND = (0x0D, 0x02, 0x08)
@@ -424,12 +425,15 @@ class IconRenderer:
     def __init__(self) -> None:
         self._master: Image.Image | None = None
 
+    def master(self) -> Image.Image:
+        if self._master is None:
+            self._master = render_master_art()
+        return self._master
+
     def render(self, size: int) -> Image.Image:
         if size <= 64:
             return render_small_icon(size)
-        if self._master is None:
-            self._master = render_master_art()
-        return compose_canvas(self._master, size)
+        return compose_canvas(self.master(), size)
 
 
 def write_appiconset(renderer: IconRenderer) -> None:
@@ -483,6 +487,25 @@ def write_preview(renderer: IconRenderer, directory: Path) -> None:
     print(f"Preview PNGs written to {directory}")
 
 
+def write_web_icons(renderer: IconRenderer) -> None:
+    """Emit the web PWA icon set from the same seeded artwork as the macOS icons.
+
+    Maskable + apple-touch icons are opaque full-bleed squares so iOS/Android
+    apply their own corner mask cleanly; the ``any``-purpose icons use the Big
+    Sur inset so they look polished (and match the macOS Dock icon) when shown
+    un-masked.
+    """
+    WEB_ICONS.mkdir(parents=True, exist_ok=True)
+    master = renderer.master()
+    for size, name in ((180, "apple-touch-icon.png"),
+                       (192, "icon-192-maskable.png"),
+                       (512, "icon-512-maskable.png")):
+        master.resize((size, size), Image.LANCZOS).convert("RGB").save(WEB_ICONS / name)
+    for size, name in ((192, "icon-192.png"), (512, "icon-512.png")):
+        compose_canvas(master, size).save(WEB_ICONS / name)
+    print(f"Web icons written to {WEB_ICONS}")
+
+
 def main() -> None:
     renderer = IconRenderer()
     if len(sys.argv) >= 3 and sys.argv[1] == "--preview":
@@ -491,6 +514,7 @@ def main() -> None:
     write_asset_catalog_root()
     write_appiconset(renderer)
     write_icns(renderer)
+    write_web_icons(renderer)
 
 
 if __name__ == "__main__":
