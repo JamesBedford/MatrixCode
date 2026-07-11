@@ -46,6 +46,12 @@ drop shadow, three depth layers of rain, bloomed heads, vignette, scanlines)
 that the 64-unit favicon grid cannot express. Both size classes derive their
 palette from the classic preset in `src/config/colorPresets.ts`.
 
+The same script also emits the browser build's PWA icon set (`public/icons/*.png`)
+from the identical seeded artwork, alongside a hand-written
+`public/manifest.webmanifest` and an apple-touch-icon wired into `index.html`, so
+the installed web app shows the same cinematic icon. That PWA manifest is a
+web-only surface with no native equivalent (macOS has its own icon system).
+
 ## Requirements
 
 - macOS 13 or later on Apple Silicon
