@@ -576,17 +576,17 @@ static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
     NSString *binaryMessageFont = [MatrixCodeMetalView
         diagnosticAtlasPrimaryFontNameForGlyph:@"A"
                                       controls:binaryControls];
-    XCTAssertTrue([@[@"SFMono-Regular", @"Menlo-Regular", @"Consolas",
-                      @"LiberationMono", @"CourierNewPSMT"]
-        containsObject:binaryDigitFont]);
+    XCTAssertTrue(([@[@"SFMono-Regular", @"Menlo-Regular", @"Consolas",
+                       @"LiberationMono", @"CourierNewPSMT"]
+        containsObject:binaryDigitFont]));
     XCTAssertEqualObjects(binaryDigitFont, digitFont);
     XCTAssertEqualObjects(binaryDigitFont, binaryMessageFont);
     NSString *matrixFont = [MatrixCodeMetalView
         diagnosticAtlasPrimaryFontNameForGlyph:@"0"
                                       controls:matrixControls];
-    XCTAssertTrue([@[@"HiraKakuProN-W3", @"HiraKakuPro-W3",
-                      @"YuGothic-Medium", @"HiraginoSans-W3", @"Menlo-Regular"]
-        containsObject:matrixFont]);
+    XCTAssertTrue(([@[@"HiraKakuProN-W3", @"HiraKakuPro-W3",
+                       @"YuGothic-Medium", @"HiraginoSans-W3", @"Menlo-Regular"]
+        containsObject:matrixFont]));
     XCTAssertTrue([MatrixCodeMetalView diagnosticDrawsReadableDigitGlyph:@"0"
                                                                 controls:binaryControls]);
     XCTAssertTrue([MatrixCodeMetalView diagnosticDrawsReadableDigitGlyph:@"1"

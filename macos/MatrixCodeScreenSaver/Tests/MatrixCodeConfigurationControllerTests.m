@@ -244,6 +244,7 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
             initEmbeddedInView:hostView
                   closeHandler:^{}
             replayIntroHandler:^{ replayCount++; }];
+    XCTAssertNotNil(controller);
     NSButton *replay = (NSButton *)MatrixCodeDescendantWithIdentifier(hostView, @"replay");
     NSView *panel = MatrixCodeDescendantWithIdentifier(hostView, @"settings-panel");
     XCTAssertNotNil(replay);
@@ -340,7 +341,9 @@ restrictedToMultiMonitorControls:YES];
     [controller setValue:[@[@"UNSAVED MESSAGE"] mutableCopy] forKey:@"messageLines"];
     NSView *backdrop = MatrixCodeDescendantWithIdentifier(hostView, @"settings-editor-backdrop");
 
+    NSDate *previewStartDate = NSDate.date;
     [controller previewMessage:nil];
+    NSDate *previewFinishDate = NSDate.date;
 
     XCTAssertTrue(backdrop.hidden);
     XCTAssertNil([controller valueForKey:@"previewController"]);
@@ -348,7 +351,9 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertEqualObjects(messages[@"messages"], (@[@"UNSAVED MESSAGE"]));
     NSTimer *restoreTimer = [controller valueForKey:@"messagePreviewRestoreTimer"];
     XCTAssertNotNil(restoreTimer);
-    XCTAssertEqualWithAccuracy(restoreTimer.timeInterval, 8, 0.001);
+    XCTAssertTrue(restoreTimer.isValid);
+    XCTAssertGreaterThan([restoreTimer.fireDate timeIntervalSinceDate:previewStartDate], 7.99);
+    XCTAssertLessThan([restoreTimer.fireDate timeIntervalSinceDate:previewFinishDate], 8.01);
 
     [restoreTimer fire];
     XCTAssertFalse(backdrop.hidden);
@@ -629,8 +634,10 @@ restrictedToMultiMonitorControls:YES];
     NSTextField *preview = (NSTextField *)MatrixCodeDescendantWithIdentifier(
         controller.window.contentView, @"countdown-preview");
     XCTAssertNotNil(preview);
-    XCTAssertTrue([preview.stringValue hasPrefix:@"Preview: "]);
-    XCTAssertTrue([preview.stringValue containsString:@" · "]);
+    XCTAssertTrue([preview.stringValue hasPrefix:@"Preview: "],
+                  @"Unexpected countdown preview: %@", preview.stringValue);
+    XCTAssertTrue([preview.stringValue containsString:@" · "],
+                  @"Unexpected countdown preview: %@", preview.stringValue);
     XCTAssertNotNil([controller valueForKey:@"countdownPreviewTimer"]);
 
     [controller cancelOperation:nil];
@@ -931,25 +938,13 @@ restrictedToMultiMonitorControls:YES];
                           (@[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"]));
 }
 
-- (void)testGlyphModeSelectionImmediatelyRefreshesBackgroundRainGlyphs {
+- (void)testGlyphModeSelectionImmediatelyRefreshesRenderedBackgroundRainGlyphs {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
     MatrixCodeMetalView *background = [controller valueForKey:@"settingsMetalView"];
     XCTAssertTrue([background isKindOfClass:MatrixCodeMetalView.class]);
-    [background setDensityScale:1 rainElapsed:18.0];
-    NSArray<NSNumber *> *matrixSnapshot =
-        [background diagnosticGlyphStateSnapshotWithWidth:420 height:260];
-    XCTAssertGreaterThan(matrixSnapshot.count, (NSUInteger)0);
-    BOOL sawNonBinaryGlyph = NO;
-    NSInteger binaryStart = MatrixCodeRainDigitStartIndex();
-    for (NSNumber *glyph in matrixSnapshot) {
-        NSInteger value = glyph.integerValue;
-        if (value < binaryStart || value > binaryStart + 1) {
-            sawNonBinaryGlyph = YES;
-            break;
-        }
-    }
-    XCTAssertTrue(sawNonBinaryGlyph);
+    id originalAtlas = [background valueForKey:@"atlas"];
+    XCTAssertNotNil(originalAtlas);
 
     NSButton *open = (NSButton *)MatrixCodeDescendantWithIdentifier(
         controller.window.contentView, @"characters");
@@ -960,14 +955,17 @@ restrictedToMultiMonitorControls:YES];
     MatrixCodeSelectRepresentedValue(glyphMode, @"binary");
     [controller controlChanged:glyphMode];
 
-    [background setDensityScale:1 rainElapsed:18.0];
-    NSArray<NSNumber *> *binarySnapshot =
-        [background diagnosticGlyphStateSnapshotWithWidth:420 height:260];
-    XCTAssertEqual(binarySnapshot.count, matrixSnapshot.count);
-    for (NSNumber *glyph in binarySnapshot) {
-        NSInteger value = glyph.integerValue;
-        XCTAssertTrue(value >= binaryStart && value <= binaryStart + 1,
-                      @"Unexpected binary glyph index %@", glyph);
+    NSDictionary<NSString *, id> *binaryControls = [background valueForKey:@"controls"];
+    XCTAssertEqualObjects(binaryControls[@"glyphMode"], @"binary");
+    XCTAssertNotEqual(originalAtlas, [background valueForKey:@"atlas"]);
+    NSInteger rainGlyphCount = MatrixCodeRainGlyphCount();
+    for (NSInteger index = 0; index < rainGlyphCount; index++) {
+        NSString *glyph = [MatrixCodeMetalView diagnosticAtlasDisplayGlyphForGlyph:@"?"
+                                                                              index:index
+                                                                     rainGlyphCount:rainGlyphCount
+                                                                           controls:binaryControls];
+        XCTAssertTrue(([@[@"0", @"1"] containsObject:glyph]),
+                      @"Unexpected rendered binary glyph %@ at index %ld", glyph, (long)index);
     }
 }
 

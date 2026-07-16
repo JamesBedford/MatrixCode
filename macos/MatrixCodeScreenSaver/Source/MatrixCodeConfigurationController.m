@@ -1212,6 +1212,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     } else if ([view isKindOfClass:NSTextField.class]) {
         NSTextField *field = (NSTextField *)view;
         if (field.editable) [theme styleTextField:field];
+        else if ([field.identifier isEqualToString:@"countdown-preview"]) [theme styleHintLabel:field];
         else if (field.font.pointSize >= 15) [theme styleHeading:field level:1];
         else [theme styleLabel:field];
     } else if ([view isKindOfClass:NSButton.class]) {

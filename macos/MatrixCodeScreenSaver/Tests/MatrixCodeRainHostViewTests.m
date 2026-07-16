@@ -26,6 +26,7 @@
 @end
 
 @interface MatrixCodeRampMetalProbe : NSObject
+@property(nonatomic) NSRect frame;
 @property(nonatomic) BOOL paused;
 @property(nonatomic) BOOL animationActive;
 @property(nonatomic) NSInteger preferredFramesPerSecond;
@@ -94,7 +95,7 @@
 }
 
 - (void)setTokenTimelineStartDate:(NSDate *)date {
-    self.tokenTimelineStartDate = date;
+    _tokenTimelineStartDate = date;
 }
 
 - (void)shiftTokenTimelineBy:(NSTimeInterval)interval {
