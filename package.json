@@ -10,7 +10,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:parity": "./scripts/verify_parity.sh"
   },
   "dependencies": {
     "twgl.js": "^5.5.4"

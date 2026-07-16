@@ -95,6 +95,20 @@ describe("strftime", () => {
   it("passes unknown directives through and unescapes %%", () => {
     expect(strftime(new Date(2026, 0, 1, 9, 0, 0), "%H%% %q")).toBe("09% %q");
   });
+  it("computes day-of-year from calendar days across daylight-saving changes", () => {
+    const previousTimezone = process.env.TZ;
+    process.env.TZ = "Europe/London";
+    try {
+      // Midnight after the spring offset change exposed the old elapsed-ms
+      // implementation: it was one hour short of 182 complete 24-hour spans.
+      expect(new Date(2026, 6, 1, 0, 0, 0).getTimezoneOffset()).toBe(-60);
+      expect(strftime(new Date(2026, 6, 1, 0, 0, 0), "%j")).toBe("182");
+      expect(strftime(new Date(2024, 11, 31, 0, 0, 0), "%j")).toBe("366");
+    } finally {
+      if (previousTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTimezone;
+    }
+  });
 });
 
 describe("formatCountdown", () => {

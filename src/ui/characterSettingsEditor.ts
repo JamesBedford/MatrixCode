@@ -1,5 +1,5 @@
 import type { Controls, GlyphFont, GlyphMode } from "../types.ts";
-import { DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
+import { CONTROL_RANGES, DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
 import { GLYPH_FONT_OPTIONS } from "../config/glyphFonts.ts";
 import { preferredMirrorForGlyphMode } from "../config/glyphMirror.ts";
 import { ModalEditor } from "./modalKit.ts";
@@ -44,7 +44,14 @@ export class CharacterSettingsEditor extends ModalEditor {
     this.dialog.appendChild(this.selectField<GlyphFont>("Font", c.glyphFont, GLYPH_FONT_OPTIONS, (glyphFont) => {
       this.controls.set({ glyphFont });
     }));
-    this.dialog.appendChild(this.rangeField("Glyph change", "glyphRate", 0, 5, 0.05, (v) => `${v.toFixed(2)}x`));
+    this.dialog.appendChild(this.rangeField(
+      "Glyph change",
+      "glyphRate",
+      CONTROL_RANGES.glyphRate.min,
+      CONTROL_RANGES.glyphRate.max,
+      CONTROL_RANGES.glyphRate.step,
+      (v) => `${v.toFixed(2)}x`,
+    ));
     this.dialog.appendChild(this.toggleField("Mirror glyphs", c.mirror, (mirror) => {
       this.controls.set({ mirror });
     }));

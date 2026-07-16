@@ -148,11 +148,18 @@ than gesture-driven.
   standard menu bar, creates resizable native windows and multi-monitor
   presentation windows, and embeds
   `MatrixCodeRainHostView`.
-- `MatrixCodeMetalView` owns the Metal device, render loop, rain state,
-  multi-display virtual-grid mapping, themes, glow, scanlines, vignette,
-  in-rain message rendering, and native-only image-mask rain biasing.
-- `MatrixCodeRainLifecycle` mirrors the web load/intro ramp and deterministic
-  weighted glyph selection.
+- `MatrixCodeMetalView` owns the Metal device and matching WebGL render graph:
+  RGBA16F scene, head-only bright-pass, one-to-three Gaussian bloom levels,
+  additive upsample, ACES composite, scanlines, and vignette. It renders local
+  slices of one virtual grid for multi-display sessions.
+- `MatrixCodeRainSimulation` directly ports `src/sim/rainSim.ts`, including its
+  Mulberry32 draw order, Float32 cell semantics, stream lifecycle, and packed
+  RGBA8 state. Shared golden checksums are byte-identical across languages.
+- `MatrixCodeMessageScheduler` directly ports `src/sim/messageScheduler.ts`
+  with its independent seed, live token relayout, row/drop directions,
+  per-display regions, and reveal/fade/scramble timing.
+- `MatrixCodeRainLifecycle` provides the matching load/intro ramp and canonical
+  rain-glyph ranges.
 - `MatrixCodeIntroOverlayView` renders the native typewriter intro and resolves
   tokens before measuring/playing each line.
 - `MatrixCodeConfigurationController` builds both the AppKit Screen Saver
@@ -166,6 +173,16 @@ than gesture-driven.
   so independent saver views stay visually aligned.
 
 ## Keeping parity with the web app
+
+The precise parity contract, canonical capture inputs, manual comparison target,
+and automated verification scope live in
+[`../../docs/macos-web-parity.md`](../../docs/macos-web-parity.md).
+Simulation output is required to be byte-identical. The render graph and shader
+math are equivalent; live pixels can still vary slightly because browser Canvas
+and CoreText rasterize installed fonts independently and displays apply their
+own color profiles. Adaptive resolution uses the same EMA, hysteresis, scale
+steps, and bounds in both renderers. Disable it for a canonical comparison with
+`?adaptive=0` in the browser and `MATRIXCODE_ADAPTIVE=0` for the native process.
 
 Use the web implementation as the feature oracle for behavior and the native
 implementation as the platform oracle for AppKit/Metal integration. For any

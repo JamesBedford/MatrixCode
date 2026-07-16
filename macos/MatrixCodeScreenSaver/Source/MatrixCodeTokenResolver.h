@@ -6,6 +6,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)initWithStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues
                          runStartDate:(NSDate *)runStartDate;
+- (void)setRunStartDate:(NSDate *)runStartDate;
+- (void)shiftRunStartBy:(NSTimeInterval)interval;
 - (NSString *)resolveText:(NSString *)text atDate:(NSDate *)date framesPerSecond:(double)framesPerSecond;
 + (NSString *)formatDuration:(NSTimeInterval)seconds;
 + (nullable NSDate *)builtInMomentNamed:(NSString *)name relativeToDate:(NSDate *)date;

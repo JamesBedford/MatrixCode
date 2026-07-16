@@ -190,6 +190,13 @@ export class MessageOverlay {
     this.el.style.display = "grid";
   }
 
+  /** Keep the visible typing frame stable across an application-level pause. */
+  shiftTimelineBy(intervalMs: number): void {
+    if (this.playing && Number.isFinite(intervalMs) && intervalMs > 0) {
+      this.startMs += intervalMs;
+    }
+  }
+
   skip(): void {
     if (!this.playing) return;
     this.finish();

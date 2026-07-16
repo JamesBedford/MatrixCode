@@ -224,7 +224,8 @@ export const HOLIDAY_TOKENS: string[] = [...Object.keys(HOLIDAYS), "newmoon", "f
  * lookup rolls over to the following year.
  */
 export function holidayTargetMs(name: string, nowMs: number): number | null {
-  const key = ALIASES[name] ?? name;
+  const normalizedName = name.trim().toLowerCase();
+  const key = ALIASES[normalizedName] ?? normalizedName;
   if (key === "newmoon") return nextNewMoonMs(nowMs); // recurring (~monthly), not a fixed annual date
   if (key === "fullmoon") return nextFullMoonMs(nowMs);
   const dateForYear = HOLIDAYS[key];

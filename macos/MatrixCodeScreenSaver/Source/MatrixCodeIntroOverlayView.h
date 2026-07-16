@@ -16,10 +16,14 @@ NS_ASSUME_NONNULL_BEGIN
                  storedValues:(NSDictionary<NSString *, NSString *> *)storedValues
                 tokenResolver:(MatrixCodeTokenResolver *)tokenResolver
                    completion:(dispatch_block_t)completion;
+- (void)reloadStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues
+             tokenResolver:(MatrixCodeTokenResolver *)tokenResolver;
 - (void)startAtDate:(NSDate *)date;
+- (void)replayAtDate:(NSDate *)date;
 - (void)shiftTimelineBy:(NSTimeInterval)interval;
 - (void)updateAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond;
 - (void)skip;
+- (void)cancel;
 
 @end
 

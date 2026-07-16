@@ -29,7 +29,11 @@ struct MatrixCodeUniforms {
     float scanlines;
     float glowRadius;
     float leadBrightness;
-    float3 padding4;
+    float3 backgroundColor;
+};
+
+struct MatrixCodeBlurUniforms {
+    float2 direction;
 };
 
 struct MatrixCodeVertexOut {
@@ -40,56 +44,12 @@ struct MatrixCodeVertexOut {
     float brightness;
     float isHead;
     float whiteHead;
-    float digitValue;
-    float2 glyphUV;
 };
 
-static float rectCoverage(float2 uv, float2 center, float2 halfSize, float feather) {
-    float2 delta = abs(uv - center) - halfSize;
-    float outside = length(max(delta, float2(0.0)));
-    float inside = min(max(delta.x, delta.y), 0.0);
-    float signedDistance = outside + inside;
-    return 1.0 - smoothstep(0.0, feather, signedDistance);
-}
-
-static bool digitSegmentEnabled(int digit, int segment) {
-    constexpr bool segments[10][7] = {
-        {true,  true,  true,  true,  true,  true,  false},
-        {false, true,  true,  false, false, false, false},
-        {true,  true,  false, true,  true,  false, true },
-        {true,  true,  true,  true,  false, false, true },
-        {false, true,  true,  false, false, true,  true },
-        {true,  false, true,  true,  false, true,  true },
-        {true,  false, true,  true,  true,  true,  true },
-        {true,  true,  true,  false, false, false, false},
-        {true,  true,  true,  true,  true,  true,  true },
-        {true,  true,  true,  true,  false, true,  true },
-    };
-    return digit >= 0 && digit <= 9 && segment >= 0 && segment < 7
-        ? segments[digit][segment]
-        : false;
-}
-
-static float proceduralDigitCoverage(float2 uv, float digitValue, float expansion) {
-    int digit = clamp((int)round(digitValue), 0, 9);
-    float thickness = 0.12 + expansion;
-    float feather = 0.018 + expansion * 0.5;
-    float alpha = 0.0;
-    constexpr float2 segmentCenters[7] = {
-        float2(0.5, 0.2), float2(0.75, 0.35), float2(0.75, 0.65),
-        float2(0.5, 0.8), float2(0.25, 0.65), float2(0.25, 0.35),
-        float2(0.5, 0.5),
-    };
-    for (int segment = 0; segment < 7; segment++) {
-        if (!digitSegmentEnabled(digit, segment)) continue;
-        bool horizontal = segment == 0 || segment == 3 || segment == 6;
-        float2 halfSize = horizontal
-            ? float2(0.24, thickness * 0.5)
-            : float2(thickness * 0.5, 0.18);
-        alpha = max(alpha, rectCoverage(uv, segmentCenters[segment], halfSize, feather));
-    }
-    return clamp(alpha, 0.0, 1.0);
-}
+struct MatrixCodeFullscreenOut {
+    float4 position [[position]];
+    float2 uv;
+};
 
 vertex MatrixCodeVertexOut matrixVertex(
     uint vertexID [[vertex_id]],
@@ -117,76 +77,136 @@ vertex MatrixCodeVertexOut matrixVertex(
     out.brightness = instance.brightness;
     out.isHead = instance.isHead;
     out.whiteHead = instance.whiteHead;
-    out.digitValue = instance.digitValue;
-    out.glyphUV = corner;
     return out;
 }
 
-fragment half4 matrixFragment(
+// One oversized triangle covers the target. Metal texture coordinates start at
+// the top-left, matching the native instance coordinate system.
+vertex MatrixCodeFullscreenOut matrixFullscreenVertex(uint vertexID [[vertex_id]]) {
+    float2 uv = float2((vertexID << 1) & 2, vertexID & 2);
+    MatrixCodeFullscreenOut out;
+    out.position = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0, 1);
+    out.uv = uv;
+    return out;
+}
+
+// Mirrors src/gl/shaders/glyph.frag.glsl. The HDR scene alpha is a head-only
+// bloom mask; ambient body and tail glyphs never seed bloom directly.
+fragment float4 matrixSceneFragment(
     MatrixCodeVertexOut in [[stage_in]],
-    texture2d<half> atlas [[texture(0)]],
+    texture2d<float> atlas [[texture(0)]],
     constant MatrixCodeUniforms &uniforms [[buffer(1)]]
 ) {
-    constexpr sampler atlasSampler(filter::linear, address::clamp_to_edge);
-    constexpr float noProceduralDigitThreshold = -0.5;
-    bool proceduralDigit = in.digitValue >= noProceduralDigitThreshold;
-    half center = proceduralDigit
-        ? half(proceduralDigitCoverage(in.glyphUV, in.digitValue, 0.0))
-        : atlas.sample(atlasSampler, in.uv).r;
-    if (!proceduralDigit && in.crossfade < 0.999) {
-        half oldCenter = atlas.sample(atlasSampler, in.oldUV).r;
-        center = mix(oldCenter, center, half(in.crossfade));
-    }
-    half glowAlpha = 0.0h;
-    if (uniforms.glow > 0.001) {
-        if (proceduralDigit) {
-            glowAlpha = half(proceduralDigitCoverage(in.glyphUV, in.digitValue, 0.05) * 0.18 * uniforms.glow);
-        } else {
-            float2 texel = 1.0 / float2(atlas.get_width(), atlas.get_height());
-            float radius = max(1.0, uniforms.glowRadius);
-            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius, 0)).r;
-            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius, 0)).r;
-            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(0,  radius)).r;
-            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(0, -radius)).r;
-            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius,  radius)).r * 0.7h;
-            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius,  radius)).r * 0.7h;
-            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2( radius, -radius)).r * 0.7h;
-            glowAlpha += atlas.sample(atlasSampler, in.uv + texel * float2(-radius, -radius)).r * 0.7h;
-            glowAlpha *= half(0.105 * uniforms.glow);
-        }
-    }
-    half alpha = max(center, glowAlpha);
-
-    float brightness = clamp(in.brightness, 0.0, 1.6);
-    float3 color;
-    if (in.whiteHead > 0.5) {
-        color = mix(uniforms.brightColor, uniforms.headColor,
-                    clamp((brightness - 0.8) * 2.0, 0.0, 1.0));
-    } else if (brightness < 0.35) {
-        color = mix(uniforms.tailColor, uniforms.bodyColor, brightness / 0.35);
-    } else {
-        color = mix(uniforms.bodyColor, uniforms.brightColor,
-                    clamp((brightness - 0.35) / 0.65, 0.0, 1.0));
-    }
-
-    float vignette = 1.0;
-    if (uniforms.vignette > 0.001) {
-        float2 screenUV = in.position.xy / uniforms.viewport;
-        float2 edge = screenUV * (1.0 - screenUV) * 4.0;
-        vignette = mix(1.0, pow(clamp(edge.x * edge.y, 0.0, 1.0), 0.28),
-                       uniforms.vignette);
-    }
-    float scanline = uniforms.scanlines > 0.5
-        ? mix(0.88, 1.0, step(0.5, fract(in.position.y / 3.0)))
-        : 1.0;
-    float headBoost = in.isHead > 0.5
-        ? 1.6 + (in.whiteHead > 0.5 ? uniforms.leadBrightness : 0.0)
-        : 1.0;
-    float glowBoost = (uniforms.glow > 0.001 && center <= 0.01h)
-        ? (1.0 + uniforms.glow * 0.45)
-        : 1.0;
-    return half4(
-        half3(color * max(brightness, 0.12) * headBoost * vignette * scanline * glowBoost),
-        alpha * half(clamp(brightness * 1.25, 0.0, 1.0))
+    constexpr sampler atlasSampler(
+        min_filter::linear,
+        mag_filter::linear,
+        mip_filter::linear,
+        address::clamp_to_edge
     );
+    float inkNew = atlas.sample(atlasSampler, in.uv).r;
+    float ink = inkNew;
+    if (in.crossfade < 1.0) {
+        float inkOld = atlas.sample(atlasSampler, in.oldUV).r;
+        ink = mix(inkOld, inkNew, in.crossfade);
+    }
+
+    // Ambient rain is in 0...1. Native image overlays may deliberately supply
+    // a little HDR energy, so retain their existing upper range.
+    float brightness = clamp(in.brightness, 0.0, 1.6);
+    float3 color = mix(uniforms.tailColor, uniforms.bodyColor,
+                       smoothstep(0.0, 0.5, brightness));
+    color = mix(color, uniforms.brightColor,
+                smoothstep(0.55, 0.95, brightness));
+    color = mix(color, uniforms.headColor,
+                (in.whiteHead > 0.5 ? 1.0 : 0.0) *
+                smoothstep(0.8, 1.0, brightness));
+
+    float baseIntensity = brightness * ink;
+    float headExtra = in.isHead > 0.5
+        ? 0.6 + (in.whiteHead > 0.5 ? uniforms.leadBrightness : 0.0)
+        : 0.0;
+    float displayIntensity = baseIntensity * (1.0 + headExtra);
+    return float4(color * displayIntensity, baseIntensity * headExtra);
+}
+
+// Mirrors src/gl/shaders/brightpass.frag.glsl, including its Karis weight.
+fragment float4 matrixBrightPassFragment(
+    MatrixCodeFullscreenOut in [[stage_in]],
+    texture2d<float> scene [[texture(0)]]
+) {
+    constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+    float4 sample = scene.sample(linearSampler, in.uv);
+    float3 color = sample.rgb * smoothstep(0.0, 0.15, sample.a);
+    float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
+    color *= 1.0 / (1.0 + luma);
+    return float4(color, 1.0);
+}
+
+// The same linearly-collapsed nine-tap Gaussian used by WebGL.
+fragment float4 matrixBlurFragment(
+    MatrixCodeFullscreenOut in [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    constant MatrixCodeBlurUniforms &uniforms [[buffer(0)]]
+) {
+    constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+    constexpr float w0 = 0.2270270;
+    constexpr float w12 = 0.3162162;
+    constexpr float w34 = 0.0702703;
+    constexpr float o12 = 1.3846154;
+    constexpr float o34 = 3.2307692;
+    float3 color = source.sample(linearSampler, in.uv).rgb * w0;
+    color += source.sample(linearSampler, in.uv + uniforms.direction * o12).rgb * w12;
+    color += source.sample(linearSampler, in.uv - uniforms.direction * o12).rgb * w12;
+    color += source.sample(linearSampler, in.uv + uniforms.direction * o34).rgb * w34;
+    color += source.sample(linearSampler, in.uv - uniforms.direction * o34).rgb * w34;
+    return float4(color, 1.0);
+}
+
+fragment float4 matrixCopyFragment(
+    MatrixCodeFullscreenOut in [[stage_in]],
+    texture2d<float> source [[texture(0)]]
+) {
+    constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+    return source.sample(linearSampler, in.uv);
+}
+
+static float3 matrixACES(float3 value) {
+    constexpr float a = 2.51;
+    constexpr float b = 0.03;
+    constexpr float c = 2.43;
+    constexpr float d = 0.59;
+    constexpr float e = 0.14;
+    return clamp((value * (a * value + b)) /
+                 (value * (c * value + d) + e), 0.0, 1.0);
+}
+
+// Mirrors src/gl/shaders/composite.frag.glsl. Sampling uses top-left Metal UVs,
+// while the scanline phase is converted to WebGL's bottom-origin vUv.
+fragment float4 matrixCompositeFragment(
+    MatrixCodeFullscreenOut in [[stage_in]],
+    texture2d<float> scene [[texture(0)]],
+    texture2d<float> bloom [[texture(1)]],
+    constant MatrixCodeUniforms &uniforms [[buffer(1)]]
+) {
+    constexpr sampler linearSampler(filter::linear, address::clamp_to_edge);
+    float3 sceneColor = scene.sample(linearSampler, in.uv).rgb;
+    float3 bloomColor = bloom.sample(linearSampler, in.uv).rgb;
+    float3 color = matrixACES(sceneColor + uniforms.glow * bloomColor);
+    color = max(color, uniforms.backgroundColor);
+
+    float2 webUV = float2(in.uv.x, 1.0 - in.uv.y);
+    if (uniforms.scanlines > 0.5) {
+        float lines = 0.5 + 0.5 * sin(webUV.y * uniforms.viewport.y * 1.5);
+        color *= 1.0 - 0.12 * (1.0 - lines);
+    }
+
+    if (uniforms.vignette > 0.0) {
+        float distanceFromCenter = length((webUV - 0.5) / float2(0.42));
+        // The web shader expresses this with reversed smoothstep edges. This is
+        // the explicit, well-defined form of that intended inverse ramp.
+        float vignette = 1.0 - smoothstep(0.15, 0.95, distanceFromCenter);
+        color *= mix(1.0, pow(vignette, 2.8), uniforms.vignette);
+    }
+
+    return float4(color, 1.0);
 }

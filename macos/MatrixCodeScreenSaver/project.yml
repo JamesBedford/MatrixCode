@@ -47,6 +47,7 @@ targets:
       - sdk: CoreVideo.framework
       - sdk: Metal.framework
       - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
       - sdk: ScreenSaver.framework
     settings:
       base:
@@ -85,6 +86,7 @@ targets:
       - sdk: CoreVideo.framework
       - sdk: Metal.framework
       - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
       - sdk: ScreenSaver.framework
     settings:
       base:
@@ -99,13 +101,16 @@ targets:
     sources:
       - path: Tests
       - path: AppSource/MatrixCodeAppDelegate.m
+      - path: Source/MatrixCodeAdaptiveResolution.m
       - path: Source/MatrixCodeConfigurationController.m
       - path: Source/MatrixCodeConstants.m
       - path: Source/MatrixCodeIntroOverlayView.m
+      - path: Source/MatrixCodeMessageScheduler.m
       - path: Source/MatrixCodeMetalView.m
       - path: Source/MatrixCodePreferences.m
       - path: Source/MatrixCodeRainHostView.m
       - path: Source/MatrixCodeRainLifecycle.m
+      - path: Source/MatrixCodeRainSimulation.m
       - path: Source/MatrixCodeSession.m
       - path: Source/MatrixCodeSettingsTheme.m
       - path: Source/MatrixCodeTokenResolver.m
@@ -116,12 +121,13 @@ targets:
       - sdk: CoreVideo.framework
       - sdk: Metal.framework
       - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
       - sdk: ScreenSaver.framework
       - sdk: XCTest.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matrixcode.screensaver.tests
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
         GENERATE_INFOPLIST_FILE: YES
         HEADER_SEARCH_PATHS: "$(SRCROOT)/Source"
 

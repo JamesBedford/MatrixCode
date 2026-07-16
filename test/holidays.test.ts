@@ -58,6 +58,12 @@ describe("holidayTargetMs", () => {
     expect(holidayTargetMs("thanksgiving", AT(2026, 1, 1))).toBe(AT(2026, 11, 26, 7)); // Nov 26, 2026
   });
 
+  it("normalizes whitespace and case like the native token resolver", () => {
+    const now = AT(2026, 12, 1, 12);
+    expect(holidayTargetMs(" Christmas ", now)).toBe(holidayTargetMs("christmas", now));
+    expect(holidayTargetMs("XMAS", now)).toBe(holidayTargetMs("christmas", now));
+  });
+
   it("uses the Diwali table for verified years and computes beyond it", () => {
     expect(holidayTargetMs("diwali", AT(2026, 1, 1))).toBe(AT(2026, 11, 8, 7)); // table: Nov 8, 2026
     expect(holidayTargetMs("diwali", AT(2033, 1, 1))).toBe(AT(2033, 10, 22, 7)); // table: Oct 22, 2033

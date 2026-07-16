@@ -24,6 +24,20 @@ export const DEFAULT_CONTROLS: Controls = {
   quality: "high",
 };
 
+/** Shared bounds and slider increments for every numeric control. */
+export const CONTROL_RANGES = {
+  speed: { min: 0.1, max: 3, step: 0.05 },
+  trailLength: { min: 0.01, max: 0.5, step: 0.01 },
+  trailVariation: { min: 0, max: 1, step: 0.01 },
+  density: { min: 0.1, max: 100, step: 0.05 },
+  rampUpMs: { min: 0, max: 60000, step: 500 },
+  glyphRate: { min: 0, max: 5, step: 0.05 },
+  glyphScale: { min: 0.5, max: 10, step: 0.1 },
+  glow: { min: 0, max: 2.5, step: 0.05 },
+  leadBrightness: { min: 0, max: 3, step: 0.05 },
+  vignette: { min: 0, max: 1, step: 0.01 },
+} as const;
+
 const STORAGE_KEY = "mx-controls";
 const QUALITIES: QualityTier[] = ["low", "med", "high"];
 const GLYPH_MODES: GlyphMode[] = ["matrix", "katakana", "binary", "digits", "latin", "symbols"];
@@ -59,24 +73,25 @@ function finiteNum(v: unknown): v is number {
 }
 
 function legacyVignette(v: unknown): number | undefined {
-  if (finiteNum(v)) return clamp(v, 0, 1);
+  if (finiteNum(v)) return clamp(v, CONTROL_RANGES.vignette.min, CONTROL_RANGES.vignette.max);
   if (typeof v === "boolean") return v ? 0.42 : 0;
   return undefined;
 }
 
-function sanitize(input: Partial<Controls>): Partial<Controls> {
+export function sanitizeControls(raw: unknown): Partial<Controls> {
+  const input = (typeof raw === "object" && raw !== null ? raw : {}) as Partial<Controls>;
   const out: Partial<Controls> = {};
-  if (finiteNum(input.speed)) out.speed = clamp(input.speed, 0.1, 3);
-  if (finiteNum(input.trailLength)) out.trailLength = clamp(input.trailLength, 0.01, 0.5);
-  if (finiteNum(input.trailVariation)) out.trailVariation = clamp(input.trailVariation, 0, 1);
-  if (finiteNum(input.density)) out.density = clamp(input.density, 0.1, 100);
-  if (finiteNum(input.rampUpMs)) out.rampUpMs = clamp(input.rampUpMs, 0, 60000);
-  if (finiteNum(input.glyphRate)) out.glyphRate = clamp(input.glyphRate, 0, 5);
-  if (finiteNum(input.glyphScale)) out.glyphScale = clamp(input.glyphScale, 0.5, 10);
+  if (finiteNum(input.speed)) out.speed = clamp(input.speed, CONTROL_RANGES.speed.min, CONTROL_RANGES.speed.max);
+  if (finiteNum(input.trailLength)) out.trailLength = clamp(input.trailLength, CONTROL_RANGES.trailLength.min, CONTROL_RANGES.trailLength.max);
+  if (finiteNum(input.trailVariation)) out.trailVariation = clamp(input.trailVariation, CONTROL_RANGES.trailVariation.min, CONTROL_RANGES.trailVariation.max);
+  if (finiteNum(input.density)) out.density = clamp(input.density, CONTROL_RANGES.density.min, CONTROL_RANGES.density.max);
+  if (finiteNum(input.rampUpMs)) out.rampUpMs = clamp(input.rampUpMs, CONTROL_RANGES.rampUpMs.min, CONTROL_RANGES.rampUpMs.max);
+  if (finiteNum(input.glyphRate)) out.glyphRate = clamp(input.glyphRate, CONTROL_RANGES.glyphRate.min, CONTROL_RANGES.glyphRate.max);
+  if (finiteNum(input.glyphScale)) out.glyphScale = clamp(input.glyphScale, CONTROL_RANGES.glyphScale.min, CONTROL_RANGES.glyphScale.max);
   if (input.glyphMode && GLYPH_MODES.includes(input.glyphMode)) out.glyphMode = input.glyphMode;
   if (input.glyphFont && GLYPH_FONTS.includes(input.glyphFont)) out.glyphFont = input.glyphFont;
-  if (finiteNum(input.glow)) out.glow = clamp(input.glow, 0, 2.5);
-  if (finiteNum(input.leadBrightness)) out.leadBrightness = clamp(input.leadBrightness, 0, 3);
+  if (finiteNum(input.glow)) out.glow = clamp(input.glow, CONTROL_RANGES.glow.min, CONTROL_RANGES.glow.max);
+  if (finiteNum(input.leadBrightness)) out.leadBrightness = clamp(input.leadBrightness, CONTROL_RANGES.leadBrightness.min, CONTROL_RANGES.leadBrightness.max);
   if (input.preset && PRESET_NAMES.includes(input.preset)) out.preset = input.preset;
   if (typeof input.mirror === "boolean") out.mirror = input.mirror;
   if (typeof input.scanlines === "boolean") out.scanlines = input.scanlines;
@@ -91,7 +106,7 @@ function loadStored(): Partial<Controls> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    return sanitize(JSON.parse(raw) as Partial<Controls>);
+    return sanitizeControls(JSON.parse(raw) as unknown);
   } catch {
     return {};
   }
@@ -119,7 +134,7 @@ function loadUrl(): Partial<Controls> {
       raw[key] = v;
     }
   }
-  return sanitize(raw as Partial<Controls>);
+  return sanitizeControls(raw);
 }
 
 /** Write the current settings into the URL so a reload restores them. Defaults are omitted to keep it tidy. */
@@ -157,7 +172,7 @@ export class ControlsStore {
   }
 
   set(partial: Partial<Controls>): void {
-    const clean = sanitize(partial);
+    const clean = sanitizeControls(partial);
     const changed = new Set<keyof Controls>();
     for (const key of Object.keys(clean) as (keyof Controls)[]) {
       if (this.state[key] !== clean[key]) {

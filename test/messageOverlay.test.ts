@@ -1,13 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   computeTimeline,
   cursorVisible,
   totalDuration,
   DEFAULT_SCRIPT,
   DEFAULT_TYPE_CONFIG,
+  MessageOverlay,
+  resolveUserName,
   type MessageLine,
   type TypeConfig,
 } from "../src/sim/messageOverlay.ts";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const LINES: MessageLine[] = [
   { text: "AB", holdMs: 500, pauseMs: 0 },
@@ -110,5 +114,30 @@ describe("cursor", () => {
     expect(cursorVisible(CFG, 0)).toBe(true);
     expect(cursorVisible(CFG, CFG.blinkMs)).toBe(false);
     expect(cursorVisible(CFG, CFG.blinkMs * 2)).toBe(true);
+  });
+});
+
+describe("MessageOverlay pause timeline", () => {
+  it("shifts a playing intro without advancing its visible frame", () => {
+    const overlay = Object.create(MessageOverlay.prototype) as MessageOverlay;
+    Object.assign(overlay, { playing: true, startMs: 1000 });
+
+    overlay.shiftTimelineBy(750);
+
+    expect((overlay as unknown as { startMs: number }).startMs).toBe(1750);
+  });
+});
+
+describe("viewer name", () => {
+  it("reads storage on every resolution so edits affect active tokens", () => {
+    let storedName: string | null = null;
+    vi.stubGlobal("window", {
+      location: { search: "" },
+      localStorage: { getItem: () => storedName },
+    });
+
+    expect(resolveUserName()).toBe("Neo");
+    storedName = " Trinity ";
+    expect(resolveUserName()).toBe("Trinity");
   });
 });

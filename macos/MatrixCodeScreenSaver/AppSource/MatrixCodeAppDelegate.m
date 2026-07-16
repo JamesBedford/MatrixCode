@@ -36,6 +36,7 @@ NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior(void) 
 @property(nonatomic, strong) NSMutableArray<NSWindow *> *multiMonitorWindows;
 @property(nonatomic, weak, nullable) NSWindow *preMultiMonitorKeyWindow;
 @property(nonatomic) BOOL applicationIsTerminating;
+@property(nonatomic) BOOL closingMultiMonitorWindows;
 @end
 
 @implementation MatrixCodeAppDelegate
@@ -217,7 +218,7 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
     self.preMultiMonitorKeyWindow = requestingHost.window ?: NSApp.keyWindow;
     [NSApp activateIgnoringOtherApps:YES];
     NSMutableDictionary<NSString *, id> *sharedSession =
-        [[MatrixCodeSession sessionForScreen:screens.firstObject] mutableCopy];
+        [[MatrixCodeSession freshSessionForScreen:screens.firstObject] mutableCopy];
     NSInteger sharedFramesPerSecond = 0;
     for (NSScreen *screen in screens) {
         NSInteger framesPerSecond = [MatrixCodeMetalView maximumFramesPerSecondForScreen:screen];
@@ -312,21 +313,29 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
                   forHostViews:[self multiMonitorHostViews]];
 }
 
-- (IBAction)exitMultiMonitor:(id)sender {
+- (void)exitMultiMonitorKeepingWindow:(NSWindow *)closingWindow {
     if (self.multiMonitorWindows.count == 0) return;
     NSWindow *restoreWindow = self.preMultiMonitorKeyWindow;
     NSArray<NSWindow *> *windows = [self.multiMonitorWindows copy];
     [self.multiMonitorWindows removeAllObjects];
+    self.closingMultiMonitorWindows = YES;
     for (NSWindow *window in windows) {
         if ([window.contentView isKindOfClass:MatrixCodeRainHostView.class]) {
             [(MatrixCodeRainHostView *)window.contentView stopAnimation];
         }
+        if (window == closingWindow) continue;
         window.delegate = nil;
         [window close];
     }
+    self.closingMultiMonitorWindows = NO;
     [restoreWindow makeKeyAndOrderFront:nil];
     self.preMultiMonitorKeyWindow = nil;
     [self persistPresentationMode:[self presentationModeForWindow:restoreWindow]];
+}
+
+- (IBAction)exitMultiMonitor:(id)sender {
+    (void)sender;
+    [self exitMultiMonitorKeepingWindow:nil];
 }
 
 - (MatrixCodeRainHostView *)hostViewForSettings {
@@ -388,6 +397,11 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
 
 - (void)windowWillClose:(NSNotification *)notification {
     NSWindow *window = notification.object;
+    BOOL closesMultiMonitorSession = [self.multiMonitorWindows containsObject:window] &&
+        !self.closingMultiMonitorWindows && !self.applicationIsTerminating;
+    if (closesMultiMonitorSession) {
+        [self exitMultiMonitorKeepingWindow:window];
+    }
     if ([window.contentView isKindOfClass:MatrixCodeRainHostView.class]) {
         [(MatrixCodeRainHostView *)window.contentView stopAnimation];
     }

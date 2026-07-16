@@ -49,9 +49,11 @@ export function greeting(date: Date): string {
 
 /** Day of the year, 1..366, in local time. */
 function dayOfYear(d: Date): number {
-  const start = new Date(d.getFullYear(), 0, 0);
-  const diff = d.getTime() - start.getTime();
-  return Math.floor(diff / 86_400_000);
+  // Compare UTC midnights built from the local calendar components. Subtracting
+  // local instants directly is off by an hour after a daylight-saving change.
+  const currentDay = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const yearStart = Date.UTC(d.getFullYear(), 0, 0);
+  return Math.floor((currentDay - yearStart) / 86_400_000);
 }
 
 /**

@@ -87,6 +87,11 @@ feature contract. Changes to visuals, settings, token behavior, intro/messages,
 or multi-monitor semantics should be made in both codebases unless an intentional
 difference is documented.
 
+The testable definition of parity, canonical comparison conditions, and the
+scope of the automated verification gate are documented in
+[`docs/macos-web-parity.md`](docs/macos-web-parity.md). On a Mac with full
+Xcode, run `npm run verify:parity` from the repository root.
+
 ## Architecture
 
 MatrixCode currently has two implementations that are kept in behavioral parity:
@@ -116,11 +121,16 @@ The native saver mirrors the web feature contract with platform-native pieces:
 
 - `Source/MatrixCodeScreenSaverView.*` hosts the ScreenSaver.framework entry
   point and coordinates preview/fullscreen lifecycle.
-- `Source/MatrixCodeMetalView.*` owns the Metal renderer, stationary-cell rain,
-  overlap lanes, themes, scanlines, vignette, in-rain messages, and continuous
-  virtual-grid multi-display mapping.
-- `Source/MatrixCodeRainLifecycle.*` mirrors the web load/intro ramp behavior
-  and weighted glyph selection.
+- `Source/MatrixCodeMetalView.*` consumes the web-compatible packed cell state
+  and runs the matching HDR scene, head bright-pass, Gaussian bloom, ACES,
+  scanline, and vignette passes, including continuous multi-display slices.
+- `Source/MatrixCodeRainSimulation.*` is a direct deterministic port of
+  `src/sim/rainSim.ts`; fixed fixtures require byte-identical RGBA8 state.
+- `Source/MatrixCodeMessageScheduler.*` mirrors the independently seeded web
+  scheduler, including row/drop placement, per-display regions, live tokens,
+  and reveal/fade/scramble envelopes.
+- `Source/MatrixCodeRainLifecycle.*` supplies the shared load/intro ramp and
+  glyph-range helpers used by the native host.
 - `Source/MatrixCodeIntroOverlayView.*` implements the native typewriter intro,
   including token resolution and skip handling.
 - `Source/MatrixCodeConfigurationController.*` implements the Options sheet and

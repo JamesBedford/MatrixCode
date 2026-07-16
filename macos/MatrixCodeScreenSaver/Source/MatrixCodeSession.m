@@ -8,8 +8,47 @@
 
 static const NSTimeInterval MatrixCodeSessionReuseSeconds = 15.0;
 static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
+static const uint32_t MatrixCodeSingleDisplaySeed = 0x1a2b3cU;
+
+static BOOL MatrixCodePerDisplayMessages(ScreenSaverDefaults *defaults) {
+    NSString *raw = [defaults stringForKey:@"mx-controls"];
+    NSData *data = [raw isKindOfClass:NSString.class]
+        ? [raw dataUsingEncoding:NSUTF8StringEncoding] : nil;
+    id parsedControls = data
+        ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(parsedControls);
+    return [controls[@"vignette"] doubleValue] > 0;
+}
+
+@interface MatrixCodeSession ()
++ (NSDictionary<NSString *, id> *)sessionForScreen:(NSScreen *)screen
+                                            screens:(NSArray<NSScreen *> *)screens
+                                           identity:(NSDictionary<NSString *, NSNumber *> *)identity
+                                           defaults:(ScreenSaverDefaults *)defaults;
+@end
 
 @implementation MatrixCodeSession
+
++ (uint32_t)seedForScreenCount:(NSUInteger)screenCount randomSeed:(uint32_t)randomSeed {
+    return screenCount > 1 ? randomSeed : MatrixCodeSingleDisplaySeed;
+}
+
++ (NSDictionary<NSString *, id> *)singleDisplaySession {
+    return @{
+        @"seed": @(MatrixCodeSingleDisplaySeed),
+        @"epoch": @(NSDate.date.timeIntervalSince1970 * 1000.0),
+        @"warmupSeconds": @(MatrixCodeWarmupSeconds),
+    };
+}
+
++ (NSDictionary<NSString *, NSNumber *> *)freshIdentityForScreenCount:(NSUInteger)screenCount
+                                                            randomSeed:(uint32_t)randomSeed
+                                                     epochMilliseconds:(NSTimeInterval)epochMilliseconds {
+    return @{
+        @"seed": @([self seedForScreenCount:screenCount randomSeed:randomSeed]),
+        @"epoch": @(epochMilliseconds),
+    };
+}
 
 + (NSString *)identifierForScreen:(NSScreen *)screen {
     NSNumber *number = screen.deviceDescription[@"NSScreenNumber"];
@@ -116,11 +155,6 @@ static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
 
 + (NSDictionary<NSString *, id> *)sessionForScreen:(NSScreen *)screen {
     NSArray<NSScreen *> *screens = NSScreen.screens;
-    CGFloat desktopMaxY = -CGFLOAT_MAX;
-    for (NSScreen *candidate in screens) {
-        desktopMaxY = MAX(desktopMaxY, NSMaxY(candidate.frame));
-    }
-
     ScreenSaverDefaults *defaults = [ScreenSaverDefaults defaultsForModuleWithName:MatrixCodeModuleIdentifier];
     NSString *lockPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"com.matrixcode.screensaver.session.lock"];
     NSDistributedLock *lock = [[NSDistributedLock alloc] initWithPath:lockPath];
@@ -133,12 +167,16 @@ static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
 
     NSTimeInterval nowMs = NSDate.date.timeIntervalSince1970 * 1000.0;
     NSDictionary *stored = [defaults dictionaryForKey:MatrixCodeSessionDefaultsKey];
+    NSNumber *storedSeed = [stored[@"seed"] isKindOfClass:NSNumber.class] ? stored[@"seed"] : nil;
     NSNumber *storedEpoch = [stored[@"epoch"] isKindOfClass:NSNumber.class] ? stored[@"epoch"] : nil;
-    BOOL reusable = storedEpoch && fabs(nowMs - storedEpoch.doubleValue) <= MatrixCodeSessionReuseSeconds * 1000.0;
-    NSDictionary *identity = stored;
-    if (!reusable) {
+    BOOL reusable = storedSeed && storedEpoch &&
+        fabs(nowMs - storedEpoch.doubleValue) <= MatrixCodeSessionReuseSeconds * 1000.0;
+    BOOL multiDisplay = screens.count > 1;
+    NSDictionary *identity = multiDisplay ? stored : [self singleDisplaySession];
+    if (multiDisplay && !reusable) {
+        uint32_t randomSeed = (uint32_t)arc4random();
         identity = @{
-            @"seed": @((uint32_t)arc4random()),
+            @"seed": @([self seedForScreenCount:screens.count randomSeed:randomSeed]),
             @"epoch": @(nowMs),
         };
         [defaults setObject:identity forKey:MatrixCodeSessionDefaultsKey];
@@ -146,6 +184,35 @@ static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
     }
     if (acquiredLock) {
         [lock unlock];
+    }
+
+    return [self sessionForScreen:screen
+                          screens:screens
+                         identity:identity
+                         defaults:defaults];
+}
+
++ (NSDictionary<NSString *, id> *)freshSessionForScreen:(NSScreen *)screen {
+    NSArray<NSScreen *> *screens = NSScreen.screens;
+    ScreenSaverDefaults *defaults =
+        [ScreenSaverDefaults defaultsForModuleWithName:MatrixCodeModuleIdentifier];
+    NSDictionary<NSString *, NSNumber *> *identity =
+        [self freshIdentityForScreenCount:screens.count
+                               randomSeed:(uint32_t)arc4random()
+                        epochMilliseconds:NSDate.date.timeIntervalSince1970 * 1000.0];
+    return [self sessionForScreen:screen
+                          screens:screens
+                         identity:identity
+                         defaults:defaults];
+}
+
++ (NSDictionary<NSString *, id> *)sessionForScreen:(NSScreen *)screen
+                                            screens:(NSArray<NSScreen *> *)screens
+                                           identity:(NSDictionary<NSString *, NSNumber *> *)identity
+                                           defaults:(ScreenSaverDefaults *)defaults {
+    CGFloat desktopMaxY = -CGFLOAT_MAX;
+    for (NSScreen *candidate in screens) {
+        desktopMaxY = MAX(desktopMaxY, NSMaxY(candidate.frame));
     }
 
     NSMutableArray<NSDictionary<NSString *, id> *> *descriptors = [NSMutableArray arrayWithCapacity:screens.count];
@@ -159,6 +226,7 @@ static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
         @"warmupSeconds": @(MatrixCodeWarmupSeconds),
         @"screens": descriptors,
         @"currentScreenId": [self identifierForScreen:screen],
+        @"perDisplayMessages": @(MatrixCodePerDisplayMessages(defaults)),
     } mutableCopy];
     if (controlsScreenId) session[@"controlsScreenId"] = controlsScreenId;
     return session;

@@ -4,10 +4,13 @@
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodeConstants.h"
 #import "MatrixCodePreferences.h"
+#import "MatrixCodeRainLifecycle.h"
+#import "MatrixCodeSession.h"
 #import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeTokenResolver.h"
 
 #import <QuartzCore/QuartzCore.h>
+#import <float.h>
 
 NSNotificationName const MatrixCodePreviewValuesDidChangeNotification =
     @"MatrixCodePreviewValuesDidChangeNotification";
@@ -23,6 +26,32 @@ static const CGFloat MatrixCodeEditorCardMaxHeight = 610.0;
 static const CGFloat MatrixCodeEditorCardVerticalMargin = 48.0;
 static const NSUInteger MatrixCodeImageMaskMaxDimension = 96;
 static const NSUInteger MatrixCodeImageMaskMaxStoredCharacters = 49152;
+
+static NSString *MatrixCodeMomentTokenHint(NSArray<NSDictionary *> *moments) {
+    NSMutableArray<NSString *> *namedTokens = [NSMutableArray array];
+    for (NSDictionary *moment in moments) {
+        NSString *name = [moment[@"name"] isKindOfClass:NSString.class]
+            ? moment[@"name"] : @"";
+        if (name.length) {
+            [namedTokens addObject:[NSString stringWithFormat:@"{countdown:%@}", name]];
+        }
+    }
+    NSString *yours = namedTokens.count
+        ? [NSString stringWithFormat:@"Your moments: %@", [namedTokens componentsJoinedByString:@", "]]
+        : @"No named moments yet.";
+    NSArray<NSString *> *builtIns = @[
+        @"newyear", @"valentines", @"stpatricks", @"aprilfools", @"easter", @"july4",
+        @"halloween", @"diwali", @"thanksgiving", @"christmaseve", @"christmas",
+        @"newmoon", @"fullmoon",
+    ];
+    return [NSString stringWithFormat:
+        @"{greeting} uses local time: PARTY ON (00:00–03:59), GOOD MORNING (04:00–11:59), "
+         "GOOD AFTERNOON (12:00–17:59), GOOD EVENING (18:00–22:59), GOOD NIGHT (23:00–23:59).\n"
+         "{uptime} is time since Matrix Code initialized. {fps} is the app's smoothed frame rate.\n"
+         "%@\nBuilt-in (use {countdown:NAME}): %@\nAlso {countup:…} for any of these.",
+        yours,
+        [builtIns componentsJoinedByString:@", "]];
+}
 
 static NSRect MatrixCodeFramePinnedToSuperviewEdges(NSView *superview, NSEdgeInsets insets) {
     if (!superview) return NSZeroRect;
@@ -83,6 +112,21 @@ static NSDictionary *MatrixCodeJSONObject(NSString *raw, Class expectedClass) {
     NSData *data = [raw dataUsingEncoding:NSUTF8StringEncoding];
     id object = data ? [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:nil] : nil;
     return [object isKindOfClass:expectedClass] ? object : nil;
+}
+
+static id MatrixCodeJSONValue(NSString *raw, BOOL *valid) {
+    if (valid) *valid = NO;
+    if (![raw isKindOfClass:NSString.class]) return nil;
+    NSData *data = [raw dataUsingEncoding:NSUTF8StringEncoding];
+    if (!data) return nil;
+    NSError *error = nil;
+    id object = [NSJSONSerialization JSONObjectWithData:data
+                                                options:NSJSONReadingMutableContainers |
+                                                        NSJSONReadingFragmentsAllowed
+                                                  error:&error];
+    if (error) return nil;
+    if (valid) *valid = YES;
+    return object;
 }
 
 static NSString *MatrixCodeJSONString(id object) {
@@ -249,6 +293,13 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic) BOOL showsIntro;
 @property(nonatomic) BOOL showsMessage;
 @property(nonatomic) BOOL showsImage;
+@property(nonatomic) BOOL reducesMotion;
+@property(nonatomic) NSTimeInterval rampDuration;
+@property(nonatomic, strong, nullable) NSDate *rainStartDate;
+@property(nonatomic, strong, nullable) NSDate *currentFrameDate;
+- (void)configureIntroPreviewWithValues:(NSDictionary<NSString *, NSString *> *)values
+                                 atDate:(NSDate *)date;
+- (void)applyIntroRainTimelineAtDate:(NSDate *)date;
 @end
 
 @implementation MatrixCodeNativePreviewController
@@ -256,7 +307,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 - (instancetype)initWithStoredValues:(NSDictionary<NSString *, NSString *> *)values
                            showIntro:(BOOL)showIntro
                          showMessage:(BOOL)showMessage
-                           showImage:(BOOL)showImage {
+                           showImage:(BOOL)showImage
+                       reduceMotion:(BOOL)reduceMotion {
     NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 500)
                                                   styleMask:NSWindowStyleMaskTitled |
                                                             NSWindowStyleMaskClosable |
@@ -270,28 +322,35 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     _showsIntro = showIntro;
     _showsMessage = showMessage;
     _showsImage = showImage;
+    _reducesMotion = reduceMotion;
     _startDate = NSDate.date;
     NSDictionary *previewValues = [self previewValuesFromValues:values];
     _metalView = [[MatrixCodeMetalView alloc] initWithFrame:window.contentView.bounds
-                                                    session:nil
+                                                    session:[MatrixCodeSession singleDisplaySession]
                                                storedValues:previewValues];
     [window.contentView addSubview:_metalView];
-    MatrixCodeTokenResolver *resolver =
-        [[MatrixCodeTokenResolver alloc] initWithStoredValues:previewValues runStartDate:_startDate];
-    _introView = [[MatrixCodeIntroOverlayView alloc] initWithFrame:window.contentView.bounds
-                                                     storedValues:previewValues
-                                                    tokenResolver:resolver
-                                                       completion:^{}];
-    if (showIntro) {
-        [window.contentView addSubview:_introView positioned:NSWindowAbove relativeTo:_metalView];
-        [_introView startAtDate:_startDate];
+    if (showIntro && !reduceMotion) {
+        [self configureIntroPreviewWithValues:previewValues atDate:_startDate];
         __weak typeof(self) weakSelf = self;
         _metalView.frameHandler =
             ^(MatrixCodeMetalView *view, NSDate *date, double framesPerSecond) {
+            (void)view;
+            weakSelf.currentFrameDate = date;
+            [weakSelf applyIntroRainTimelineAtDate:date];
             [weakSelf.introView updateAtDate:date framesPerSecond:framesPerSecond];
+            weakSelf.currentFrameDate = nil;
         };
     }
-    [_metalView setAnimationActive:YES];
+    if (showMessage && !reduceMotion) {
+        [_metalView previewMessageWithStoredValues:previewValues atDate:_startDate];
+    }
+    if (reduceMotion) {
+        [_metalView prepareReducedMotionFrame];
+        [_metalView setAnimationActive:NO];
+        [_metalView draw];
+    } else {
+        [_metalView setAnimationActive:YES];
+    }
     [window center];
     return self;
 }
@@ -300,15 +359,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     (NSDictionary<NSString *, NSString *> *)values {
     NSMutableDictionary *previewValues = [values mutableCopy];
     if (self.showsIntro) [previewValues removeObjectForKey:@"mx-intro-seen"];
-    if (self.showsMessage) {
-        NSMutableDictionary *messages =
-            [MatrixCodeJSONObject(previewValues[@"mx-messages"], NSDictionary.class) mutableCopy];
-        if (!messages) messages = [NSMutableDictionary dictionary];
-        messages[@"enabled"] = @YES;
-        messages[@"frequencyMs"] = @500;
-        previewValues[@"mx-messages"] = MatrixCodeJSONString(messages);
-    }
-    if (self.showsImage) {
+    if (self.showsImage && !self.reducesMotion) {
         NSMutableDictionary *images =
             [MatrixCodeJSONObject(previewValues[@"mx-images"], NSDictionary.class) mutableCopy];
         if (!images) images = [NSMutableDictionary dictionary];
@@ -319,24 +370,68 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     return previewValues;
 }
 
-- (void)reloadStoredValues:(NSDictionary<NSString *, NSString *> *)values {
-    NSDictionary *previewValues = [self previewValuesFromValues:values];
-    [self.metalView reloadStoredValues:previewValues];
-    if (!self.showsIntro) return;
-
+- (void)configureIntroPreviewWithValues:(NSDictionary<NSString *, NSString *> *)values
+                                 atDate:(NSDate *)date {
     [self.introView removeFromSuperview];
     MatrixCodeTokenResolver *resolver =
-        [[MatrixCodeTokenResolver alloc] initWithStoredValues:previewValues
-                                                 runStartDate:self.startDate];
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:values runStartDate:date];
+    __weak typeof(self) weakSelf = self;
     self.introView = [[MatrixCodeIntroOverlayView alloc]
         initWithFrame:self.window.contentView.bounds
-         storedValues:previewValues
+         storedValues:values
         tokenResolver:resolver
-           completion:^{}];
+           completion:^{
+        MatrixCodeNativePreviewController *strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.introView.rainDuringIntro) return;
+        NSDate *completionDate = strongSelf.currentFrameDate ?: NSDate.date;
+        strongSelf.rainStartDate =
+            [completionDate dateByAddingTimeInterval:strongSelf.introView.postIntroDelay];
+    }];
     [self.window.contentView addSubview:self.introView
                               positioned:NSWindowAbove
                               relativeTo:self.metalView];
-    [self.introView startAtDate:NSDate.date];
+    [self.introView startAtDate:date];
+
+    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
+        MatrixCodeJSONObject(values[@"mx-controls"], NSDictionary.class));
+    self.rampDuration = [controls[@"rampUpMs"] doubleValue] / 1000.0;
+    self.rainStartDate = self.introView.rainDuringIntro ? date : nil;
+    [self applyIntroRainTimelineAtDate:date];
+}
+
+- (void)applyIntroRainTimelineAtDate:(NSDate *)date {
+    if (!self.showsIntro) return;
+    if (!self.rainStartDate) {
+        [self.metalView setDensityScale:0 rainElapsed:-DBL_MAX];
+        return;
+    }
+    NSTimeInterval elapsed = [date timeIntervalSinceDate:self.rainStartDate];
+    double progress = elapsed < 0
+        ? 0
+        : (self.rampDuration <= 0 ? 1 : fmin(1, elapsed / self.rampDuration));
+    [self.metalView setDensityScale:MatrixCodeRainRampEase(progress)
+                       rainElapsed:elapsed];
+}
+
+- (void)reloadStoredValues:(NSDictionary<NSString *, NSString *> *)values {
+    NSDictionary *previewValues = [self previewValuesFromValues:values];
+    [self.metalView reloadStoredValues:previewValues];
+    self.startDate = NSDate.date;
+    if (self.reducesMotion) {
+        self.metalView.frameHandler = nil;
+        [self.introView cancel];
+        self.introView = nil;
+        [self.metalView prepareReducedMotionFrame];
+        [self.metalView setAnimationActive:NO];
+        [self.metalView draw];
+        return;
+    }
+    if (self.showsIntro) {
+        [self configureIntroPreviewWithValues:previewValues atDate:self.startDate];
+    }
+    if (self.showsMessage) {
+        [self.metalView previewMessageWithStoredValues:previewValues atDate:self.startDate];
+    }
 }
 
 - (void)windowWillClose:(NSNotification *)notification {
@@ -364,15 +459,22 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic, strong) NSMutableDictionary *countdown;
 @property(nonatomic, strong) NSMutableArray<NSMutableDictionary *> *moments;
 @property(nonatomic, copy) dispatch_block_t closeHandler;
+@property(nonatomic, copy, nullable) dispatch_block_t replayIntroHandler;
+@property(nonatomic, copy, nullable) MatrixCodeIntroPreviewHandler introPreviewHandler;
+@property(nonatomic, copy, nullable) MatrixCodeMessagePreviewHandler messagePreviewHandler;
+@property(nonatomic, copy, nullable) dispatch_block_t resetRainHandler;
 @property(nonatomic, strong) NSStackView *introLinesStack;
 @property(nonatomic, strong) NSStackView *messageLinesStack;
 @property(nonatomic, strong) NSStackView *imageItemsStack;
 @property(nonatomic, strong) NSStackView *momentsStack;
 @property(nonatomic, strong) MatrixCodeNativePreviewController *previewController;
+@property(nonatomic, strong, nullable) NSNumber *previewReducedMotionOverride;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *originalValues;
 @property(nonatomic, strong) NSMutableSet<NSString *> *explicitlyClearedStorageKeys;
 @property(nonatomic, strong) NSTextField *postIntroDelayField;
 @property(nonatomic, strong) NSDatePicker *defaultCountdownDatePicker;
+@property(nonatomic, strong) NSTextField *countdownPreviewLabel;
+@property(nonatomic, strong) NSTimer *countdownPreviewTimer;
 @property(nonatomic, strong) NSButton *mirrorButton;
 @property(nonatomic, strong) NSView *editorBackdrop;
 @property(nonatomic, strong) NSView *editorCard;
@@ -381,13 +483,18 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic, strong) NSTextField *panelNameField;
 @property(nonatomic, strong) MatrixCodeMetalView *settingsMetalView;
 @property(nonatomic, strong) NSTimer *settingsAnimationTimer;
+@property(nonatomic, strong) NSTimer *settingsRampPreviewTimer;
+@property(nonatomic, strong) NSDate *settingsRampStartDate;
+@property(nonatomic) NSTimeInterval settingsRampDuration;
 @property(nonatomic, strong) MatrixCodeSettingsHoverView *settingsOverlayView;
 @property(nonatomic, strong) NSView *settingsPanel;
 @property(nonatomic, strong) NSTimer *settingsHideTimer;
+@property(nonatomic, strong, nullable) NSTimer *messagePreviewRestoreTimer;
 @property(nonatomic, strong) MatrixCodeMetalView *charactersPreviewView;
 @property(nonatomic) BOOL settingsPanelVisible;
 @property(nonatomic, weak) NSView *embeddedHostView;
 @property(nonatomic) BOOL embeddedPresentation;
+@property(nonatomic) BOOL restrictedToMultiMonitorControls;
 @end
 
 @implementation MatrixCodeConfigurationController
@@ -412,15 +519,61 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (instancetype)initEmbeddedInView:(NSView *)hostView closeHandler:(dispatch_block_t)closeHandler {
+    return [self initEmbeddedInView:hostView
+                       closeHandler:closeHandler
+                 replayIntroHandler:nil
+                introPreviewHandler:nil
+              messagePreviewHandler:nil
+                  resetRainHandler:nil];
+}
+
+- (instancetype)initEmbeddedInView:(NSView *)hostView
+                       closeHandler:(dispatch_block_t)closeHandler
+                 replayIntroHandler:(dispatch_block_t)replayIntroHandler {
+    return [self initEmbeddedInView:hostView
+                       closeHandler:closeHandler
+                 replayIntroHandler:replayIntroHandler
+                introPreviewHandler:nil
+              messagePreviewHandler:nil
+                  resetRainHandler:nil];
+}
+
+- (instancetype)initEmbeddedInView:(NSView *)hostView
+                       closeHandler:(dispatch_block_t)closeHandler
+                 replayIntroHandler:(dispatch_block_t)replayIntroHandler
+                introPreviewHandler:(MatrixCodeIntroPreviewHandler)introPreviewHandler
+              messagePreviewHandler:(MatrixCodeMessagePreviewHandler)messagePreviewHandler
+                  resetRainHandler:(dispatch_block_t)resetRainHandler {
+    return [self initEmbeddedInView:hostView
+                       closeHandler:closeHandler
+                 replayIntroHandler:replayIntroHandler
+                introPreviewHandler:introPreviewHandler
+              messagePreviewHandler:messagePreviewHandler
+                   resetRainHandler:resetRainHandler
+  restrictedToMultiMonitorControls:NO];
+}
+
+- (instancetype)initEmbeddedInView:(NSView *)hostView
+                       closeHandler:(dispatch_block_t)closeHandler
+                 replayIntroHandler:(dispatch_block_t)replayIntroHandler
+                introPreviewHandler:(MatrixCodeIntroPreviewHandler)introPreviewHandler
+              messagePreviewHandler:(MatrixCodeMessagePreviewHandler)messagePreviewHandler
+                   resetRainHandler:(dispatch_block_t)resetRainHandler
+  restrictedToMultiMonitorControls:(BOOL)restrictedToMultiMonitorControls {
     self = [super initWithWindow:nil];
     if (!self) return nil;
     _embeddedHostView = hostView;
     _embeddedPresentation = YES;
+    _restrictedToMultiMonitorControls = restrictedToMultiMonitorControls;
     _preferences = [[MatrixCodePreferences alloc] init];
     _stagedValues = [[_preferences storedValues] mutableCopy];
     _originalValues = [_stagedValues copy];
     _explicitlyClearedStorageKeys = [NSMutableSet set];
     _closeHandler = [closeHandler copy];
+    _replayIntroHandler = [replayIntroHandler copy];
+    _introPreviewHandler = [introPreviewHandler copy];
+    _messagePreviewHandler = [messagePreviewHandler copy];
+    _resetRainHandler = [resetRainHandler copy];
     [self loadModels];
     [self buildInterface];
     return self;
@@ -465,6 +618,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         values = [self commitSerializedValues:values];
     }
     [self publishPreviewValues:values];
+    [self refreshCountdownPreview];
 }
 
 - (BOOL)originalValueForKey:(NSString *)key
@@ -567,48 +721,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 - (void)loadModels {
     NSDictionary *storedControls =
         MatrixCodeJSONObject(self.stagedValues[@"mx-controls"], NSDictionary.class) ?: @{};
-    NSMutableDictionary *controls = [@{
-        @"speed": @1, @"trailLength": @0.255, @"trailVariation": @1,
-        @"density": @2, @"rampUpMs": @8000,
-        @"glyphRate": @1, @"glyphScale": @1, @"glow": @0.9, @"leadBrightness": @1.6,
-        @"glyphMode": @"matrix", @"glyphFont": @"matrix", @"preset": @"classic", @"mirror": @YES, @"scanlines": @NO, @"vignette": @0,
-        @"allowOverlap": @YES, @"quality": @"high",
-    } mutableCopy];
-    NSArray *controlNumbers = @[
-        @[@"speed", @0.1, @3], @[@"trailLength", @0.01, @0.5],
-        @[@"trailVariation", @0, @1],
-        @[@"density", @0.1, @100], @[@"rampUpMs", @0, @60000],
-        @[@"glyphRate", @0, @5], @[@"glyphScale", @0.5, @10],
-        @[@"glow", @0, @2.5], @[@"leadBrightness", @0, @3],
-        @[@"vignette", @0, @1],
-    ];
-    for (NSArray *spec in controlNumbers) {
-        NSString *key = spec[0];
-        controls[key] = @(MatrixCodeSettingNumber(storedControls, key,
-            [controls[key] doubleValue], [spec[1] doubleValue], [spec[2] doubleValue]));
-    }
-    id storedVignette = storedControls[@"vignette"];
-    if ([storedVignette isKindOfClass:NSNumber.class] &&
-        CFGetTypeID((__bridge CFTypeRef)storedVignette) == CFBooleanGetTypeID()) {
-        controls[@"vignette"] = @([storedVignette boolValue] ? 0.42 : 0);
-    }
-    for (NSString *key in @[@"mirror", @"scanlines", @"allowOverlap"]) {
-        controls[key] = MatrixCodeSettingBoolObject(
-            MatrixCodeSettingBool(storedControls, key, [controls[key] boolValue]));
-    }
-    NSArray *presets = @[@"classic", @"amber", @"gold", @"red", @"pink", @"purple", @"blue", @"white"];
-    if ([storedControls[@"preset"] isKindOfClass:NSString.class] &&
-        [presets containsObject:storedControls[@"preset"]]) controls[@"preset"] = storedControls[@"preset"];
-    NSArray *qualities = @[@"low", @"med", @"high"];
-    if ([storedControls[@"quality"] isKindOfClass:NSString.class] &&
-        [qualities containsObject:storedControls[@"quality"]]) controls[@"quality"] = storedControls[@"quality"];
-    NSArray *glyphModes = @[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"];
-    if ([storedControls[@"glyphMode"] isKindOfClass:NSString.class] &&
-        [glyphModes containsObject:storedControls[@"glyphMode"]]) controls[@"glyphMode"] = storedControls[@"glyphMode"];
-    NSArray *glyphFonts = @[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"];
-    if ([storedControls[@"glyphFont"] isKindOfClass:NSString.class] &&
-        [glyphFonts containsObject:storedControls[@"glyphFont"]]) controls[@"glyphFont"] = storedControls[@"glyphFont"];
-    self.controls = controls;
+    self.controls = [MatrixCodeSanitizeControlsDocument(storedControls) mutableCopy];
 
     NSDictionary *storedIntro =
         MatrixCodeJSONObject(self.stagedValues[@"mx-intro"], NSDictionary.class) ?: @{};
@@ -644,8 +757,11 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         for (NSDictionary *line in defaultIntroLines) [self.introLines addObject:[line mutableCopy]];
     }
 
-    NSDictionary *parsedMessageDoc =
-        MatrixCodeJSONObject(self.stagedValues[@"mx-messages"], NSDictionary.class);
+    BOOL hasValidMessagesJSON = NO;
+    id parsedMessagesValue = MatrixCodeJSONValue(self.stagedValues[@"mx-messages"],
+                                                 &hasValidMessagesJSON);
+    NSDictionary *parsedMessageDoc = [parsedMessagesValue isKindOfClass:NSDictionary.class]
+        ? parsedMessagesValue : nil;
     NSDictionary *storedMessageDoc = parsedMessageDoc ?: @{};
     self.messages = [@{
         @"enabled": MatrixCodeSettingBoolObject(
@@ -667,8 +783,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     } mutableCopy];
     NSArray *storedMessages = [storedMessageDoc[@"messages"] isKindOfClass:NSArray.class]
         ? storedMessageDoc[@"messages"]
-        : (parsedMessageDoc ? @[] : @[@"WAKE UP", @"THE MATRIX HAS YOU",
-                                      @"FOLLOW THE WHITE RABBIT", @"{countup}"]);
+        : (hasValidMessagesJSON ? @[] : @[@"WAKE UP", @"THE MATRIX HAS YOU",
+                                          @"FOLLOW THE WHITE RABBIT", @"{countup}"]);
     self.messageLines = [NSMutableArray array];
     for (NSUInteger index = 0; index < MIN((NSUInteger)12, storedMessages.count); index++) {
         NSString *message = MatrixCodeSettingText(storedMessages[index], 120);
@@ -773,15 +889,25 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         ? self.controls[@"preset"] : @"classic";
     [self.settingsAnimationTimer invalidate];
     self.settingsAnimationTimer = nil;
+    [self stopSettingsRampPreview];
+    self.settingsMetalView.frameHandler = nil;
+    [self.settingsMetalView setAnimationActive:NO];
     self.settingsMetalView = nil;
     if (!self.embeddedPresentation) {
         content.wantsLayer = YES;
         content.layer.backgroundColor = theme.backgroundColor.CGColor;
         self.settingsMetalView = [[MatrixCodeMetalView alloc] initWithFrame:content.bounds
-                                                                    session:nil
+                                                                    session:[MatrixCodeSession singleDisplaySession]
                                                                storedValues:[self serializedValues]];
         self.settingsMetalView.translatesAutoresizingMaskIntoConstraints = NO;
         self.settingsMetalView.identifier = @"settings-rain-backdrop";
+        __weak typeof(self) weakSelfForRamp = self;
+        self.settingsMetalView.frameHandler = ^(MatrixCodeMetalView *view,
+                                                NSDate *date,
+                                                double framesPerSecond) {
+            (void)framesPerSecond;
+            [weakSelfForRamp updateSettingsRampPreviewForView:view atDate:date];
+        };
         [self.settingsMetalView setAnimationActive:YES];
         [content addSubview:self.settingsMetalView];
     }
@@ -960,11 +1086,11 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [stack setCustomSpacing:12 afterView:nameRow];
 
     NSArray *specs = @[
-        @[@"Density", @"density", @0.2, @100],
-        @[@"Ramp-up", @"rampUpMs", @0, @30000],
+        @[@"Density", @"density", @0.1, @100],
+        @[@"Ramp-up", @"rampUpMs", @0, @60000],
         @[@"Trail length", @"trailLength", @0.01, @0.5],
         @[@"Trail variation", @"trailVariation", @0, @1],
-        @[@"Speed", @"speed", @0.2, @3],
+        @[@"Speed", @"speed", @0.1, @3],
         @[@"Glyph size", @"glyphScale", @0.5, @10],
         @[@"Glow", @"glow", @0, @2.5],
         @[@"Lead glow", @"leadBrightness", @0, @3],
@@ -999,16 +1125,18 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     actions.edgeInsets = NSEdgeInsetsMake(2, 0, 0, 0);
     [actions.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
 
-    NSArray *buttons = @[
-        @[@"▦ Characters", @"characters"],
-        @[@"▷ Replay intro", @"replay"],
-        @[@"✎ Edit intro", @"intro"],
-        @[@"✎ Edit messages", @"messages"],
-        @[@"▧ Edit images", @"images"],
-        @[@"⏱ Edit countdown", @"countdowns"],
-    ];
+    NSArray *buttons = self.restrictedToMultiMonitorControls
+        ? @[@[@"▦ Characters", @"characters"]]
+        : @[
+            @[@"▦ Characters", @"characters"],
+            @[@"▷ Replay intro", @"replay"],
+            @[@"✎ Edit intro", @"intro"],
+            @[@"✎ Edit messages", @"messages"],
+            @[@"▧ Edit images", @"images"],
+            @[@"⏱ Edit countdown", @"countdowns"],
+        ];
     for (NSArray *spec in buttons) {
-        SEL action = [spec[1] isEqualToString:@"replay"] ? @selector(previewIntro:) : @selector(openEditor:);
+        SEL action = [spec[1] isEqualToString:@"replay"] ? @selector(replayIntro:) : @selector(openEditor:);
         NSButton *button = [self settingsButton:spec[0] action:action identifier:spec[1]];
         [button.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
         [actions addArrangedSubview:button];
@@ -1111,8 +1239,10 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (void)presentEditorKind:(NSString *)kind {
+    if (self.restrictedToMultiMonitorControls && ![kind isEqualToString:@"characters"]) return;
     [self.editorBackdrop removeFromSuperview];
     [self stopCharactersPreview];
+    [self stopCountdownPreview];
     NSView *root = [self presentationContentView];
     if (!root) return;
     MatrixCodeSettingsBackdropView *backdrop =
@@ -1241,7 +1371,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (void)openEditorKind:(NSString *)kind {
     NSString *canonical = [self canonicalEditorKind:kind];
-    if (!canonical) return;
+    if (!canonical || (self.restrictedToMultiMonitorControls &&
+                       ![canonical isEqualToString:@"characters"])) return;
     [self setSettingsPanelVisible:YES immediate:YES];
     self.editorSnapshot = [self serializedValues];
     [self presentEditorKind:canonical];
@@ -1249,6 +1380,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (BOOL)toggleMessagesEnabled {
     BOOL enabled = [self.messages[@"enabled"] boolValue];
+    if (self.restrictedToMultiMonitorControls) return enabled;
     BOOL nextEnabled = !enabled;
     self.messages[@"enabled"] = MatrixCodeSettingBoolObject(nextEnabled);
     [self draftDidChange];
@@ -1260,6 +1392,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (BOOL)toggleImagesEnabled {
     BOOL enabled = [self.images[@"enabled"] boolValue];
+    if (self.restrictedToMultiMonitorControls) return enabled;
     BOOL nextEnabled = !enabled;
     self.images[@"enabled"] = MatrixCodeSettingBoolObject(nextEnabled);
     [self draftDidChange];
@@ -1273,7 +1406,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     if (!isfinite(factor) || factor <= 0) return;
     double current = [self.controls[@"density"] isKindOfClass:NSNumber.class]
         ? [self.controls[@"density"] doubleValue] : 2.0;
-    double density = fmin(100.0, fmax(0.1, current * factor));
+    double density = MatrixCodeNudgedDensity(current, factor);
     self.controls[@"density"] = @(density);
     NSSlider *slider = [self sliderWithIdentifier:@"density" inView:self.settingsPanel];
     if (slider) {
@@ -1288,7 +1421,10 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (void)closeEditorSave:(id)sender {
+    [self.messagePreviewRestoreTimer invalidate];
+    self.messagePreviewRestoreTimer = nil;
     [self stopCharactersPreview];
+    [self stopCountdownPreview];
     NSDictionary *values = [self serializedValues];
     values = [self commitSerializedValues:values];
     [self publishPreviewValues:values];
@@ -1340,15 +1476,9 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (void)resetControls:(id)sender {
-    self.controls = [@{
-        @"speed": @1, @"trailLength": @0.255, @"trailVariation": @1,
-        @"density": @2, @"rampUpMs": @8000,
-        @"glyphRate": @1, @"glyphScale": @1, @"glow": @0.9, @"leadBrightness": @1.6,
-        @"glyphMode": @"matrix", @"glyphFont": @"matrix", @"preset": @"classic",
-        @"mirror": @YES, @"scanlines": @NO, @"vignette": @0,
-        @"allowOverlap": @YES, @"quality": @"high",
-    } mutableCopy];
+    self.controls = [MatrixCodeSanitizeControlsDocument(nil) mutableCopy];
     [self draftDidChange];
+    if (self.embeddedPresentation && self.resetRainHandler) self.resetRainHandler();
     [self rebuildConfigurationInterface];
 }
 
@@ -1486,8 +1616,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     (NSDictionary<NSString *, NSString *> *)values {
     NSMutableDictionary<NSString *, NSString *> *previewValues = [values mutableCopy];
     NSMutableDictionary *controls =
-        [MatrixCodeJSONObject(previewValues[@"mx-controls"], NSDictionary.class) mutableCopy]
-        ?: [NSMutableDictionary dictionary];
+        [MatrixCodeSanitizeControlsDocument(
+            MatrixCodeJSONObject(previewValues[@"mx-controls"], NSDictionary.class)) mutableCopy];
     controls[@"density"] = @18;
     controls[@"glyphScale"] = @0.82;
     controls[@"trailLength"] = @0.32;
@@ -1678,10 +1808,51 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     return scroll;
 }
 
+- (void)updateSettingsRampPreviewForView:(MatrixCodeMetalView *)view atDate:(NSDate *)date {
+    if (!self.settingsRampStartDate || self.settingsRampDuration <= 0) return;
+    NSTimeInterval elapsed = fmax(0, [date timeIntervalSinceDate:self.settingsRampStartDate]);
+    double progress = fmin(1, elapsed / self.settingsRampDuration);
+    [view setDensityScale:MatrixCodeRainRampEase(progress) rainElapsed:elapsed];
+}
+
+- (void)scheduleSettingsRampPreviewForMilliseconds:(double)milliseconds {
+    [self.settingsRampPreviewTimer invalidate];
+    self.settingsRampPreviewTimer = nil;
+    if (milliseconds <= 0 || !self.settingsMetalView) return;
+    NSTimeInterval duration = fmin(60, fmax(0, milliseconds / 1000.0));
+    __weak typeof(self) weakSelf = self;
+    self.settingsRampPreviewTimer = [NSTimer timerWithTimeInterval:0.2
+                                                           repeats:NO
+                                                             block:^(NSTimer *timer) {
+        MatrixCodeConfigurationController *strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.settingsRampPreviewTimer != timer) return;
+        strongSelf.settingsRampPreviewTimer = nil;
+        MatrixCodeMetalView *view = strongSelf.settingsMetalView;
+        if (!view || view.isPaused || duration <= 0 ||
+            NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
+            return;
+        }
+        strongSelf.settingsRampStartDate = NSDate.date;
+        strongSelf.settingsRampDuration = duration;
+        [view setDensityScale:0 rainElapsed:0];
+        [view draw];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.settingsRampPreviewTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)stopSettingsRampPreview {
+    [self.settingsRampPreviewTimer invalidate];
+    self.settingsRampPreviewTimer = nil;
+    self.settingsRampStartDate = nil;
+    self.settingsRampDuration = 0;
+}
+
 - (void)controlChanged:(id)sender {
     NSString *key = [sender identifier];
     if ([sender isKindOfClass:NSSlider.class]) {
-        self.controls[key] = @([sender doubleValue]);
+        double value = MatrixCodeQuantizedControlValue(key, [sender doubleValue]);
+        [sender setDoubleValue:value];
+        self.controls[key] = @(value);
         [self updateReadoutForSlider:sender];
     }
     else if ([sender isKindOfClass:NSPopUpButton.class]) {
@@ -1709,6 +1880,9 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         }
     }
     [self draftDidChange];
+    if ([key isEqualToString:@"rampUpMs"]) {
+        [self scheduleSettingsRampPreviewForMilliseconds:[self.controls[key] doubleValue]];
+    }
 }
 
 - (void)nameChanged:(NSTextField *)sender {
@@ -1794,6 +1968,9 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [stack addArrangedSubview:[self heading:@"Typed Intro"]];
     NSTextField *hint = [NSTextField wrappingLabelWithString:
         @"Tokens: {name}, {greeting}, {uptime}, {fps}, {time:%H:%M}, {countdown}, {countup}"];
+    hint.identifier = @"intro-token-hint";
+    hint.toolTip = MatrixCodeMomentTokenHint(self.moments);
+    hint.accessibilityHelp = hint.toolTip;
     [hint.widthAnchor constraintLessThanOrEqualToConstant:680].active = YES;
     [stack addArrangedSubview:hint];
     self.introLinesStack = [NSStackView stackViewWithViews:@[]];
@@ -1926,6 +2103,13 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     NSStackView *stack;
     NSView *scroll = [self scrollingStack:&stack];
     [stack addArrangedSubview:[self heading:@"In-rain Messages"]];
+    NSTextField *hint = [NSTextField wrappingLabelWithString:
+        @"Messages support {name}, {greeting}, {uptime}, {fps}, {time}, {countdown}, {countup}, and named moments. ⓘ"];
+    hint.identifier = @"messages-token-hint";
+    hint.toolTip = MatrixCodeMomentTokenHint(self.moments);
+    hint.accessibilityHelp = hint.toolTip;
+    [hint.widthAnchor constraintLessThanOrEqualToConstant:680].active = YES;
+    [stack addArrangedSubview:hint];
     NSButton *enabled = [NSButton checkboxWithTitle:@"Enable messages" target:self action:@selector(messageToggleChanged:)];
     enabled.identifier = @"enabled";
     enabled.state = [self.messages[@"enabled"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
@@ -2397,7 +2581,43 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [stack addArrangedSubview:self.momentsStack];
     [self rebuildMoments];
     [stack addArrangedSubview:[NSButton buttonWithTitle:@"Add Named Moment" target:self action:@selector(addMoment:)]];
+    NSTextField *preview = [NSTextField wrappingLabelWithString:@""];
+    preview.identifier = @"countdown-preview";
+    preview.accessibilityLabel = @"Countdown and current time preview";
+    self.countdownPreviewLabel = preview;
+    [stack addArrangedSubview:preview];
+    [self startCountdownPreview];
     return scroll;
+}
+
+- (void)refreshCountdownPreview {
+    if (!self.countdownPreviewLabel) return;
+    NSDate *now = NSDate.date;
+    MatrixCodeTokenResolver *resolver = [[MatrixCodeTokenResolver alloc]
+        initWithStoredValues:[self serializedValues]
+                runStartDate:now];
+    NSString *value = [resolver resolveText:@"{countdown} · {time}"
+                                     atDate:now
+                            framesPerSecond:0];
+    self.countdownPreviewLabel.stringValue = [@"Preview: " stringByAppendingString:value];
+}
+
+- (void)startCountdownPreview {
+    [self.countdownPreviewTimer invalidate];
+    self.countdownPreviewTimer = nil;
+    [self refreshCountdownPreview];
+    __weak typeof(self) weakSelf = self;
+    self.countdownPreviewTimer = [NSTimer timerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *timer) {
+        (void)timer;
+        [weakSelf refreshCountdownPreview];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.countdownPreviewTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)stopCountdownPreview {
+    [self.countdownPreviewTimer invalidate];
+    self.countdownPreviewTimer = nil;
+    self.countdownPreviewLabel = nil;
 }
 
 - (void)rebuildMoments {
@@ -2543,8 +2763,15 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message image:(BOOL)image {
     NSDictionary *values = [self serializedValues];
+    BOOL reduceMotion = self.previewReducedMotionOverride
+        ? self.previewReducedMotionOverride.boolValue
+        : NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
     self.previewController = [[MatrixCodeNativePreviewController alloc]
-        initWithStoredValues:values showIntro:intro showMessage:message showImage:image];
+        initWithStoredValues:values
+                    showIntro:intro
+                  showMessage:message
+                    showImage:image
+                reduceMotion:reduceMotion];
     [self.previewController showWindow:nil];
     [self.previewController.window makeKeyAndOrderFront:nil];
 }
@@ -2552,9 +2779,76 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [self showPreviewWithIntro:intro message:message image:NO];
 }
 - (void)previewRain:(id)sender { [self showPreviewWithIntro:NO message:NO image:NO]; }
-- (void)previewIntro:(id)sender { [self showPreviewWithIntro:YES message:NO image:NO]; }
-- (void)previewMessage:(id)sender { [self showPreviewWithIntro:NO message:YES image:NO]; }
 - (void)previewImage:(id)sender { [self showPreviewWithIntro:NO message:NO image:YES]; }
+
+- (void)beginEmbeddedEditorPreview {
+    [self.messagePreviewRestoreTimer invalidate];
+    self.messagePreviewRestoreTimer = nil;
+    [self.settingsHideTimer invalidate];
+    self.settingsHideTimer = nil;
+    [self setSettingsPanelVisible:NO immediate:YES];
+    self.editorBackdrop.hidden = YES;
+}
+
+- (void)restoreEmbeddedEditorAfterPreview {
+    [self.messagePreviewRestoreTimer invalidate];
+    self.messagePreviewRestoreTimer = nil;
+    self.editorBackdrop.hidden = NO;
+    [self refreshEmbeddedPresentationLayout];
+}
+
+- (void)previewIntro:(id)sender {
+    (void)sender;
+    if (self.restrictedToMultiMonitorControls) return;
+    if (!self.embeddedPresentation || !self.introPreviewHandler) {
+        [self showPreviewWithIntro:YES message:NO image:NO];
+        return;
+    }
+    NSDictionary<NSString *, NSString *> *values = [self serializedValues];
+    [self beginEmbeddedEditorPreview];
+    __weak typeof(self) weakSelf = self;
+    self.introPreviewHandler(values, ^{
+        [weakSelf restoreEmbeddedEditorAfterPreview];
+    });
+}
+
+- (void)previewMessage:(id)sender {
+    (void)sender;
+    if (self.restrictedToMultiMonitorControls) return;
+    if (!self.embeddedPresentation || !self.messagePreviewHandler) {
+        [self showPreviewWithIntro:NO message:YES image:NO];
+        return;
+    }
+    NSDictionary<NSString *, NSString *> *values = [self serializedValues];
+    [self beginEmbeddedEditorPreview];
+    self.messagePreviewHandler(values);
+    NSTimeInterval previewMilliseconds =
+        [self.messages[@"appearMs"] doubleValue] +
+        [self.messages[@"persistenceMs"] doubleValue] +
+        [self.messages[@"disappearMs"] doubleValue] + 500;
+    NSTimeInterval previewDuration = MIN(8000, MAX(0, previewMilliseconds)) / 1000.0;
+    __weak typeof(self) weakSelf = self;
+    self.messagePreviewRestoreTimer = [NSTimer timerWithTimeInterval:previewDuration
+                                                             repeats:NO
+                                                               block:^(NSTimer *timer) {
+        (void)timer;
+        [weakSelf restoreEmbeddedEditorAfterPreview];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.messagePreviewRestoreTimer
+                            forMode:NSRunLoopCommonModes];
+}
+
+- (void)replayIntro:(id)sender {
+    if (self.restrictedToMultiMonitorControls) return;
+    if (!self.replayIntroHandler) {
+        [self previewIntro:sender];
+        return;
+    }
+    [self.settingsHideTimer invalidate];
+    self.settingsHideTimer = nil;
+    [self setSettingsPanelVisible:NO immediate:YES];
+    self.replayIntroHandler();
+}
 
 - (void)resetAll:(id)sender {
     [self resetControls:sender];
@@ -2572,6 +2866,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     self.settingsHideTimer = nil;
     [self.settingsAnimationTimer invalidate];
     self.settingsAnimationTimer = nil;
+    [self stopSettingsRampPreview];
+    self.settingsMetalView.frameHandler = nil;
     [self.settingsMetalView setAnimationActive:NO];
     if (self.embeddedPresentation) {
         [self.settingsOverlayView removeFromSuperview];
@@ -2593,6 +2889,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     self.settingsHideTimer = nil;
     [self.settingsAnimationTimer invalidate];
     self.settingsAnimationTimer = nil;
+    [self stopSettingsRampPreview];
+    self.settingsMetalView.frameHandler = nil;
     [self.settingsMetalView setAnimationActive:NO];
     if (self.embeddedPresentation) {
         [self.settingsOverlayView removeFromSuperview];
@@ -2606,8 +2904,12 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 - (void)dealloc {
     [_settingsHideTimer invalidate];
     [_settingsAnimationTimer invalidate];
+    [_settingsRampPreviewTimer invalidate];
+    _settingsMetalView.frameHandler = nil;
     [_settingsMetalView setAnimationActive:NO];
     [_charactersPreviewView setAnimationActive:NO];
+    [_countdownPreviewTimer invalidate];
+    [_messagePreviewRestoreTimer invalidate];
 }
 
 @end

@@ -1,5 +1,7 @@
 #import "MatrixCodeIntroOverlayView.h"
 
+#import "MatrixCodeConstants.h"
+#import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeTokenResolver.h"
 
 static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
@@ -23,10 +25,15 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
 @property(nonatomic, readwrite) NSTimeInterval totalDuration;
 @property(nonatomic, strong) NSDate *startDate;
 @property(nonatomic, copy) NSString *visibleText;
-@property(nonatomic) CGFloat textOpacity;
+@property(nonatomic) CGFloat overlayOpacity;
 @property(nonatomic) BOOL cursorVisible;
 @property(nonatomic, strong) MatrixCodeTokenResolver *tokenResolver;
+@property(nonatomic, strong) NSColor *accentColor;
 @property(nonatomic, copy) dispatch_block_t completion;
+- (NSAttributedString *)displayAttributedStringWithAttributes:
+    (NSDictionary<NSAttributedStringKey, id> *)attributes
+                                                      fontSize:(CGFloat)fontSize;
+- (NSRect)layoutRectForAttributedString:(NSAttributedString *)attributedString;
 @end
 
 @implementation MatrixCodeIntroOverlayView
@@ -40,21 +47,36 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     self.wantsLayer = YES;
     self.layer.backgroundColor = NSColor.clearColor.CGColor;
-    _tokenResolver = tokenResolver;
     _completion = [completion copy];
     _hasIntro = ![storedValues[@"mx-intro-seen"] isEqualToString:@"1"];
+
+    [self reloadStoredValues:storedValues tokenResolver:tokenResolver];
+    self.hidden = YES;
+    return self;
+}
+
+- (void)reloadStoredValues:(NSDictionary<NSString *,NSString *> *)storedValues
+             tokenResolver:(MatrixCodeTokenResolver *)tokenResolver {
+    self.tokenResolver = tokenResolver;
+
+    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
+        [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]]);
+    NSString *preset = controls[@"preset"];
+    MatrixCodeSettingsTheme.sharedTheme.presetName = preset;
+    self.accentColor = MatrixCodeSettingsTheme.sharedTheme.accentColor;
 
     NSDictionary *intro = [self.class dictionaryFromJSONString:storedValues[@"mx-intro"]];
     NSArray *rawLines = [intro[@"lines"] isKindOfClass:NSArray.class] ? intro[@"lines"] : nil;
     NSMutableArray *lines = [NSMutableArray array];
-    for (id item in rawLines ?: @[]) {
+    NSUInteger rawLineLimit = MIN((NSUInteger)12, rawLines.count);
+    for (NSUInteger index = 0; index < rawLineLimit; index++) {
+        id item = rawLines[index];
         if (![item isKindOfClass:NSDictionary.class] || ![item[@"text"] isKindOfClass:NSString.class]) continue;
         [lines addObject:@{
             @"text": [item[@"text"] substringToIndex:MIN((NSUInteger)120, [item[@"text"] length])],
             @"holdMs": @(MatrixCodeClampedNumber(item, @"holdMs", 2800, 0, 20000)),
             @"pauseMs": @(MatrixCodeClampedNumber(item, @"pauseMs", 0, 0, 20000)),
         }];
-        if (lines.count == 12) break;
     }
     if (!lines.count) {
         lines = [@[
@@ -64,24 +86,23 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
             @{@"text": @"Knock, knock, {name}.", @"holdMs": @2800, @"pauseMs": @0},
         ] mutableCopy];
     }
-    _lines = lines;
-    _characterDuration = MatrixCodeClampedNumber(intro, @"charMs", 95, 10, 500) / 1000.0;
-    _startDelay = MatrixCodeClampedNumber(intro, @"startDelayMs", 600, 0, 10000) / 1000.0;
-    _fadeDuration = MatrixCodeClampedNumber(intro, @"fadeOutMs", 900, 0, 10000) / 1000.0;
+    self.lines = lines;
+    self.characterDuration = MatrixCodeClampedNumber(intro, @"charMs", 95, 10, 500) / 1000.0;
+    self.startDelay = MatrixCodeClampedNumber(intro, @"startDelayMs", 600, 0, 10000) / 1000.0;
+    self.fadeDuration = MatrixCodeClampedNumber(intro, @"fadeOutMs", 900, 0, 10000) / 1000.0;
     id rainDuringIntro = intro[@"rainDuringIntro"];
-    _rainDuringIntro = [rainDuringIntro isKindOfClass:NSNumber.class] &&
+    self.rainDuringIntro = [rainDuringIntro isKindOfClass:NSNumber.class] &&
         CFGetTypeID((__bridge CFTypeRef)rainDuringIntro) == CFBooleanGetTypeID()
         ? [rainDuringIntro boolValue] : NO;
-    _postIntroDelay = MatrixCodeClampedNumber(intro, @"postIntroDelayMs", 0, 0, 10000) / 1000.0;
-    _totalDuration = _startDelay + _fadeDuration;
-    for (NSUInteger index = 0; index < _lines.count; index++) {
-        NSDictionary *line = _lines[index];
-        _totalDuration += [line[@"text"] length] * _characterDuration +
+    self.postIntroDelay = MatrixCodeClampedNumber(intro, @"postIntroDelayMs", 0, 0, 10000) / 1000.0;
+    self.totalDuration = self.startDelay + self.fadeDuration;
+    for (NSUInteger index = 0; index < self.lines.count; index++) {
+        NSDictionary *line = self.lines[index];
+        self.totalDuration += [line[@"text"] length] * self.characterDuration +
             [line[@"holdMs"] doubleValue] / 1000.0;
-        if (index + 1 < _lines.count) _totalDuration += [line[@"pauseMs"] doubleValue] / 1000.0;
+        if (index + 1 < self.lines.count) self.totalDuration += [line[@"pauseMs"] doubleValue] / 1000.0;
     }
-    self.hidden = YES;
-    return self;
+    [self setNeedsDisplay:YES];
 }
 
 + (NSDictionary *)dictionaryFromJSONString:(NSString *)raw {
@@ -101,8 +122,18 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     self.playing = YES;
     self.hidden = NO;
     self.visibleText = @"";
-    self.textOpacity = 1;
+    self.overlayOpacity = 1;
     [self setNeedsDisplay:YES];
+}
+
+- (void)replayAtDate:(NSDate *)date {
+    self.hasIntro = YES;
+    [self startAtDate:date];
+}
+
+- (void)setOverlayOpacity:(CGFloat)overlayOpacity {
+    _overlayOpacity = fmin(1, fmax(0, overlayOpacity));
+    self.alphaValue = _overlayOpacity;
 }
 
 - (void)shiftTimelineBy:(NSTimeInterval)interval {
@@ -122,6 +153,13 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     [self finish];
 }
 
+- (void)cancel {
+    if (!self.playing) return;
+    self.playing = NO;
+    self.hasIntro = NO;
+    self.hidden = YES;
+}
+
 - (void)updateAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond {
     if (!self.playing) return;
     NSTimeInterval elapsed = [date timeIntervalSinceDate:self.startDate];
@@ -130,7 +168,7 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     NSTimeInterval time = elapsed - self.startDelay;
     if (time < 0) {
         self.visibleText = @"";
-        self.textOpacity = 1;
+        self.overlayOpacity = 1;
         [self setNeedsDisplay:YES];
         return;
     }
@@ -143,7 +181,7 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
         if (time < typeDuration) {
             NSUInteger count = MIN(resolved.length, (NSUInteger)floor(time / self.characterDuration));
             self.visibleText = [resolved substringToIndex:count];
-            self.textOpacity = 1;
+            self.overlayOpacity = 1;
             [self setNeedsDisplay:YES];
             return;
         }
@@ -151,7 +189,7 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
         NSTimeInterval hold = [line[@"holdMs"] doubleValue] / 1000.0;
         if (time < hold) {
             self.visibleText = resolved;
-            self.textOpacity = 1;
+            self.overlayOpacity = 1;
             [self setNeedsDisplay:YES];
             return;
         }
@@ -160,7 +198,7 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
             NSTimeInterval pause = [line[@"pauseMs"] doubleValue] / 1000.0;
             if (time < pause) {
                 self.visibleText = @"";
-                self.textOpacity = 1;
+                self.overlayOpacity = 1;
                 [self setNeedsDisplay:YES];
                 return;
             }
@@ -172,32 +210,87 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
                                      framesPerSecond:framesPerSecond];
     if (self.fadeDuration > 0 && time < self.fadeDuration) {
         self.visibleText = last;
-        self.textOpacity = MAX(0, 1 - time / self.fadeDuration);
+        self.overlayOpacity = MAX(0, 1 - time / self.fadeDuration);
         [self setNeedsDisplay:YES];
         return;
     }
     [self finish];
 }
 
+- (NSAttributedString *)displayAttributedStringWithAttributes:
+    (NSDictionary<NSAttributedStringKey, id> *)attributes
+                                                      fontSize:(CGFloat)fontSize {
+    NSMutableAttributedString *display = [[NSMutableAttributedString alloc]
+        initWithString:self.visibleText ?: @""
+            attributes:attributes];
+    if (display.length > 0) {
+        NSNumber *baseKern = attributes[NSKernAttributeName];
+        [display addAttribute:NSKernAttributeName
+                        value:@(baseKern.doubleValue + fontSize * 0.04)
+                        range:NSMakeRange(display.length - 1, 1)];
+    }
+    [display appendAttributedString:[[NSAttributedString alloc]
+        initWithString:self.cursorVisible ? @"█" : @" "
+            attributes:attributes]];
+    return display;
+}
+
+- (NSRect)layoutRectForAttributedString:(NSAttributedString *)attributedString {
+    NSStringDrawingOptions options = NSStringDrawingUsesLineFragmentOrigin |
+        NSStringDrawingUsesFontLeading;
+    CGFloat maximumWidth = floor(self.bounds.size.width * 0.88);
+    if (maximumWidth < 1 || self.bounds.size.height < 1) return NSZeroRect;
+    NSRect naturalBounds = [attributedString
+        boundingRectWithSize:NSMakeSize(CGFLOAT_MAX / 4, CGFLOAT_MAX / 4)
+                     options:options];
+    CGFloat textWidth = MIN(maximumWidth, MAX(1, ceil(naturalBounds.size.width)));
+    NSRect wrappedBounds = [attributedString
+        boundingRectWithSize:NSMakeSize(textWidth, CGFLOAT_MAX / 4)
+                     options:options];
+    CGFloat textHeight = MAX(1, ceil(wrappedBounds.size.height));
+    return NSMakeRect(floor((self.bounds.size.width - textWidth) / 2),
+                      floor((self.bounds.size.height - textHeight) / 2),
+                      textWidth,
+                      textHeight);
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
     [super drawRect:dirtyRect];
     if (!self.playing) return;
-    NSString *display = [self.visibleText stringByAppendingString:self.cursorVisible ? @"█" : @" "];
     CGFloat fontSize = MIN(52, MAX(20, self.bounds.size.width * 0.042));
-    NSShadow *shadow = [[NSShadow alloc] init];
-    shadow.shadowColor = [NSColor colorWithSRGBRed:0 green:1 blue:0.25 alpha:0.65];
-    shadow.shadowBlurRadius = 12;
-    NSDictionary *attributes = @{
+    NSColor *accent = self.accentColor ?: [NSColor colorWithSRGBRed:0 green:1 blue:0.25 alpha:1];
+    NSMutableParagraphStyle *paragraphStyle = [[NSMutableParagraphStyle alloc] init];
+    paragraphStyle.alignment = NSTextAlignmentLeft;
+    paragraphStyle.lineBreakMode = NSLineBreakByWordWrapping;
+    NSShadow *outerShadow = [[NSShadow alloc] init];
+    outerShadow.shadowColor = [accent colorWithAlphaComponent:0.35];
+    outerShadow.shadowBlurRadius = 28;
+    NSDictionary *outerAttributes = @{
         NSFontAttributeName: [NSFont monospacedSystemFontOfSize:fontSize weight:NSFontWeightMedium],
-        NSForegroundColorAttributeName: [NSColor colorWithSRGBRed:0 green:1 blue:0.25 alpha:self.textOpacity],
+        NSForegroundColorAttributeName: accent,
         NSKernAttributeName: @(fontSize * 0.02),
-        NSShadowAttributeName: shadow,
+        NSShadowAttributeName: outerShadow,
+        NSParagraphStyleAttributeName: paragraphStyle,
     };
-    NSSize size = [display sizeWithAttributes:attributes];
-    NSRect rect = NSMakeRect(floor((self.bounds.size.width - size.width) / 2),
-                             floor((self.bounds.size.height - size.height) / 2),
-                             size.width, size.height);
-    [display drawInRect:rect withAttributes:attributes];
+    NSShadow *innerShadow = [[NSShadow alloc] init];
+    innerShadow.shadowColor = [accent colorWithAlphaComponent:0.65];
+    innerShadow.shadowBlurRadius = 12;
+    NSDictionary *innerAttributes = @{
+        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:fontSize weight:NSFontWeightMedium],
+        NSForegroundColorAttributeName: accent,
+        NSKernAttributeName: @(fontSize * 0.02),
+        NSShadowAttributeName: innerShadow,
+        NSParagraphStyleAttributeName: paragraphStyle,
+    };
+    NSAttributedString *innerDisplay = [self displayAttributedStringWithAttributes:innerAttributes
+                                                                           fontSize:fontSize];
+    NSRect rect = [self layoutRectForAttributedString:innerDisplay];
+    NSAttributedString *outerDisplay = [self displayAttributedStringWithAttributes:outerAttributes
+                                                                           fontSize:fontSize];
+    [outerDisplay drawWithRect:rect
+                       options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading];
+    [innerDisplay drawWithRect:rect
+                       options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading];
 }
 
 @end

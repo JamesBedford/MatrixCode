@@ -1,9 +1,11 @@
 #import <XCTest/XCTest.h>
 
 #import "MatrixCodeConfigurationController.h"
+#import "MatrixCodeIntroOverlayView.h"
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodePreferences.h"
 #import "MatrixCodeRainLifecycle.h"
+#import "MatrixCodeRainSimulation.h"
 
 @interface MatrixCodeConfigurationController (Testing)
 - (void)controlChanged:(id)sender;
@@ -15,6 +17,9 @@
 - (void)moveMoment:(NSButton *)sender;
 - (void)nudgeDensityByFactor:(double)factor;
 - (void)openEditor:(NSButton *)sender;
+- (void)previewIntro:(id)sender;
+- (void)previewMessage:(id)sender;
+- (void)resetControls:(id)sender;
 - (NSDictionary<NSString *, NSString *> *)serializedValues;
 - (void)setSettingsPanelVisible:(BOOL)visible immediate:(BOOL)immediate;
 - (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message;
@@ -129,6 +134,7 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
 - (void)testStandalonePreviewUsesMetalDisplayLinkWithoutDuplicateTimer {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller setValue:@NO forKey:@"previewReducedMotionOverride"];
     [controller showPreviewWithIntro:YES message:NO];
     NSWindowController *previewController = [controller valueForKey:@"previewController"];
     MatrixCodeMetalView *metalView = [previewController valueForKey:@"metalView"];
@@ -136,6 +142,73 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertFalse(metalView.isPaused);
     XCTAssertNil([previewController valueForKey:@"timer"]);
     XCTAssertNotNil(metalView.frameHandler);
+    MatrixCodeIntroOverlayView *introView = [previewController valueForKey:@"introView"];
+    XCTAssertTrue(introView.playing);
+    XCTAssertNil([previewController valueForKey:@"rainStartDate"]);
+    XCTAssertEqualWithAccuracy([[metalView valueForKey:@"densityScale"] doubleValue], 0, 0.001);
+    XCTAssertLessThan([[metalView valueForKey:@"rainElapsed"] doubleValue], 0);
+
+    [metalView setAnimationActive:NO];
+    NSDate *startDate = [previewController valueForKey:@"startDate"];
+    NSDate *completionDate =
+        [startDate dateByAddingTimeInterval:introView.totalDuration + 0.01];
+    metalView.frameHandler(metalView, completionDate, 60);
+    XCTAssertFalse(introView.playing);
+    XCTAssertEqualObjects([previewController valueForKey:@"rainStartDate"], completionDate);
+    metalView.frameHandler(metalView,
+                           [completionDate dateByAddingTimeInterval:4],
+                           60);
+    XCTAssertEqualWithAccuracy([[metalView valueForKey:@"densityScale"] doubleValue],
+                               MatrixCodeRainRampEase(0.5),
+                               0.001);
+
+    [previewController close];
+}
+
+- (void)testStandaloneMessagePreviewFiresImmediatelyWithoutRewritingDraftTiming {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller setValue:@NO forKey:@"previewReducedMotionOverride"];
+
+    [controller previewMessage:nil];
+
+    NSWindowController *previewController = [controller valueForKey:@"previewController"];
+    MatrixCodeMetalView *metalView = [previewController valueForKey:@"metalView"];
+    [metalView diagnosticPackedStateWithWidth:800 height:500];
+    MatrixCodeRainSimulation *simulation = [metalView valueForKey:@"rainSimulation"];
+    NSDictionary *messages = [metalView valueForKey:@"messages"];
+    XCTAssertTrue(simulation.hasMessageTargets);
+    XCTAssertTrue([[metalView valueForKey:@"messageDraftPreviewActive"] boolValue]);
+    XCTAssertEqualWithAccuracy([messages[@"frequencyMs"] doubleValue], 8000, 0.001);
+
+    [previewController close];
+}
+
+- (void)testStandalonePreviewRespectsReducedMotionWithWarmedStaticRain {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller setValue:@YES forKey:@"previewReducedMotionOverride"];
+
+    [controller showPreviewWithIntro:YES message:YES];
+
+    NSWindowController *previewController = [controller valueForKey:@"previewController"];
+    MatrixCodeMetalView *metalView = [previewController valueForKey:@"metalView"];
+    NSData *state = [metalView diagnosticPackedStateWithWidth:800 height:500];
+    MatrixCodeRainSimulation *simulation = [metalView valueForKey:@"rainSimulation"];
+    const uint8_t *bytes = state.bytes;
+    BOOL hasRain = NO;
+    for (NSUInteger offset = 0; offset + 3 < state.length; offset += 4) {
+        if (bytes[offset + 1] > 0) {
+            hasRain = YES;
+            break;
+        }
+    }
+    XCTAssertTrue(metalView.isPaused);
+    XCTAssertNil(metalView.frameHandler);
+    XCTAssertNil([previewController valueForKey:@"introView"]);
+    XCTAssertEqualWithAccuracy([[metalView valueForKey:@"densityScale"] doubleValue], 1, 0.001);
+    XCTAssertTrue(hasRain);
+    XCTAssertFalse(simulation.hasMessageTargets);
 
     [previewController close];
 }
@@ -161,6 +234,210 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     [controller setSettingsPanelVisible:YES immediate:YES];
     XCTAssertFalse(panel.hidden);
     XCTAssertEqualWithAccuracy(panel.alphaValue, 1, 0.001);
+}
+
+- (void)testEmbeddedReplayButtonInvokesLiveHostCallbackAndHidesPanel {
+    NSView *hostView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 520)];
+    __block NSUInteger replayCount = 0;
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc]
+            initEmbeddedInView:hostView
+                  closeHandler:^{}
+            replayIntroHandler:^{ replayCount++; }];
+    NSButton *replay = (NSButton *)MatrixCodeDescendantWithIdentifier(hostView, @"replay");
+    NSView *panel = MatrixCodeDescendantWithIdentifier(hostView, @"settings-panel");
+    XCTAssertNotNil(replay);
+    XCTAssertNotNil(panel);
+    XCTAssertFalse(panel.hidden);
+
+    [replay sendAction:replay.action to:replay.target];
+
+    XCTAssertEqual(replayCount, 1u);
+    XCTAssertTrue(panel.hidden);
+}
+
+- (void)testRestrictedMultiMonitorPanelExposesOnlySafeActions {
+    NSView *hostView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 520)];
+    __block NSUInteger replayCount = 0;
+    MatrixCodeConfigurationController *controller = [[MatrixCodeConfigurationController alloc]
+        initEmbeddedInView:hostView
+              closeHandler:^{}
+        replayIntroHandler:^{ replayCount++; }
+       introPreviewHandler:^(NSDictionary<NSString *,NSString *> *values,
+                             dispatch_block_t completion) {
+            (void)values;
+            completion();
+        }
+     messagePreviewHandler:^(NSDictionary<NSString *,NSString *> *values) {
+            (void)values;
+        }
+         resetRainHandler:^{}
+restrictedToMultiMonitorControls:YES];
+    NSView *panel = MatrixCodeDescendantWithIdentifier(hostView, @"settings-panel");
+
+    XCTAssertTrue([[controller valueForKey:@"restrictedToMultiMonitorControls"] boolValue]);
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(panel, @"characters"));
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(panel, @"reset-controls"));
+    for (NSString *identifier in @[@"replay", @"intro", @"messages", @"images", @"countdowns"]) {
+        XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, identifier), @"%@", identifier);
+    }
+
+    [controller openEditorKind:@"messages"];
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(hostView, @"settings-editor-backdrop"));
+    XCTAssertEqual(replayCount, 0u);
+    [controller openEditorKind:@"characters"];
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(hostView, @"settings-editor-card-characters"));
+}
+
+- (void)testEmbeddedIntroPreviewSendsUnsavedDraftToHostAndRestoresEditorOnCompletion {
+    NSView *hostView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 520)];
+    __block NSDictionary<NSString *, NSString *> *previewValues = nil;
+    __block dispatch_block_t previewCompletion = nil;
+    MatrixCodeConfigurationController *controller = [[MatrixCodeConfigurationController alloc]
+        initEmbeddedInView:hostView
+              closeHandler:^{}
+        replayIntroHandler:nil
+       introPreviewHandler:^(NSDictionary<NSString *,NSString *> *storedValues,
+                             dispatch_block_t completion) {
+            previewValues = storedValues;
+            previewCompletion = completion;
+        }
+     messagePreviewHandler:nil
+         resetRainHandler:nil];
+    [controller openEditorKind:@"intro"];
+    [controller setValue:[@[
+        [@{@"text": @"UNSAVED INTRO", @"holdMs": @100, @"pauseMs": @0} mutableCopy]
+    ] mutableCopy] forKey:@"introLines"];
+    NSView *backdrop = MatrixCodeDescendantWithIdentifier(hostView, @"settings-editor-backdrop");
+
+    [controller previewIntro:nil];
+
+    XCTAssertNotNil(previewValues);
+    XCTAssertNotNil(previewCompletion);
+    XCTAssertTrue(backdrop.hidden);
+    XCTAssertNil([controller valueForKey:@"previewController"]);
+    NSDictionary *intro = MatrixCodeJSONDictionary(previewValues[@"mx-intro"]);
+    XCTAssertEqualObjects([intro[@"lines"] firstObject][@"text"], @"UNSAVED INTRO");
+    XCTAssertNil([self.preferences storedValues][@"mx-intro-seen"]);
+
+    previewCompletion();
+    XCTAssertFalse(backdrop.hidden);
+}
+
+- (void)testEmbeddedMessagePreviewSendsUnsavedDraftToHostAndRestoresAfterWebCap {
+    NSView *hostView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 520)];
+    __block NSDictionary<NSString *, NSString *> *previewValues = nil;
+    MatrixCodeConfigurationController *controller = [[MatrixCodeConfigurationController alloc]
+        initEmbeddedInView:hostView
+              closeHandler:^{}
+        replayIntroHandler:nil
+       introPreviewHandler:nil
+     messagePreviewHandler:^(NSDictionary<NSString *,NSString *> *storedValues) {
+            previewValues = storedValues;
+        }
+         resetRainHandler:nil];
+    [controller openEditorKind:@"messages"];
+    [controller setValue:[@[@"UNSAVED MESSAGE"] mutableCopy] forKey:@"messageLines"];
+    NSView *backdrop = MatrixCodeDescendantWithIdentifier(hostView, @"settings-editor-backdrop");
+
+    [controller previewMessage:nil];
+
+    XCTAssertTrue(backdrop.hidden);
+    XCTAssertNil([controller valueForKey:@"previewController"]);
+    NSDictionary *messages = MatrixCodeJSONDictionary(previewValues[@"mx-messages"]);
+    XCTAssertEqualObjects(messages[@"messages"], (@[@"UNSAVED MESSAGE"]));
+    NSTimer *restoreTimer = [controller valueForKey:@"messagePreviewRestoreTimer"];
+    XCTAssertNotNil(restoreTimer);
+    XCTAssertEqualWithAccuracy(restoreTimer.timeInterval, 8, 0.001);
+
+    [restoreTimer fire];
+    XCTAssertFalse(backdrop.hidden);
+    XCTAssertNil([controller valueForKey:@"messagePreviewRestoreTimer"]);
+}
+
+- (void)testCancelAfterMessagePreviewReconfiguresLiveSchedulerToStoredDocument {
+    NSDictionary *originalMessages = @{
+        @"enabled": @YES,
+        @"messages": @[@"ORIGINAL"],
+        @"frequencyMs": @8000,
+        @"persistenceMs": @10000,
+        @"appearMs": @0,
+        @"disappearMs": @0,
+    };
+    NSDictionary<NSString *, NSString *> *originalValues = @{
+        @"mx-messages": MatrixCodeJSONString(originalMessages),
+    };
+    [self.preferences commitValues:originalValues];
+    MatrixCodeMetalView *metalView = [[MatrixCodeMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, 640, 360)
+              session:@{
+                  @"seed": @12345,
+                  @"epoch": @1700000000000,
+                  @"currentScreenId": @"screen",
+                  @"screens": @[@{@"id": @"screen", @"left": @0, @"top": @0,
+                                  @"width": @640, @"height": @360}],
+              }
+         storedValues:originalValues];
+    NSView *hostView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 520)];
+    MatrixCodeConfigurationController *controller = [[MatrixCodeConfigurationController alloc]
+        initEmbeddedInView:hostView
+              closeHandler:^{}
+        replayIntroHandler:nil
+       introPreviewHandler:nil
+     messagePreviewHandler:^(NSDictionary<NSString *,NSString *> *storedValues) {
+            [metalView previewMessageWithStoredValues:storedValues atDate:NSDate.date];
+        }
+         resetRainHandler:nil];
+    id observer = [NSNotificationCenter.defaultCenter
+        addObserverForName:MatrixCodePreviewValuesDidChangeNotification
+                    object:controller
+                     queue:nil
+                usingBlock:^(NSNotification *notification) {
+        [metalView reloadStoredValues:notification.userInfo[MatrixCodePreviewValuesKey]];
+    }];
+    [controller openEditorKind:@"messages"];
+    [controller setValue:[@[@"UNSAVED DRAFT"] mutableCopy] forKey:@"messageLines"];
+
+    [controller previewMessage:nil];
+
+    XCTAssertTrue([[metalView valueForKey:@"messageDraftPreviewActive"] boolValue]);
+    [[controller valueForKey:@"messagePreviewRestoreTimer"] fire];
+    [controller cancelOperation:nil];
+
+    XCTAssertEqualObjects([metalView valueForKey:@"messages"][@"messages"],
+                          (@[@"ORIGINAL"]));
+    XCTAssertFalse([[metalView valueForKey:@"messageDraftPreviewActive"] boolValue]);
+    [NSNotificationCenter.defaultCenter removeObserver:observer];
+}
+
+- (void)testEmbeddedResetNotifiesHostAfterCommittingControlDefaults {
+    NSView *hostView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 520)];
+    __block NSUInteger resetCount = 0;
+    MatrixCodeConfigurationController *controller = [[MatrixCodeConfigurationController alloc]
+        initEmbeddedInView:hostView
+              closeHandler:^{}
+        replayIntroHandler:nil
+       introPreviewHandler:nil
+     messagePreviewHandler:nil
+         resetRainHandler:^{ resetCount++; }];
+
+    [controller resetControls:nil];
+
+    XCTAssertEqual(resetCount, 1u);
+    NSDictionary *storedControls = MatrixCodeJSONDictionary(
+        [self.preferences storedValues][@"mx-controls"]);
+    XCTAssertEqualWithAccuracy([storedControls[@"rampUpMs"] doubleValue], 8000, 0.001);
+}
+
+- (void)testValidWrongShapeMessagesJSONSanitizesToEmptyListInsteadOfDefaults {
+    for (NSString *rawMessages in @[@"[]", @"null"]) {
+        [self.preferences commitValues:@{@"mx-messages": rawMessages}];
+        MatrixCodeConfigurationController *controller =
+            [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+        NSDictionary *messages = MatrixCodeJSONDictionary(
+            [controller serializedValues][@"mx-messages"]);
+        XCTAssertEqualObjects(messages[@"messages"], @[], @"%@", rawMessages);
+    }
 }
 
 - (void)testEditorButtonsOpenCenteredCustomCards {
@@ -236,8 +513,8 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     }
     NSSlider *density = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"density");
     NSSlider *ramp = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"rampUpMs");
-    XCTAssertEqualWithAccuracy(density.minValue, 0.2, 0.001);
-    XCTAssertEqualWithAccuracy(ramp.maxValue, 30000, 0.001);
+    XCTAssertEqualWithAccuracy(density.minValue, 0.1, 0.001);
+    XCTAssertEqualWithAccuracy(ramp.maxValue, 60000, 0.001);
 
     NSSlider *speed = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"speed");
     NSTextField *speedReadout = (NSTextField *)MatrixCodeDescendantWithIdentifier(
@@ -245,7 +522,7 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     speed.doubleValue = 2.25;
     [speed sendAction:speed.action to:speed.target];
     XCTAssertEqualObjects(speedReadout.stringValue, @"2.25×");
-    XCTAssertEqualWithAccuracy(speed.minValue, 0.2, 0.001);
+    XCTAssertEqualWithAccuracy(speed.minValue, 0.1, 0.001);
 
     NSSlider *trail = (NSSlider *)MatrixCodeDescendantWithIdentifier(rain, @"trailLength");
     NSTextField *trailReadout = (NSTextField *)MatrixCodeDescendantWithIdentifier(
@@ -264,6 +541,102 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertEqualObjects(variationReadout.stringValue, @"35%");
 }
 
+- (void)testRainSlidersQuantizeToWebStepValues {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSView *panel = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-panel");
+    NSSlider *speed = (NSSlider *)MatrixCodeDescendantWithIdentifier(panel, @"speed");
+    speed.doubleValue = 2.237;
+    [speed sendAction:speed.action to:speed.target];
+
+    NSDictionary *controls = MatrixCodeJSONDictionary([controller serializedValues][@"mx-controls"]);
+    XCTAssertEqualWithAccuracy(speed.doubleValue, 2.25, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"speed"] doubleValue], 2.25, 0.0001);
+}
+
+- (void)testConfigurationLoadsControlsThroughStrictWebSanitizer {
+    [self.preferences commitValues:@{
+        @"mx-controls": MatrixCodeJSONString(@{
+            @"speed": @99,
+            @"density": @(-5),
+            @"rampUpMs": @YES,
+            @"preset": @"invalid",
+            @"mirror": @0,
+            @"vignette": @YES,
+            @"quality": @"ultra",
+        }),
+    }];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSDictionary *controls = [controller valueForKey:@"controls"];
+
+    XCTAssertEqualWithAccuracy([controls[@"speed"] doubleValue], 3, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"density"] doubleValue], 0.1, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"rampUpMs"] doubleValue], 8000, 0.0001);
+    XCTAssertEqualObjects(controls[@"preset"], @"classic");
+    XCTAssertEqualObjects(controls[@"mirror"], @YES);
+    XCTAssertEqualWithAccuracy([controls[@"vignette"] doubleValue], 0.42, 0.0001);
+    XCTAssertEqualObjects(controls[@"quality"], @"high");
+}
+
+- (void)testRampSliderDebouncesAndReplaysSettingsRainFromEmpty {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSSlider *ramp = (NSSlider *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"rampUpMs");
+    MatrixCodeMetalView *metalView = [controller valueForKey:@"settingsMetalView"];
+    XCTAssertNotNil(ramp);
+    XCTAssertNotNil(metalView);
+
+    ramp.doubleValue = 1000;
+    [ramp sendAction:ramp.action to:ramp.target];
+    NSTimer *timer = [controller valueForKey:@"settingsRampPreviewTimer"];
+    XCTAssertTrue(timer.isValid);
+
+    [timer fire];
+
+    NSDate *startDate = [controller valueForKey:@"settingsRampStartDate"];
+    XCTAssertNotNil(startDate);
+    XCTAssertNil([controller valueForKey:@"settingsRampPreviewTimer"]);
+    MatrixCodeMetalFrameHandler frameHandler = metalView.frameHandler;
+    XCTAssertNotNil(frameHandler);
+    frameHandler(metalView, [startDate dateByAddingTimeInterval:0.5], 60);
+    XCTAssertEqualWithAccuracy([[metalView valueForKey:@"rainElapsed"] doubleValue], 0.5, 0.0001);
+    XCTAssertEqualWithAccuracy([[metalView valueForKey:@"densityScale"] doubleValue],
+                               MatrixCodeRainRampEase(0.5),
+                               0.0001);
+
+    ramp.doubleValue = 2000;
+    [ramp sendAction:ramp.action to:ramp.target];
+    NSTimer *teardownTimer = [controller valueForKey:@"settingsRampPreviewTimer"];
+    XCTAssertTrue(teardownTimer.isValid);
+
+    [controller cancelOperation:nil];
+
+    XCTAssertFalse(teardownTimer.isValid);
+    XCTAssertNil([controller valueForKey:@"settingsRampPreviewTimer"]);
+    XCTAssertNil(metalView.frameHandler);
+}
+
+- (void)testCountdownEditorShowsTickingWebStylePreview {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSButton *open = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"countdowns");
+    [controller openEditor:open];
+
+    NSTextField *preview = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"countdown-preview");
+    XCTAssertNotNil(preview);
+    XCTAssertTrue([preview.stringValue hasPrefix:@"Preview: "]);
+    XCTAssertTrue([preview.stringValue containsString:@" · "]);
+    XCTAssertNotNil([controller valueForKey:@"countdownPreviewTimer"]);
+
+    [controller cancelOperation:nil];
+    XCTAssertNil([controller valueForKey:@"countdownPreviewTimer"]);
+}
+
 - (void)testEditorsPresentWebUnitsWhileKeepingStableStorageIdentifiers {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
@@ -278,6 +651,29 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertTrue([hold isKindOfClass:NSTextField.class]);
     XCTAssertEqualWithAccuracy(startDelay.doubleValue, 0.6, 0.001);
     XCTAssertEqualWithAccuracy(hold.doubleValue, 2.8, 0.001);
+}
+
+- (void)testIntroAndMessagesEditorsShareCompleteDynamicTokenGuidance {
+    [self.preferences commitValues:@{
+        @"mx-countdown": @"{\"moments\":[{\"name\":\"launch\",\"targetMs\":1700000000000}]}",
+    }];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+
+    [controller openEditorKind:@"intro"];
+    NSTextField *introHint = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"intro-token-hint");
+    XCTAssertNotNil(introHint);
+    XCTAssertTrue([introHint.toolTip containsString:@"{countdown:launch}"]);
+    XCTAssertTrue([introHint.toolTip containsString:@"PARTY ON (00:00–03:59)"]);
+    XCTAssertTrue([introHint.toolTip containsString:@"newmoon, fullmoon"]);
+    XCTAssertTrue([introHint.toolTip containsString:@"{countup:…}"]);
+
+    [controller openEditorKind:@"messages"];
+    NSTextField *messagesHint = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"messages-token-hint");
+    XCTAssertNotNil(messagesHint);
+    XCTAssertEqualObjects(messagesHint.toolTip, introHint.toolTip);
 }
 
 - (void)testMessagesEditorPersistsDropLayoutAndRelabelsAxisControls {

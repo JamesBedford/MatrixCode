@@ -1,6 +1,7 @@
 #import <XCTest/XCTest.h>
 
 #import "../AppSource/MatrixCodeAppDelegate.h"
+#import "MatrixCodeConstants.h"
 #import "MatrixCodePreferences.h"
 #import "MatrixCodeRainHostView.h"
 #import "MatrixCodeSession.h"
@@ -8,6 +9,17 @@
 @interface MatrixCodeAppDelegate (Testing)
 - (void)setFPSOverlayVisible:(BOOL)visible
                 forHostViews:(NSArray<MatrixCodeRainHostView *> *)hostViews;
+- (void)windowWillClose:(NSNotification *)notification;
+@end
+
+@interface MatrixCodeClosingProbeWindow : NSWindow
+@property(nonatomic) BOOL receivedClose;
+@end
+
+@implementation MatrixCodeClosingProbeWindow
+- (void)close {
+    self.receivedClose = YES;
+}
 @end
 
 extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior(void);
@@ -97,6 +109,117 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
     [delegate setFPSOverlayVisible:NO forHostViews:@[leftHost, rightHost]];
     XCTAssertFalse(leftHost.fpsOverlayVisible);
     XCTAssertFalse(rightHost.fpsOverlayVisible);
+}
+
+- (void)testClosingOneMultiMonitorWindowClosesTheRemainingSessionWindows {
+    MatrixCodeAppDelegate *delegate = [[MatrixCodeAppDelegate alloc] init];
+    MatrixCodeClosingProbeWindow *first = [[MatrixCodeClosingProbeWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 320, 200)
+                 styleMask:NSWindowStyleMaskBorderless
+                   backing:NSBackingStoreBuffered
+                     defer:NO];
+    MatrixCodeClosingProbeWindow *second = [[MatrixCodeClosingProbeWindow alloc]
+        initWithContentRect:NSMakeRect(320, 0, 320, 200)
+                 styleMask:NSWindowStyleMaskBorderless
+                   backing:NSBackingStoreBuffered
+                     defer:NO];
+    NSMutableArray<NSWindow *> *windows = [delegate valueForKey:@"multiMonitorWindows"];
+    [windows addObjectsFromArray:@[first, second]];
+
+    [delegate windowWillClose:[NSNotification notificationWithName:NSWindowWillCloseNotification
+                                                             object:first]];
+
+    XCTAssertEqual(windows.count, 0);
+    XCTAssertFalse(first.receivedClose);
+    XCTAssertTrue(second.receivedClose);
+}
+
+- (void)testWebControlStepsAndDensityNudgeAreSharedNativeRules {
+    XCTAssertEqualWithAccuracy(MatrixCodeQuantizedControlValue(@"density", 2.123), 2.1, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeQuantizedControlValue(@"rampUpMs", 8126), 8000, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeQuantizedControlValue(@"glyphScale", 1.26), 1.3, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeNudgedDensity(2, 1.2), 2.4, 0.0001);
+    XCTAssertEqualWithAccuracy(MatrixCodeNudgedDensity(5.2, 1.2), 6, 0.0001);
+}
+
+- (void)testControlsSanitizerMatchesWebDefaultsTypesRangesAndChoices {
+    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(@{
+        @"speed": @99,
+        @"trailLength": @(-4),
+        @"trailVariation": @2,
+        @"density": @(NAN),
+        @"rampUpMs": @YES,
+        @"glyphRate": @(-1),
+        @"glyphScale": @20,
+        @"glow": @"2.4",
+        @"leadBrightness": @9,
+        @"glyphMode": @"unknown",
+        @"glyphFont": @"unknown",
+        @"preset": @"unknown",
+        @"mirror": @0,
+        @"scanlines": @1,
+        @"vignette": @YES,
+        @"allowOverlap": @0,
+        @"quality": @"ultra",
+    });
+
+    XCTAssertEqualWithAccuracy([controls[@"speed"] doubleValue], 3, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"trailLength"] doubleValue], 0.01, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"trailVariation"] doubleValue], 1, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"density"] doubleValue], 2, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"rampUpMs"] doubleValue], 8000, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"glyphRate"] doubleValue], 0, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"glyphScale"] doubleValue], 10, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"glow"] doubleValue], 0.9, 0.0001);
+    XCTAssertEqualWithAccuracy([controls[@"leadBrightness"] doubleValue], 3, 0.0001);
+    XCTAssertEqualObjects(controls[@"glyphMode"], @"matrix");
+    XCTAssertEqualObjects(controls[@"glyphFont"], @"matrix");
+    XCTAssertEqualObjects(controls[@"preset"], @"classic");
+    XCTAssertEqualObjects(controls[@"mirror"], @YES);
+    XCTAssertEqualObjects(controls[@"scanlines"], @NO);
+    XCTAssertEqualWithAccuracy([controls[@"vignette"] doubleValue], 0.42, 0.0001);
+    XCTAssertEqualObjects(controls[@"allowOverlap"], @YES);
+    XCTAssertEqualObjects(controls[@"quality"], @"high");
+
+    NSDictionary *validControls = MatrixCodeSanitizeControlsDocument(@{
+        @"glyphMode": @"katakana",
+        @"glyphFont": @"mincho",
+        @"preset": @"blue",
+        @"mirror": @NO,
+        @"scanlines": @YES,
+        @"vignette": @NO,
+        @"allowOverlap": @NO,
+        @"quality": @"med",
+    });
+    XCTAssertEqualObjects(validControls[@"glyphMode"], @"katakana");
+    XCTAssertEqualObjects(validControls[@"glyphFont"], @"mincho");
+    XCTAssertEqualObjects(validControls[@"preset"], @"blue");
+    XCTAssertEqualObjects(validControls[@"mirror"], @NO);
+    XCTAssertEqualObjects(validControls[@"scanlines"], @YES);
+    XCTAssertEqualWithAccuracy([validControls[@"vignette"] doubleValue], 0, 0.0001);
+    XCTAssertEqualObjects(validControls[@"allowOverlap"], @NO);
+    XCTAssertEqualObjects(validControls[@"quality"], @"med");
+}
+
+- (void)testSingleDisplayUsesWebSeedWhileMultiDisplayPreservesRandomSeed {
+    XCTAssertEqual([MatrixCodeSession seedForScreenCount:1 randomSeed:0xdeadbeefU], 0x1a2b3cU);
+    XCTAssertEqual([MatrixCodeSession seedForScreenCount:2 randomSeed:0xdeadbeefU], 0xdeadbeefU);
+    XCTAssertEqual([[[MatrixCodeSession singleDisplaySession] objectForKey:@"seed"] unsignedIntValue],
+                   0x1a2b3cU);
+}
+
+- (void)testStandaloneMultiMonitorEntriesReceiveFreshIdentities {
+    NSDictionary *first = [MatrixCodeSession freshIdentityForScreenCount:3
+                                                               randomSeed:0x12345678U
+                                                        epochMilliseconds:1000];
+    NSDictionary *second = [MatrixCodeSession freshIdentityForScreenCount:3
+                                                                randomSeed:0x87654321U
+                                                         epochMilliseconds:1001];
+
+    XCTAssertEqualObjects(first[@"seed"], @(0x12345678U));
+    XCTAssertEqualObjects(first[@"epoch"], @1000);
+    XCTAssertNotEqualObjects(first[@"seed"], second[@"seed"]);
+    XCTAssertNotEqualObjects(first[@"epoch"], second[@"epoch"]);
 }
 
 - (void)testMultiMonitorWindowsJoinAllSpacesIncludingFullscreenAuxiliarySpaces {

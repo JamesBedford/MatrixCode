@@ -41,7 +41,9 @@ void main() {
   if (uVignette > 0.0) {
     // Start the falloff earlier so the vignette is visible beyond just the corners.
     float d = length((vUv - 0.5) / vec2(0.42, 0.42));
-    float v = smoothstep(0.95, 0.15, d);
+    // GLSL leaves smoothstep undefined when edge0 >= edge1. Express the same
+    // reversed ramp with ordered edges so WebGL and Metal share defined math.
+    float v = 1.0 - smoothstep(0.15, 0.95, d);
     // Blend toward a steeper falloff so 100% reads as a clearly stronger vignette.
     col *= mix(1.0, pow(v, 2.8), uVignette);
   }

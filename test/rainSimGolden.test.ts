@@ -67,4 +67,10 @@ describe("RainSim golden output (locks byte-exact packing across perf refactors)
     }
     expect(checksum(sim.state)).toBe(3260864663);
   });
+
+  it("distributed multi-monitor warm-up", () => {
+    const sim = makeSim(24, 90, 13579);
+    sim.warmUpDistributed(DENSE, 2.5);
+    expect(checksum(sim.state)).toBe(3658144001);
+  });
 });

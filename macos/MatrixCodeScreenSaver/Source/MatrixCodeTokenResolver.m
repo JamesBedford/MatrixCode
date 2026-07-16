@@ -111,6 +111,14 @@ static NSNumber *MatrixCodeSanitizedTarget(id value) {
     return @(fmin(8.64e15, fmax(0, [value doubleValue])));
 }
 
+static NSCalendar *MatrixCodeLocalGregorianCalendar(void) {
+    NSCalendar *calendar = [[NSCalendar alloc]
+        initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+    calendar.timeZone = NSTimeZone.localTimeZone;
+    calendar.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    return calendar;
+}
+
 @interface MatrixCodeTokenResolver ()
 @property(nonatomic, copy) NSString *viewerName;
 @property(nonatomic, strong, nullable) NSDate *defaultTarget;
@@ -154,6 +162,15 @@ static NSNumber *MatrixCodeSanitizedTarget(id value) {
     return self;
 }
 
+- (void)setRunStartDate:(NSDate *)runStartDate {
+    _runStartDate = runStartDate;
+}
+
+- (void)shiftRunStartBy:(NSTimeInterval)interval {
+    if (!isfinite(interval) || interval == 0) return;
+    self.runStartDate = [self.runStartDate dateByAddingTimeInterval:interval];
+}
+
 + (NSDictionary *)dictionaryFromJSONString:(NSString *)raw {
     if (![raw isKindOfClass:NSString.class]) return @{};
     NSData *data = [raw dataUsingEncoding:NSUTF8StringEncoding];
@@ -177,7 +194,8 @@ static NSNumber *MatrixCodeSanitizedTarget(id value) {
 }
 
 + (NSString *)greetingAtDate:(NSDate *)date {
-    NSInteger hour = [NSCalendar.currentCalendar component:NSCalendarUnitHour fromDate:date];
+    NSInteger hour = [MatrixCodeLocalGregorianCalendar() component:NSCalendarUnitHour
+                                                           fromDate:date];
     if (hour < 4) return @"PARTY ON";
     if (hour < 12) return @"GOOD MORNING";
     if (hour < 18) return @"GOOD AFTERNOON";
@@ -211,10 +229,13 @@ static NSNumber *MatrixCodeSanitizedTarget(id value) {
         }
         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
         formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        formatter.calendar = MatrixCodeLocalGregorianCalendar();
+        formatter.timeZone = NSTimeZone.localTimeZone;
         formatter.dateFormat = dateFormat;
         NSString *value = [formatter stringFromDate:date];
         if ([key isEqualToString:@"e"]) {
-            NSInteger day = [NSCalendar.currentCalendar component:NSCalendarUnitDay fromDate:date];
+            NSInteger day = [MatrixCodeLocalGregorianCalendar() component:NSCalendarUnitDay
+                                                                  fromDate:date];
             value = [NSString stringWithFormat:@"%2ld", (long)day];
         }
         [result appendString:value];
@@ -286,7 +307,7 @@ static NSNumber *MatrixCodeSanitizedTarget(id value) {
 }
 
 + (NSDate *)annualMomentMonth:(NSInteger)month day:(NSInteger)day hour:(NSInteger)hour relativeToDate:(NSDate *)date {
-    NSCalendar *calendar = NSCalendar.currentCalendar;
+    NSCalendar *calendar = MatrixCodeLocalGregorianCalendar();
     NSInteger year = [calendar component:NSCalendarUnitYear fromDate:date];
     for (NSInteger offset = 0; offset < 4; offset++) {
         NSDateComponents *components = [[NSDateComponents alloc] init];
@@ -326,7 +347,7 @@ static NSNumber *MatrixCodeSanitizedTarget(id value) {
                                          hour:parts[2].integerValue
                                relativeToDate:date];
 
-    NSCalendar *calendar = NSCalendar.currentCalendar;
+    NSCalendar *calendar = MatrixCodeLocalGregorianCalendar();
     NSInteger year = [calendar component:NSCalendarUnitYear fromDate:date];
     for (NSInteger offset = 0; offset < 4; offset++) {
         NSInteger eventYear = year + offset;

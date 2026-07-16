@@ -1,5 +1,5 @@
 import type { Controls, PresetName, QualityTier } from "../types.ts";
-import { DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
+import { CONTROL_RANGES, DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
 import { isNativeConfiguration, nativeStorageDidChange } from "../platform/nativeHost.ts";
 
 export interface PanelCallbacks {
@@ -17,6 +17,23 @@ export interface PanelOptions {
   multiMonitor?: boolean;
   introControls?: boolean;
   documentEditors?: boolean;
+}
+
+/**
+ * Resolve the panel surface for the current display context. A multi-monitor controller that is not
+ * the controls host mounts no panel at all, matching the non-controls panel windows. The controls
+ * host gets the restricted multi-monitor surface; ordinary mode gets the complete editor surface.
+ */
+export function controlsPanelOptionsForContext(
+  inMultiMonitor: boolean,
+  showControls: boolean,
+): Required<PanelOptions> | null {
+  if (inMultiMonitor && !showControls) return null;
+  return {
+    multiMonitor: inMultiMonitor,
+    introControls: !inMultiMonitor,
+    documentEditors: !inMultiMonitor,
+  };
 }
 
 const HIDE_DELAY_MS = 2800;
@@ -67,28 +84,28 @@ export class ControlsPanel {
 
     if (isNativeConfiguration()) this.viewerName();
 
-    this.range("Density", "density", 0.2, 100, 0.05, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =. Turn up past 20 (with Allow overlap on) to make raindrops overlap between columns.");
-    this.range("Ramp-up", "rampUpMs", 0, 30000, 500, (v) => controls.set({ rampUpMs: v }), (v) => (v === 0 ? "off" : `${(v / 1000).toFixed(1)}s`), undefined, "How long the rain builds up to full density when it first starts, on load (0 = instant)");
-    this.range("Trail length", "trailLength", 0.01, 0.5, 0.01,
+    this.range("Density", "density", CONTROL_RANGES.density.min, CONTROL_RANGES.density.max, CONTROL_RANGES.density.step, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =. Turn up past 20 (with Allow overlap on) to make raindrops overlap between columns.");
+    this.range("Ramp-up", "rampUpMs", CONTROL_RANGES.rampUpMs.min, CONTROL_RANGES.rampUpMs.max, CONTROL_RANGES.rampUpMs.step, (v) => controls.set({ rampUpMs: v }), (v) => (v === 0 ? "off" : `${(v / 1000).toFixed(1)}s`), undefined, "How long the rain builds up to full density when it first starts, on load (0 = instant)");
+    this.range("Trail length", "trailLength", CONTROL_RANGES.trailLength.min, CONTROL_RANGES.trailLength.max, CONTROL_RANGES.trailLength.step,
       (v) => controls.set({ trailLength: v }),
       (v) => `${Math.round((v - 0.01) / 0.49 * 100)}%`,
       undefined,
       "Trail length: 0% is the shortest trail, 100% is the longest trail.");
-    this.range("Trail variation", "trailVariation", 0, 1, 0.01,
+    this.range("Trail variation", "trailVariation", CONTROL_RANGES.trailVariation.min, CONTROL_RANGES.trailVariation.max, CONTROL_RANGES.trailVariation.step,
       (v) => controls.set({ trailVariation: v }),
       (v) => `${Math.round(v * 100)}%`,
       undefined,
       "How much individual stream lengths vary: 0% is uniform, 100% preserves the full natural variation.");
-    this.range("Speed", "speed", 0.2, 3, 0.05, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
-    this.range("Glyph size", "glyphScale", 0.5, 10, 0.1, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
-    this.range("Glow", "glow", 0, 2.5, 0.05, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
-    this.range("Lead glow", "leadBrightness", 0, 3, 0.05, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
+    this.range("Speed", "speed", CONTROL_RANGES.speed.min, CONTROL_RANGES.speed.max, CONTROL_RANGES.speed.step, (v) => controls.set({ speed: v }), (v) => `${v.toFixed(2)}×`);
+    this.range("Glyph size", "glyphScale", CONTROL_RANGES.glyphScale.min, CONTROL_RANGES.glyphScale.max, CONTROL_RANGES.glyphScale.step, (v) => controls.set({ glyphScale: v }), (v) => `${v.toFixed(1)}×`);
+    this.range("Glow", "glow", CONTROL_RANGES.glow.min, CONTROL_RANGES.glow.max, CONTROL_RANGES.glow.step, (v) => controls.set({ glow: v }), (v) => v.toFixed(2));
+    this.range("Lead glow", "leadBrightness", CONTROL_RANGES.leadBrightness.min, CONTROL_RANGES.leadBrightness.max, CONTROL_RANGES.leadBrightness.step, (v) => controls.set({ leadBrightness: v }), (v) => v.toFixed(2));
     this.range(
       "Vignette",
       "vignette",
-      0,
-      1,
-      0.01,
+      CONTROL_RANGES.vignette.min,
+      CONTROL_RANGES.vignette.max,
+      CONTROL_RANGES.vignette.step,
       (v) => controls.set({ vignette: v }),
       (v) => (v <= 0 ? "off" : `${Math.round(v * 100)}%`),
       undefined,

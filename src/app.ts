@@ -17,7 +17,7 @@ import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
 import { StateTexture } from "./gl/stateTexture.ts";
 import { Renderer, type ExtraLayer } from "./gl/renderer.ts";
 import { AdaptiveResolution } from "./gl/adaptiveResolution.ts";
-import { ControlsPanel } from "./ui/controlsPanel.ts";
+import { ControlsPanel, controlsPanelOptionsForContext, type PanelCallbacks } from "./ui/controlsPanel.ts";
 import { CharacterSettingsEditor } from "./ui/characterSettingsEditor.ts";
 import { applyFavicon } from "./ui/favicon.ts";
 import { IntroStore, sanitizeIntro, toTypeConfig, type IntroScript } from "./config/introStore.ts";
@@ -227,6 +227,7 @@ export async function mountMatrixRain(
   let fpsEmaMs = 0;
   let currentFps = 0;
   let userPaused = false;
+  let userPauseStartedAtMs: number | null = null;
   // Intro rain choreography. Default sentinel: rain already running at full (no intro / repeat visit).
   let rainStartAtMs = Number.NEGATIVE_INFINITY;
   let rampUpMs = 0;
@@ -365,9 +366,8 @@ export async function mountMatrixRain(
   // countdown documents as the controller so every window can schedule an identical virtual-grid message.
   const messagesStore = new MessagesStore();
   const countdownStore = new CountdownStore();
-  const viewerName = resolveUserName();
   // When this run began — drives {uptime} and bare {countup} (see resolveTokens / countTarget).
-  const runStartMs = Date.now();
+  let runStartMs = Date.now();
   // Super mode temporarily supplies its shared fixed-step wall clock so ticking tokens resolve
   // identically in every window instead of depending on each panel's slightly different Date.now().
   let tokenClockMs: number | null = null;
@@ -376,7 +376,9 @@ export async function mountMatrixRain(
   const resolveMessageText = (raw: string): string => {
     const doc = countdownStore?.get();
     return resolveTokens(raw, {
-      name: viewerName,
+      // Resolve lazily so an active intro or rain message reflects a viewer-name
+      // edit immediately, matching the native host without a page reload.
+      name: resolveUserName(),
       nowMs: tokenClockMs ?? Date.now(),
       countdownTargetMs: doc?.targetMs ?? null,
       moments: Object.fromEntries((doc?.moments ?? []).map((m) => [m.name, m.targetMs])),
@@ -416,30 +418,27 @@ export async function mountMatrixRain(
 
   // Play the intro and choreograph the rain (during/after + post-intro delay + density ramp).
   // Used by first-visit autoplay, Replay, and Preview.
-  const startIntroSequence = (script: IntroScript): void => {
-    if (!message) return;
+  const startIntroSequence = (script: IntroScript): boolean => {
+    if (!message || reduceMq.matches) return false;
     message.setScript(script.lines, toTypeConfig(script));
-    // Under reduced motion the loop isn't running; skip choreography so an after-mode
-    // trigger can't leave a stuck black frame. Behaves like today (a visual no-op).
-    if (!reduceMq.matches) {
-      const ramp = controls.get().rampUpMs; // ramp duration lives in the main controls, not the intro
-      if (!script.rainDuringIntro) {
-        rampUpMs = ramp;
-        rainPendingAfterIntro = false;
-        sim.reset(); // black until the intro ends
-        resetExtras();
-        rainStartAtMs = Number.POSITIVE_INFINITY;
-        rainPendingAfterIntro = true;
-        pendingPostIntroDelayMs = script.postIntroDelayMs;
-      } else if (ramp > 0) {
-        beginRampFromEmpty(ramp); // build from empty starting now
-      } else {
-        rainStartAtMs = Number.NEGATIVE_INFINITY; // during + no ramp = today's behaviour
-        rampUpMs = 0;
-        rainPendingAfterIntro = false;
-      }
+    const ramp = controls.get().rampUpMs; // ramp duration lives in the main controls, not the intro
+    if (!script.rainDuringIntro) {
+      rampUpMs = ramp;
+      rainPendingAfterIntro = false;
+      sim.reset(); // black until the intro ends
+      resetExtras();
+      rainStartAtMs = Number.POSITIVE_INFINITY;
+      rainPendingAfterIntro = true;
+      pendingPostIntroDelayMs = script.postIntroDelayMs;
+    } else if (ramp > 0) {
+      beginRampFromEmpty(ramp); // build from empty starting now
+    } else {
+      rainStartAtMs = Number.NEGATIVE_INFINITY; // during + no ramp = today's behaviour
+      rampUpMs = 0;
+      rainPendingAfterIntro = false;
     }
     message.play(performance.now());
+    return true;
   };
 
   // Preview/save run through the overlay; markSeenPending gates the first-visit flag.
@@ -447,8 +446,8 @@ export async function mountMatrixRain(
   let markSeenPending = false;
 
   const previewIntro = (draft: IntroScript): void => {
-    introPreviewActive = true;
-    startIntroSequence(sanitizeIntro(draft));
+    introPreviewActive = startIntroSequence(sanitizeIntro(draft));
+    if (!introPreviewActive) editor?.endPreview();
   };
 
   const saveIntro = (draft: IntroScript): void => {
@@ -457,14 +456,26 @@ export async function mountMatrixRain(
     seedOverlay();
   };
 
+  let messageDraftPreviewActive = false;
+
   const saveMessages = (draft: MessagesDoc): void => {
     if (!messagesStore) return;
+    messageDraftPreviewActive = false;
     messagesStore.set(draft);
     messageScheduler?.configure(messagesStore.get());
   };
 
   const previewMessages = (draft: MessagesDoc): void => {
+    if (reduceMq.matches) return;
+    messageDraftPreviewActive = true;
     messageScheduler?.previewOne(performance.now(), sim, draft);
+    if (!running) renderStatic();
+  };
+
+  const cancelMessagePreview = (): void => {
+    if (!messageDraftPreviewActive) return;
+    messageDraftPreviewActive = false;
+    messageScheduler?.configure(messagesStore.get());
   };
 
   // A single onDone handler serves the after-mode rain start, preview restore, and first-visit flag.
@@ -502,7 +513,7 @@ export async function mountMatrixRain(
     messagesEditor = new MessagesEditor(container, messagesStore, {
       onPreview: previewMessages,
       onSave: saveMessages,
-      onCancel: () => {},
+      onCancel: cancelMessagePreview,
     }, getMomentNames);
   }
 
@@ -543,18 +554,25 @@ export async function mountMatrixRain(
     else setActiveSettingsSurface(null);
   };
 
-  const panel = hasSettingsUi
-    ? new ControlsPanel(container, controls, {
-        onToggleFullscreen: () => toggleFullscreen(),
-        onEnterMultiMonitor: () => { void enterMultiMonitor(); },
-        onExitMultiMonitor: () => exitMultiMonitor(true),
-        onReplayIntro: () => { if (introStore) startIntroSequence(introStore.get()); },
-        onEditCharacters: () => openSettingsSurface("characters"),
-        onEditIntro: () => openSettingsSurface("intro"),
-        onEditMessages: () => openSettingsSurface("messages"),
-        onEditCountdown: () => openSettingsSurface("countdown"),
-      }, { multiMonitor: panelConfig !== null, introControls: hasIntroUi, documentEditors: !panelConfig })
-    : null;
+  const panelCallbacks: PanelCallbacks = {
+    onToggleFullscreen: () => toggleFullscreen(),
+    onEnterMultiMonitor: () => { void enterMultiMonitor(); },
+    onExitMultiMonitor: () => exitMultiMonitor(true),
+    onReplayIntro: () => { if (introStore) startIntroSequence(introStore.get()); },
+    onEditCharacters: () => openSettingsSurface("characters"),
+    onEditIntro: () => openSettingsSurface("intro"),
+    onEditMessages: () => openSettingsSurface("messages"),
+    onEditCountdown: () => openSettingsSurface("countdown"),
+  };
+  let panel: ControlsPanel | null = null;
+  const replaceControlsPanel = (inMultiMonitor: boolean, showControls: boolean): void => {
+    panel?.destroy();
+    const options = controlsPanelOptionsForContext(inMultiMonitor, showControls);
+    panel = hasSettingsUi && options
+      ? new ControlsPanel(container, controls, panelCallbacks, options)
+      : null;
+  };
+  replaceControlsPanel(panelConfig !== null, panelShowsControls);
 
   const reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -786,8 +804,27 @@ export async function mountMatrixRain(
         rainPendingAfterIntro = false;
         rainStartAtMs = Number.NEGATIVE_INFINITY;
         rampUpMs = 0;
-        sim.spawnRateScale = 1;
-        sim.warmUp(controls.get(), WARMUP_SECONDS);
+        const c = controls.get();
+        const lanes = computeLanes(c.density, c.allowOverlap, tierCap(c.quality));
+        const baseLane = lanes[0]!;
+        sim.spawnRateScale = baseLane.weight;
+        sim.warmUp(laneControls(c, baseLane.density), WARMUP_SECONDS);
+
+        // A high-density static frame uses the same fully warmed overlap lanes
+        // as ordinary playback. Preserve an already-active lane's PRNG/state;
+        // a newly active lane follows the normal activation path from empty.
+        const activeNow = new Array<boolean>(extraSims.length).fill(false);
+        for (const lane of lanes) {
+          if (lane.index === 0) continue;
+          const j = lane.index - 1;
+          const overlap = extraSims[j];
+          if (!overlap) continue;
+          if (!extraActive[j]) overlap.reset();
+          overlap.spawnRateScale = lane.weight;
+          overlap.warmUp(laneControls(c, lane.density), WARMUP_SECONDS);
+          activeNow[j] = true;
+        }
+        for (let j = 0; j < extraActive.length; j++) extraActive[j] = activeNow[j]!;
       }
       stop();
       renderStatic();
@@ -816,6 +853,10 @@ export async function mountMatrixRain(
   const enterMultiMonitorRender = (config: MultiMonitorConfig, isController: boolean, openedWindows: Window[]): void => {
     container.classList.add("mx-multimonitor");
     container.classList.toggle("mx-multimonitor-controls", config.showControls === true);
+    // The original launcher can itself be the centremost controls screen. Rebuild its normal panel
+    // into the same restricted surface a spawned controls panel receives (or remove it entirely when
+    // this controller is not the controls host).
+    if (isController) replaceControlsPanel(true, config.showControls === true);
     sim = new RainSim({ cols: config.vCols, rows: config.vRows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: config.seed });
     sim.warmUpDistributed(controls.get(), config.warmupSeconds);
     // The controller's normal-mode scheduler has already consumed random values while panel schedulers
@@ -860,6 +901,7 @@ export async function mountMatrixRain(
     container.classList.remove("mx-multimonitor-controls");
     if (document.fullscreenElement) void document.exitFullscreen();
     if (isController) {
+      replaceControlsPanel(false, true);
       for (const w of openedWindows) {
         try {
           w.close();
@@ -1016,12 +1058,21 @@ export async function mountMatrixRain(
       else if (e.key === "=" || e.key === "+") { nudgeDensity(DENSITY_KEY_STEP); handled = true; }
       else if (e.key === "p" || e.key === "P") {
         handled = true;
-        if (!e.repeat) {
+        if (!e.repeat && !reduceMq.matches) {
           userPaused = !userPaused;
           if (userPaused) {
+            userPauseStartedAtMs = performance.now();
             stop();
             renderStatic();
           } else {
+            const resumedAtMs = performance.now();
+            const pausedDuration = userPauseStartedAtMs === null
+              ? 0
+              : Math.max(0, resumedAtMs - userPauseStartedAtMs);
+            userPauseStartedAtMs = null;
+            runStartMs += pausedDuration;
+            if (Number.isFinite(rainStartAtMs)) rainStartAtMs += pausedDuration;
+            message?.shiftTimelineBy(pausedDuration);
             start();
           }
         }

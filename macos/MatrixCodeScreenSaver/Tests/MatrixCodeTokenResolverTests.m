@@ -29,6 +29,68 @@
     XCTAssertEqualObjects(resolved, @"Trinity 01:05 01:05 00:05 60 FPS");
 }
 
+- (void)testShiftingRunStartFreezesUptimeAndBareCountupTokens {
+    NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    NSDate *now = [start dateByAddingTimeInterval:65];
+    MatrixCodeTokenResolver *resolver =
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:@{} runStartDate:start];
+    XCTAssertEqualObjects([resolver resolveText:@"{uptime} {countup}"
+                                         atDate:now
+                                framesPerSecond:60],
+                          @"01:05 01:05");
+
+    [resolver shiftRunStartBy:60];
+
+    XCTAssertEqualObjects([resolver resolveText:@"{uptime} {countup}"
+                                         atDate:now
+                                framesPerSecond:60],
+                          @"00:05 00:05");
+}
+
+- (void)testRunStartCanBeResetAfterNativeSetupWithoutChangingStoredMoments {
+    NSDate *setupStart = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    NSDate *readyStart = [setupStart dateByAddingTimeInterval:60];
+    NSDate *now = [readyStart dateByAddingTimeInterval:5];
+    MatrixCodeTokenResolver *resolver = [[MatrixCodeTokenResolver alloc]
+        initWithStoredValues:@{}
+                runStartDate:setupStart];
+
+    [resolver setRunStartDate:readyStart];
+
+    XCTAssertEqualObjects([resolver resolveText:@"{uptime} {countup}"
+                                         atDate:now
+                                framesPerSecond:60],
+                          @"00:05 00:05");
+}
+
+- (void)testWebDateFormattingAndAnnualMomentsUseLocalGregorianCalendar {
+    NSCalendar *gregorian = [[NSCalendar alloc]
+        initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+    gregorian.timeZone = NSTimeZone.localTimeZone;
+    NSDateComponents *components = [[NSDateComponents alloc] init];
+    components.year = 2026;
+    components.month = 7;
+    components.day = 5;
+    components.hour = 9;
+    NSDate *date = [gregorian dateFromComponents:components];
+    MatrixCodeTokenResolver *resolver = [[MatrixCodeTokenResolver alloc]
+        initWithStoredValues:@{}
+                runStartDate:date];
+
+    XCTAssertEqualObjects([resolver resolveText:@"{time:%Y-%m-%d %j}"
+                                         atDate:date
+                                framesPerSecond:60],
+                          @"2026-07-05 186");
+    NSDate *christmas = [MatrixCodeTokenResolver builtInMomentNamed:@"christmas"
+                                                     relativeToDate:date];
+    NSDateComponents *christmasParts = [gregorian components:
+        NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay
+                                               fromDate:christmas];
+    XCTAssertEqual(christmasParts.year, 2026);
+    XCTAssertEqual(christmasParts.month, 12);
+    XCTAssertEqual(christmasParts.day, 25);
+}
+
 - (void)testUnknownTokensPassThrough {
     NSDate *now = [NSDate dateWithTimeIntervalSince1970:1700000000];
     MatrixCodeTokenResolver *resolver =

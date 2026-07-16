@@ -532,3 +532,91 @@ describe("MessageScheduler fade envelope", () => {
     expect(sim.intensity).toBe(1); // would be mid fade-out if enabled
   });
 });
+
+describe("MessageScheduler cross-language golden", () => {
+  const feed = (hash: number, value: number): number => {
+    const unsigned = value >>> 0;
+    for (let shift = 0; shift < 32; shift += 8) {
+      hash ^= (unsigned >>> shift) & 0xff;
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash;
+  };
+
+  it("matches the native timeline, placements, envelopes, and live updates", () => {
+    let tick = 0;
+    const sim = new FakeSim(48, 30);
+    const scheduler = new MessageScheduler({
+      glyphSet,
+      rng: createRng(0x5eed1e),
+      resolveText: (raw) => raw.replace("{tick}", String(tick)),
+    });
+    scheduler.configure(doc({
+      messages: ["WAKE {tick}", "NEO", "A 😀 B"],
+      frequencyMs: 900,
+      persistenceMs: 650,
+      appearMs: 300,
+      disappearMs: 450,
+      flickerOut: true,
+      brightnessFade: true,
+      verticalPosition: 0.42,
+      verticalJitter: 0.6,
+    }));
+
+    let hash = 0x811c9dc5;
+    for (let now = 0; now <= 16000; now += 125) {
+      tick = Math.floor(now / 1000) % 10;
+      if (now === 7000) {
+        sim.cols = 52;
+        sim.rows = 32;
+      }
+      const regions = now < 7000
+        ? [
+            { colStart: 0.2, rowStart: 0.4, cols: 23.4, rows: 29.2 },
+            { colStart: 24.2, rowStart: 0.4, cols: 23.4, rows: 29.2 },
+          ]
+        : [
+            { colStart: -2.4, rowStart: 1.2, cols: 28.1, rows: 30.1 },
+            { colStart: 26.2, rowStart: 1.2, cols: 28.1, rows: 30.1 },
+          ];
+      scheduler.update(now, sim, regions);
+
+      for (const value of [
+        now,
+        sim.sets,
+        sim.updates,
+        sim.cleared,
+        Math.round(sim.intensity * 1_000_000),
+        Math.round(sim.scramble * 1_000_000),
+      ]) {
+        hash = feed(hash, value);
+      }
+      const entries = sim.last
+        ? [...sim.last.entries()].sort((a, b) => a[0] - b[0])
+        : [];
+      hash = feed(hash, entries.length);
+      for (const [index, glyph] of entries) {
+        hash = feed(hash, index);
+        hash = feed(hash, glyph);
+      }
+    }
+
+    expect(hash).toBe(2931333020);
+    expect({
+      sets: sim.sets,
+      updates: sim.updates,
+      clears: sim.cleared,
+      targets: sim.last
+        ? [...sim.last.entries()].sort((a, b) => a[0] - b[0])
+        : [],
+    }).toEqual({
+      sets: 8,
+      updates: 3,
+      clears: 6,
+      targets: [
+        [738, 121], [739, 99], [740, 109], [741, 103], [743, 157],
+        [816, 121], [817, 99], [818, 109], [819, 103], [821, 157],
+      ],
+    });
+  });
+});

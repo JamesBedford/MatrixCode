@@ -5,6 +5,7 @@
 #import <QuartzCore/QuartzCore.h>
 
 #import "MatrixCodeConfigurationController.h"
+#import "MatrixCodeConstants.h"
 #import "MatrixCodeIntroOverlayView.h"
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodePreferences.h"
@@ -103,10 +104,19 @@
 @property(nonatomic, strong) MatrixCodeIntroOverlayView *introOverlay;
 @property(nonatomic, strong) MatrixCodeTokenResolver *tokenResolver;
 @property(nonatomic, strong) NSDate *runStartDate;
+@property(nonatomic, strong) NSDate *rainStartDate;
 @property(nonatomic, strong) NSTimer *animationTimer;
+@property(nonatomic, strong) NSTimer *rampPreviewTimer;
 @property(nonatomic) NSTimeInterval rampDuration;
 @property(nonatomic) BOOL reducedMotion;
+@property(nonatomic) BOOL reducedMotionAbandonedRainChoreography;
+@property(nonatomic) BOOL rainTimelineRequiresReducedMotionWarmup;
+@property(nonatomic) BOOL synchronizedMultiDisplayTimeline;
+@property(nonatomic) BOOL runTimelineStarted;
+@property(nonatomic) BOOL visibilitySuspended;
 @property(nonatomic) BOOL introScheduled;
+@property(nonatomic) BOOL introMarksSeenOnCompletion;
+@property(nonatomic, copy, nullable) dispatch_block_t introPreviewCompletion;
 @property(nonatomic) BOOL hostActive;
 @property(nonatomic) BOOL screenResolutionRetryScheduled;
 @property(nonatomic) NSUInteger screenResolutionRetryCount;
@@ -120,9 +130,6 @@
 @property(nonatomic, strong, nullable) NSTrackingArea *settingsRevealTrackingArea;
 @property(nonatomic, strong, nullable) NSTextField *fpsOverlay;
 @property(nonatomic) BOOL fpsOverlayVisible;
-@property(nonatomic) NSTimeInterval fpsLastFrameTime;
-@property(nonatomic) NSTimeInterval fpsLastDisplayUpdate;
-@property(nonatomic) double fpsEma;
 @property(nonatomic, strong, nullable) NSStackView *presentationChrome;
 @property(nonatomic, strong, nullable) NSTimer *presentationChromeHideTimer;
 @property(nonatomic, strong, nullable) NSView *shortcutToast;
@@ -130,10 +137,21 @@
 @property(nonatomic, strong, nullable) NSTimer *shortcutToastHideTimer;
 @property(nonatomic, weak, nullable) NSWindow *observedWindow;
 @property(nonatomic) BOOL syncingWindowLayout;
+@property(nonatomic, strong, nullable) NSTextField *metalFailureNotice;
 - (void)ensureMetalView;
 - (void)syncPresentationLayoutToWindow;
 - (void)revealPresentationChromeForPointerActivity;
 - (void)applyShortcutToastStyle;
+- (void)prepareRunTimelineForAnimationStartIfNeeded;
+- (void)replayIntro;
+- (BOOL)playIntroWithStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues
+                       completion:(nullable dispatch_block_t)completion;
+- (void)previewIntroWithStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues
+                         completion:(dispatch_block_t)completion;
+- (void)previewMessageWithStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues;
+- (void)restartRainAfterControlsReset;
+- (void)refreshAnimationForEnvironment;
+- (void)updateFPSOverlayWithFramesPerSecond:(double)framesPerSecond;
 @end
 
 @implementation MatrixCodeRainHostView
@@ -170,21 +188,9 @@ static BOOL MatrixCodeRainHostStoredFPSOverlayVisible(NSDictionary<NSString *, N
     NSDictionary *state = MatrixCodeRainHostJSONObject(storedValues[MatrixCodeFPSOverlayStorageKey],
                                                        NSDictionary.class);
     id visible = state[@"fpsOverlayVisible"];
-    return [visible isKindOfClass:NSNumber.class] && [visible boolValue];
-}
-
-static double MatrixCodeRainHostNumber(NSDictionary *dictionary,
-                                       NSString *key,
-                                       double fallback,
-                                       double minimum,
-                                       double maximum) {
-    id value = dictionary[key];
-    if (![value isKindOfClass:NSNumber.class] ||
-        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() ||
-        !isfinite([value doubleValue])) {
-        return fallback;
-    }
-    return fmin(maximum, fmax(minimum, [value doubleValue]));
+    return [visible isKindOfClass:NSNumber.class] &&
+        CFGetTypeID((__bridge CFTypeRef)visible) == CFBooleanGetTypeID() &&
+        [visible boolValue];
 }
 
 static BOOL MatrixCodeRainHostBool(NSDictionary *dictionary, NSString *key, BOOL fallback) {
@@ -277,13 +283,30 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
                selector:@selector(applyShortcutToastStyle)
                    name:MatrixCodeSettingsThemeDidChangeNotification
                  object:nil];
+        [NSNotificationCenter.defaultCenter
+            addObserver:self
+               selector:@selector(applicationVisibilityDidChange:)
+                   name:NSApplicationDidHideNotification
+                 object:NSApp];
+        [NSNotificationCenter.defaultCenter
+            addObserver:self
+               selector:@selector(applicationVisibilityDidChange:)
+                   name:NSApplicationDidUnhideNotification
+                 object:NSApp];
+        [NSWorkspace.sharedWorkspace.notificationCenter
+            addObserver:self
+               selector:@selector(accessibilityDisplayOptionsDidChange:)
+                   name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+                 object:nil];
     }
     return self;
 }
 
 - (void)dealloc {
     [NSNotificationCenter.defaultCenter removeObserver:self];
+    [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
     [self.animationTimer invalidate];
+    [self.rampPreviewTimer invalidate];
     [self.backdropClickTimer invalidate];
     [self.presentationChromeHideTimer invalidate];
     [self.shortcutToastHideTimer invalidate];
@@ -295,6 +318,14 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
         NSWindowDidEndLiveResizeNotification,
         NSWindowDidEnterFullScreenNotification,
         NSWindowDidExitFullScreenNotification,
+    ];
+}
+
+- (NSArray<NSNotificationName> *)windowLifecycleNotificationNames {
+    return @[
+        NSWindowDidChangeOcclusionStateNotification,
+        NSWindowDidMiniaturizeNotification,
+        NSWindowDidDeminiaturizeNotification,
     ];
 }
 
@@ -310,6 +341,19 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
         if (window) {
             [NSNotificationCenter.defaultCenter addObserver:self
                                                    selector:@selector(windowGeometryDidChange:)
+                                                       name:name
+                                                     object:window];
+        }
+    }
+    for (NSNotificationName name in [self windowLifecycleNotificationNames]) {
+        if (self.observedWindow) {
+            [NSNotificationCenter.defaultCenter removeObserver:self
+                                                          name:name
+                                                        object:self.observedWindow];
+        }
+        if (window) {
+            [NSNotificationCenter.defaultCenter addObserver:self
+                                                   selector:@selector(windowVisibilityDidChange:)
                                                        name:name
                                                      object:window];
         }
@@ -362,6 +406,52 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         [weakSelf syncPresentationLayoutToWindow];
     });
+}
+
+- (void)windowVisibilityDidChange:(NSNotification *)notification {
+    (void)notification;
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    NSWindow *window = self.window;
+    BOOL visible = window && !window.miniaturized &&
+        (window.occlusionState & NSWindowOcclusionStateVisible) != 0;
+    self.visibilitySuspended = !visible || NSApp.hidden;
+    [self refreshAnimationForEnvironment];
+}
+
+- (void)applicationVisibilityDidChange:(NSNotification *)notification {
+    (void)notification;
+    if (self.mode != MatrixCodeRainHostModeStandalone) return;
+    if (NSApp.hidden) {
+        self.visibilitySuspended = YES;
+    } else {
+        NSWindow *window = self.window;
+        self.visibilitySuspended = window.miniaturized ||
+            (window.occlusionState & NSWindowOcclusionStateVisible) == 0;
+    }
+    [self refreshAnimationForEnvironment];
+}
+
+- (void)accessibilityDisplayOptionsDidChange:(NSNotification *)notification {
+    (void)notification;
+    [self applyReducedMotionPreference:
+        NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion];
+}
+
+- (void)applyReducedMotionPreference:(BOOL)reducedMotion {
+    if (self.reducedMotion == reducedMotion) return;
+    if (reducedMotion) {
+        BOOL requiresWarmup = self.rainTimelineRequiresReducedMotionWarmup;
+        self.reducedMotionAbandonedRainChoreography = YES;
+        self.rainTimelineRequiresReducedMotionWarmup = NO;
+        self.introScheduled = NO;
+        self.deferredRainStartDate = nil;
+        self.rampDuration = 0;
+        [self.rampPreviewTimer invalidate];
+        self.rampPreviewTimer = nil;
+        if (requiresWarmup) [self.metalView prepareReducedMotionFrame];
+    }
+    self.reducedMotion = reducedMotion;
+    [self refreshAnimationForEnvironment];
 }
 
 - (void)setFrameSize:(NSSize)newSize {
@@ -489,6 +579,27 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     return screen;
 }
 
+- (void)showMetalFailureNotice {
+    if (self.metalFailureNotice) return;
+    NSTextField *notice = [NSTextField wrappingLabelWithString:
+        @"COMPATIBILITY MODE UNAVAILABLE\nMETAL COULD NOT BE INITIALIZED"];
+    notice.translatesAutoresizingMaskIntoConstraints = NO;
+    notice.identifier = @"metal-failure-notice";
+    notice.alignment = NSTextAlignmentCenter;
+    notice.maximumNumberOfLines = 2;
+    notice.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
+    notice.textColor = [MatrixCodeSettingsTheme.sharedTheme.dimColor colorWithAlphaComponent:0.9];
+    notice.accessibilityLabel = @"Matrix Code could not initialize Metal";
+    [self addSubview:notice];
+    [NSLayoutConstraint activateConstraints:@[
+        [notice.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+        [notice.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+        [notice.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.leadingAnchor constant:24],
+        [notice.trailingAnchor constraintLessThanOrEqualToAnchor:self.trailingAnchor constant:-24],
+    ]];
+    self.metalFailureNotice = notice;
+}
+
 - (void)ensureMetalView {
     if (self.metalView || !self.window) {
         return;
@@ -504,9 +615,10 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
         session = [MatrixCodeSession sessionForScreen:screen];
     } else if ([self isScreenSaverPreview]) {
         screen = NSScreen.mainScreen;
+        session = [MatrixCodeSession singleDisplaySession];
     } else {
         screen = self.window.screen ?: NSScreen.mainScreen;
-        session = self.standaloneSession;
+        session = self.standaloneSession ?: [MatrixCodeSession singleDisplaySession];
     }
 
     os_log_info(OS_LOG_DEFAULT,
@@ -517,23 +629,30 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
 
     NSDictionary<NSString *, NSString *> *storedValues = [self.preferences storedValues];
     self.runStartDate = [NSDate date];
+    self.rainStartDate = self.runStartDate;
     self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
                                                                   runStartDate:self.runStartDate];
-    NSDictionary *controls = [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]];
+    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
+        [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]]);
+    MatrixCodeSettingsTheme.sharedTheme.presetName =
+        [controls[@"preset"] isKindOfClass:NSString.class] ? controls[@"preset"] : @"classic";
     BOOL multiMonitorSession = [session[@"screens"] isKindOfClass:NSArray.class] &&
         [session[@"screens"] count] > 1;
-    self.rampDuration = multiMonitorSession ? 0 :
-        [controls[@"rampUpMs"] isKindOfClass:NSNumber.class]
-        ? MIN(60, MAX(0, [controls[@"rampUpMs"] doubleValue] / 1000.0))
-        : 8;
+    self.synchronizedMultiDisplayTimeline = multiMonitorSession;
+    self.rampDuration = multiMonitorSession ? 0 : [controls[@"rampUpMs"] doubleValue] / 1000.0;
     self.reducedMotion = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
+    self.reducedMotionAbandonedRainChoreography = self.reducedMotion;
+    if (self.reducedMotion) self.rampDuration = 0;
 
     self.metalView = [[MatrixCodeMetalView alloc] initWithFrame:self.bounds
                                                         session:session
                                                    storedValues:storedValues];
     if (!self.metalView) {
+        [self showMetalFailureNotice];
         return;
     }
+    [self.metalFailureNotice removeFromSuperview];
+    self.metalFailureNotice = nil;
     [self.metalView configureFramePacingForScreen:screen ?: self.window.screen];
     __weak typeof(self) weakSelf = self;
     self.metalView.frameHandler = ^(MatrixCodeMetalView *view,
@@ -544,24 +663,43 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     [self addSubview:self.metalView];
     [self ensureFPSOverlay];
     [self setFPSOverlayVisible:MatrixCodeRainHostStoredFPSOverlayVisible(storedValues) notify:NO];
-    if (!self.suppressesIntroOverlay) {
+    if (!self.suppressesIntroOverlay && !multiMonitorSession) {
         self.introOverlay = [[MatrixCodeIntroOverlayView alloc] initWithFrame:self.bounds
                                                                 storedValues:storedValues
                                                                tokenResolver:self.tokenResolver
                                                                   completion:^{
-            [weakSelf.preferences setImmediateValue:@"1" forKey:@"mx-intro-seen"];
+            if (weakSelf.introMarksSeenOnCompletion) {
+                weakSelf.introMarksSeenOnCompletion = NO;
+                [weakSelf.preferences setImmediateValue:@"1" forKey:@"mx-intro-seen"];
+            }
             if (weakSelf.introScheduled && !weakSelf.introOverlay.rainDuringIntro) {
                 weakSelf.deferredRainStartDate =
                     [NSDate dateWithTimeIntervalSinceNow:weakSelf.introOverlay.postIntroDelay];
             }
+            dispatch_block_t previewCompletion = weakSelf.introPreviewCompletion;
+            weakSelf.introPreviewCompletion = nil;
+            if (previewCompletion) previewCompletion();
         }];
+        self.introMarksSeenOnCompletion = self.introOverlay.hasIntro;
         [self addSubview:self.introOverlay positioned:NSWindowAbove relativeTo:self.metalView];
     }
-    self.introScheduled = self.introOverlay.hasIntro;
-    [self.metalView setAnimationActive:self.hostActive && !self.reducedMotion];
-    if (self.hostActive && !self.reducedMotion && self.introOverlay && !self.introOverlay.playing) {
+    self.introScheduled = self.introOverlay.hasIntro &&
+        !self.reducedMotionAbandonedRainChoreography;
+    self.rainTimelineRequiresReducedMotionWarmup = !multiMonitorSession &&
+        !self.reducedMotion &&
+        (self.rampDuration > 0 ||
+         (self.introScheduled && !self.introOverlay.rainDuringIntro));
+    if (self.hostActive) {
+        [self prepareRunTimelineForAnimationStartIfNeeded];
+        self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
+                                                                      runStartDate:self.runStartDate];
+        [self.introOverlay reloadStoredValues:storedValues tokenResolver:self.tokenResolver];
+    }
+    if (self.hostActive && self.introScheduled && !self.reducedMotion &&
+        self.introOverlay && !self.introOverlay.playing) {
         [self.introOverlay startAtDate:self.runStartDate];
     }
+    [self.metalView setAnimationActive:[self animationShouldRun]];
 }
 
 + (NSDictionary *)dictionaryFromJSONString:(NSString *)raw {
@@ -571,23 +709,85 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     return [object isKindOfClass:NSDictionary.class] ? object : @{};
 }
 
+- (void)beginRainTimelineFromEmptyAtDate:(NSDate *)date {
+    self.rainStartDate = date ?: NSDate.date;
+    self.deferredRainStartDate = nil;
+    self.rainTimelineRequiresReducedMotionWarmup = YES;
+    [self.metalView setDensityScale:0 rainElapsed:0];
+    [self.metalView draw];
+}
+
+- (void)scheduleRampPreviewWithDuration:(NSTimeInterval)duration {
+    [self.rampPreviewTimer invalidate];
+    self.rampPreviewTimer = nil;
+    if (self.mode != MatrixCodeRainHostModeStandalone ||
+        [self isStandaloneMultiMonitorPresentation] || duration <= 0) {
+        return;
+    }
+    __weak typeof(self) weakSelf = self;
+    self.rampPreviewTimer = [NSTimer timerWithTimeInterval:0.2
+                                                   repeats:NO
+                                                     block:^(NSTimer *timer) {
+        MatrixCodeRainHostView *strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.rampPreviewTimer != timer) return;
+        strongSelf.rampPreviewTimer = nil;
+        if (![strongSelf animationShouldRun] || strongSelf.reducedMotion ||
+            [strongSelf isStandaloneMultiMonitorPresentation] ||
+            fabs(strongSelf.rampDuration - duration) > 0.0001 ||
+            !strongSelf.metalView || strongSelf.metalView.isPaused) {
+            return;
+        }
+        [strongSelf beginRainTimelineFromEmptyAtDate:NSDate.date];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.rampPreviewTimer forMode:NSRunLoopCommonModes];
+}
+
 - (void)previewValuesDidChange:(NSNotification *)notification {
     NSDictionary<NSString *, NSString *> *values =
         [notification.userInfo[MatrixCodePreviewValuesKey] isKindOfClass:NSDictionary.class]
         ? notification.userInfo[MatrixCodePreviewValuesKey] : nil;
     if (!values) return;
     [self.metalView reloadStoredValues:values];
-    NSDictionary *controls = [self.class dictionaryFromJSONString:values[@"mx-controls"]];
+    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
+        [self.class dictionaryFromJSONString:values[@"mx-controls"]]);
+    MatrixCodeSettingsTheme.sharedTheme.presetName =
+        [controls[@"preset"] isKindOfClass:NSString.class] ? controls[@"preset"] : @"classic";
+    self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:values
+                                                                  runStartDate:self.runStartDate ?: NSDate.date];
+    [self.introOverlay reloadStoredValues:values tokenResolver:self.tokenResolver];
+    self.metalFailureNotice.textColor =
+        [MatrixCodeSettingsTheme.sharedTheme.dimColor colorWithAlphaComponent:0.9];
     if (![self isScreenSaverPlayback]) {
-        self.rampDuration = [controls[@"rampUpMs"] isKindOfClass:NSNumber.class]
-            ? MIN(60, MAX(0, [controls[@"rampUpMs"] doubleValue] / 1000.0))
-            : 8;
+        NSTimeInterval previousRampDuration = self.rampDuration;
+        NSTimeInterval nextRampDuration = self.reducedMotion ||
+            [self isStandaloneMultiMonitorPresentation]
+            ? 0
+            : [controls[@"rampUpMs"] doubleValue] / 1000.0;
+        self.rampDuration = nextRampDuration;
+        if (fabs(previousRampDuration - nextRampDuration) > 0.0001) {
+            [self scheduleRampPreviewWithDuration:nextRampDuration];
+        }
     }
     if (self.metalView.isPaused) [self.metalView draw];
 }
 
 - (BOOL)animationShouldRun {
-    return self.hostActive && !self.reducedMotion && !self.userPaused;
+    return self.hostActive && !self.reducedMotion && !self.userPaused && !self.visibilitySuspended;
+}
+
+- (void)refreshAnimationForEnvironment {
+    BOOL shouldRun = [self animationShouldRun];
+    [self.metalView setAnimationActive:shouldRun];
+    if (shouldRun) {
+        [self startInternalAnimationTimerIfNeeded];
+        return;
+    }
+    [self stopInternalAnimationTimer];
+    if (self.hostActive && self.reducedMotion && !self.visibilitySuspended && self.metalView) {
+        [self advanceAnimationAtDate:self.runStartDate ?: NSDate.date
+                    framesPerSecond:0];
+        [self.metalView draw];
+    }
 }
 
 - (double)animationFramesPerSecond {
@@ -597,13 +797,13 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
 
 - (void)ensureFPSOverlay {
     if (self.fpsOverlay) return;
-    NSTextField *overlay = [NSTextField labelWithString:@"0 FPS"];
+    NSTextField *overlay = [NSTextField labelWithString:@"0 fps · 100% res · 0×0"];
     overlay.translatesAutoresizingMaskIntoConstraints = NO;
     overlay.identifier = @"fps-overlay";
     overlay.hidden = YES;
     overlay.drawsBackground = YES;
     overlay.backgroundColor = [NSColor colorWithWhite:0 alpha:0.58];
-    overlay.textColor = [NSColor colorWithSRGBRed:0 green:1 blue:0.25 alpha:0.92];
+    overlay.textColor = [MatrixCodeSettingsTheme.sharedTheme.accentColor colorWithAlphaComponent:0.92];
     overlay.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium];
     overlay.alignment = NSTextAlignmentLeft;
     overlay.bordered = NO;
@@ -636,10 +836,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     if (self.fpsOverlayVisible == visible && self.fpsOverlay.hidden == !visible) return;
     self.fpsOverlayVisible = visible;
     self.fpsOverlay.hidden = !self.fpsOverlayVisible;
-    self.fpsLastFrameTime = 0;
-    self.fpsLastDisplayUpdate = 0;
-    self.fpsEma = 0;
-    if (self.fpsOverlayVisible) self.fpsOverlay.stringValue = @"0 FPS";
+    if (self.fpsOverlayVisible) [self updateFPSOverlayWithFramesPerSecond:0];
     if (notify) [self persistFPSOverlayVisible:visible];
     if (notify) {
         [NSNotificationCenter.defaultCenter
@@ -690,8 +887,10 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
 }
 
 - (void)applyShortcutToastStyle {
-    if (!self.shortcutToast || !self.shortcutToastLabel) return;
     MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
+    self.fpsOverlay.textColor = [theme.accentColor colorWithAlphaComponent:0.92];
+    self.metalFailureNotice.textColor = [theme.dimColor colorWithAlphaComponent:0.9];
+    if (!self.shortcutToast || !self.shortcutToastLabel) return;
     self.shortcutToast.layer.cornerRadius = 6.0;
     self.shortcutToast.layer.borderWidth = 1.0;
     self.shortcutToast.layer.borderColor = theme.borderColor.CGColor;
@@ -745,17 +944,24 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     }];
 }
 
-- (void)updateFPSOverlayAtDate:(NSDate *)date {
+- (void)updateFPSOverlayWithFramesPerSecond:(double)framesPerSecond {
     if (!self.fpsOverlayVisible) return;
-    NSTimeInterval now = date.timeIntervalSince1970;
-    if (self.fpsLastFrameTime > 0 && now > self.fpsLastFrameTime) {
-        double instant = 1.0 / (now - self.fpsLastFrameTime);
-        self.fpsEma = self.fpsEma <= 0 ? instant : self.fpsEma + 0.18 * (instant - self.fpsEma);
-    }
-    self.fpsLastFrameTime = now;
-    if (self.fpsLastDisplayUpdate > 0 && now - self.fpsLastDisplayUpdate < 0.25) return;
-    self.fpsLastDisplayUpdate = now;
-    self.fpsOverlay.stringValue = [NSString stringWithFormat:@"%.0f FPS", fmax(0, self.fpsEma)];
+    double finiteFramesPerSecond = isfinite(framesPerSecond) ? fmax(0, framesPerSecond) : 0;
+    double renderScale = self.metalView.currentRenderScale;
+    if (!isfinite(renderScale) || renderScale <= 0) renderScale = 1;
+    CGSize renderSize = self.metalView.currentRenderSize;
+    double width = isfinite(renderSize.width) ? fmax(0, renderSize.width) : 0;
+    double height = isfinite(renderSize.height) ? fmax(0, renderSize.height) : 0;
+    NSInteger roundedFramesPerSecond = (NSInteger)floor(finiteFramesPerSecond + 0.5);
+    NSInteger roundedRenderPercent = (NSInteger)floor(renderScale * 100 + 0.5);
+    NSInteger roundedWidth = (NSInteger)floor(width + 0.5);
+    NSInteger roundedHeight = (NSInteger)floor(height + 0.5);
+    self.fpsOverlay.stringValue = [NSString stringWithFormat:
+        @"%ld fps · %ld%% res · %ld×%ld",
+        (long)roundedFramesPerSecond,
+        (long)roundedRenderPercent,
+        (long)roundedWidth,
+        (long)roundedHeight];
 }
 
 - (void)startInternalAnimationTimerIfNeeded {
@@ -774,20 +980,40 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     self.animationTimer = nil;
 }
 
+- (void)prepareRunTimelineForAnimationStartIfNeeded {
+    if (self.synchronizedMultiDisplayTimeline || self.runTimelineStarted) return;
+    NSDate *startDate = NSDate.date;
+    self.runStartDate = startDate;
+    self.rainStartDate = startDate;
+    self.deferredRainStartDate = nil;
+    self.runTimelineStarted = YES;
+    [self.metalView setTokenTimelineStartDate:startDate];
+}
+
 - (void)startAnimation {
     self.hostActive = YES;
     [self observeCurrentWindowGeometry];
     [self syncPresentationLayoutToWindow];
     [self ensureMetalView];
-    [self.metalView reloadStoredValues:[self.preferences storedValues]];
-    [self.metalView setAnimationActive:[self animationShouldRun]];
-    self.introScheduled = self.introOverlay.hasIntro;
-    if ([self animationShouldRun] && self.introOverlay) {
+    NSDictionary<NSString *, NSString *> *storedValues = [self.preferences storedValues];
+    [self.metalView reloadStoredValues:storedValues];
+    if (self.metalView) [self prepareRunTimelineForAnimationStartIfNeeded];
+    self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
+                                                                  runStartDate:self.runStartDate ?: NSDate.date];
+    [self.introOverlay reloadStoredValues:storedValues tokenResolver:self.tokenResolver];
+    self.introScheduled = self.introOverlay.hasIntro &&
+        !self.reducedMotionAbandonedRainChoreography;
+    if (self.introScheduled && !self.introOverlay.rainDuringIntro) {
+        self.rainTimelineRequiresReducedMotionWarmup = YES;
+    }
+    if (self.introScheduled && !self.reducedMotion &&
+        self.introOverlay && !self.introOverlay.playing) {
         [self.introOverlay startAtDate:self.runStartDate];
-    } else {
+    }
+    if (![self animationShouldRun]) {
         [self animateOneFrame];
     }
-    [self startInternalAnimationTimerIfNeeded];
+    [self refreshAnimationForEnvironment];
 }
 
 - (void)stopAnimation {
@@ -796,24 +1022,28 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     self.pauseStartedDate = nil;
     [self.metalView setAnimationActive:NO];
     [self stopInternalAnimationTimer];
+    [self.rampPreviewTimer invalidate];
+    self.rampPreviewTimer = nil;
 }
 
 - (void)advanceAnimationAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond {
     if (!self.metalView || !self.runStartDate) return;
-    NSDate *now = self.reducedMotion ? self.runStartDate : (date ?: NSDate.date);
-    [self updateFPSOverlayAtDate:now];
-    [self.introOverlay updateAtDate:now framesPerSecond:framesPerSecond];
-    NSTimeInterval elapsed = [now timeIntervalSinceDate:self.runStartDate];
+    NSDate *now = self.reducedMotion ? (self.rainStartDate ?: self.runStartDate) : (date ?: NSDate.date);
+    [self updateFPSOverlayWithFramesPerSecond:framesPerSecond];
+    if (!self.reducedMotion) {
+        [self.introOverlay updateAtDate:now framesPerSecond:framesPerSecond];
+    }
+    NSTimeInterval elapsed = [now timeIntervalSinceDate:self.rainStartDate ?: self.runStartDate];
     if (!self.reducedMotion && self.introScheduled && !self.introOverlay.rainDuringIntro) {
         elapsed = self.deferredRainStartDate
             ? [now timeIntervalSinceDate:self.deferredRainStartDate]
             : -DBL_MAX;
     }
-    float linearDensityScale = elapsed < 0 ? 0 :
-        (self.reducedMotion || self.rampDuration <= 0
+    double linearDensityScale = self.reducedMotion ? 1 :
+        (elapsed < 0 ? 0 : (self.rampDuration <= 0
             ? 1
-            : fmin(1, elapsed / self.rampDuration));
-    float densityScale = MatrixCodeRainRampEase(linearDensityScale);
+            : fmin(1, elapsed / self.rampDuration)));
+    double densityScale = MatrixCodeRainRampEase(linearDensityScale);
     [self.metalView setDensityScale:densityScale rainElapsed:elapsed];
 }
 
@@ -821,7 +1051,8 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     if (self.userPaused) return;
     if (!self.metalView || !self.runStartDate) return;
     if (!self.metalView.isPaused) return;
-    [self advanceAnimationAtDate:NSDate.date framesPerSecond:[self animationFramesPerSecond]];
+    [self advanceAnimationAtDate:NSDate.date
+                framesPerSecond:self.reducedMotion ? 0 : [self animationFramesPerSecond]];
     [self.metalView draw];
 }
 
@@ -841,7 +1072,10 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     NSTimeInterval pausedDuration = [resumeDate timeIntervalSinceDate:self.pauseStartedDate];
     if (isfinite(pausedDuration) && pausedDuration > 0) {
         self.runStartDate = [self.runStartDate dateByAddingTimeInterval:pausedDuration];
+        self.rainStartDate = [self.rainStartDate dateByAddingTimeInterval:pausedDuration];
         self.deferredRainStartDate = [self.deferredRainStartDate dateByAddingTimeInterval:pausedDuration];
+        [self.tokenResolver shiftRunStartBy:pausedDuration];
+        [self.metalView shiftTokenTimelineBy:pausedDuration];
         [self.introOverlay shiftTimelineBy:pausedDuration];
     }
     self.pauseStartedDate = nil;
@@ -1081,12 +1315,105 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
         return;
     }
     NSMutableDictionary<NSString *, NSString *> *values = [self storedValuesForShortcutMutation];
-    NSDictionary *stored = MatrixCodeRainHostJSONObject(values[@"mx-controls"], NSDictionary.class);
-    NSMutableDictionary *controls = stored ? [stored mutableCopy] : [NSMutableDictionary dictionary];
-    double current = MatrixCodeRainHostNumber(controls, @"density", 2.0, 0.1, 100.0);
-    controls[@"density"] = @(fmin(100.0, fmax(0.1, current * factor)));
+    NSMutableDictionary *controls = [MatrixCodeSanitizeControlsDocument(
+        MatrixCodeRainHostJSONObject(values[@"mx-controls"], NSDictionary.class)) mutableCopy];
+    double current = [controls[@"density"] doubleValue];
+    controls[@"density"] = @(MatrixCodeNudgedDensity(current, factor));
     values[@"mx-controls"] = MatrixCodeRainHostJSONString(controls);
     [self commitShortcutValues:values];
+}
+
+- (BOOL)playIntroWithStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues
+                       completion:(nullable dispatch_block_t)completion {
+    if (self.mode != MatrixCodeRainHostModeStandalone ||
+        [self isStandaloneMultiMonitorPresentation] || self.reducedMotion ||
+        !self.introOverlay || !self.metalView) {
+        if (completion) completion();
+        return NO;
+    }
+    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
+        [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]]);
+    NSDate *startDate = NSDate.date;
+    [self.metalView reloadStoredValues:storedValues];
+    self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
+                                                                  runStartDate:self.runStartDate ?: startDate];
+    [self.introOverlay reloadStoredValues:storedValues tokenResolver:self.tokenResolver];
+    self.introPreviewCompletion = [completion copy];
+    self.reducedMotionAbandonedRainChoreography = NO;
+    self.introScheduled = YES;
+    self.rampDuration = [controls[@"rampUpMs"] doubleValue] / 1000.0;
+    self.deferredRainStartDate = nil;
+    [self.introOverlay replayAtDate:startDate];
+
+    if (!self.introOverlay.rainDuringIntro || self.rampDuration > 0) {
+        [self beginRainTimelineFromEmptyAtDate:startDate];
+        return YES;
+    }
+    self.rainTimelineRequiresReducedMotionWarmup = NO;
+    [self advanceAnimationAtDate:startDate framesPerSecond:[self animationFramesPerSecond]];
+    [self.metalView draw];
+    return YES;
+}
+
+- (void)replayIntro {
+    [self playIntroWithStoredValues:[self.preferences storedValues] completion:nil];
+}
+
+- (void)previewIntroWithStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues
+                         completion:(dispatch_block_t)completion {
+    [self playIntroWithStoredValues:storedValues ?: @{} completion:completion];
+}
+
+- (void)previewMessageWithStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues {
+    if (self.mode != MatrixCodeRainHostModeStandalone ||
+        [self isStandaloneMultiMonitorPresentation] || self.reducedMotion ||
+        !self.metalView) {
+        return;
+    }
+    [self.metalView previewMessageWithStoredValues:storedValues ?: @{} atDate:NSDate.date];
+    if (self.metalView.isPaused) [self.metalView draw];
+}
+
+- (void)restartRainAfterControlsReset {
+    if (self.mode != MatrixCodeRainHostModeStandalone ||
+        [self isStandaloneMultiMonitorPresentation] || !self.metalView) {
+        return;
+    }
+    [self.rampPreviewTimer invalidate];
+    self.rampPreviewTimer = nil;
+    [self.introOverlay cancel];
+    NSDictionary<NSString *, NSString *> *storedValues = [self.preferences storedValues];
+    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
+        [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]]);
+    NSDate *startDate = NSDate.date;
+    self.runStartDate = startDate;
+    self.rainStartDate = startDate;
+    self.deferredRainStartDate = nil;
+    self.runTimelineStarted = YES;
+    self.userPaused = NO;
+    self.pauseStartedDate = nil;
+    self.rampDuration = self.reducedMotion ? 0 : [controls[@"rampUpMs"] doubleValue] / 1000.0;
+    [self.metalView setTokenTimelineStartDate:startDate];
+    [self.metalView reloadStoredValues:storedValues];
+    [self.metalView restartDeterministicRainFromEmpty:
+        self.rampDuration > 0 && !self.reducedMotion];
+    self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
+                                                                  runStartDate:startDate];
+    [self.introOverlay reloadStoredValues:storedValues tokenResolver:self.tokenResolver];
+
+    BOOL shouldReplayIntro = !self.reducedMotion && self.introOverlay &&
+        ![storedValues[@"mx-intro-seen"] isEqualToString:@"1"];
+    self.introMarksSeenOnCompletion = shouldReplayIntro;
+    self.reducedMotionAbandonedRainChoreography = self.reducedMotion;
+    self.introScheduled = shouldReplayIntro;
+    if (shouldReplayIntro) [self.introOverlay replayAtDate:startDate];
+    self.rainTimelineRequiresReducedMotionWarmup = !self.reducedMotion &&
+        (self.rampDuration > 0 ||
+         (self.introScheduled && !self.introOverlay.rainDuringIntro));
+
+    [self advanceAnimationAtDate:startDate framesPerSecond:[self animationFramesPerSecond]];
+    [self refreshAnimationForEnvironment];
+    if (self.metalView.isPaused) [self.metalView draw];
 }
 
 - (NSWindow *)configureWindow {
@@ -1115,7 +1442,26 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
             MatrixCodeRainHostView *strongSelf = weakSelf;
             strongSelf.configurationController = nil;
             [strongSelf.window makeFirstResponder:strongSelf];
-        }];
+        }
+                                                        replayIntroHandler:^{
+            [weakSelf replayIntro];
+        }
+                                                       introPreviewHandler:^(
+            NSDictionary<NSString *, NSString *> *storedValues,
+            dispatch_block_t completion
+        ) {
+            [weakSelf previewIntroWithStoredValues:storedValues completion:completion];
+        }
+                                                     messagePreviewHandler:^(
+            NSDictionary<NSString *, NSString *> *storedValues
+        ) {
+            [weakSelf previewMessageWithStoredValues:storedValues];
+        }
+                                                         resetRainHandler:^{
+            [weakSelf restartRainAfterControlsReset];
+        }
+                                        restrictedToMultiMonitorControls:
+            [self isStandaloneMultiMonitorPresentation]];
     } else {
         [self.configurationController showSettingsPanel];
     }
@@ -1236,7 +1582,9 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
 
 - (void)mouseDown:(NSEvent *)event {
     [self revealPresentationChromeForPointerActivity];
-    if (self.configurationController && self.mode == MatrixCodeRainHostModeStandalone) {
+    if (self.introPreviewCompletion && self.introOverlay.playing) {
+        [self.introOverlay skip];
+    } else if (self.configurationController && self.mode == MatrixCodeRainHostModeStandalone) {
         [self.configurationController showSettingsPanel];
     } else if (self.introOverlay.playing) {
         [self.introOverlay skip];
@@ -1278,39 +1626,50 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
         return;
     }
     if (!event.isARepeat && commandOnly && [characters isEqualToString:@","] &&
-        self.mode == MatrixCodeRainHostModeStandalone) {
+        self.mode == MatrixCodeRainHostModeStandalone && !multiMonitorPresentation) {
         [self showSettingsOverlay];
     } else if (!event.isARepeat && optionOnly && [characters isEqualToString:@"f"]) {
         [self toggleFPSOverlay];
-    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"f"]) {
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"f"] &&
+               !multiMonitorPresentation) {
         [self toggleStandaloneFullscreen:event];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"h"]) {
         [self toggleSettingsOverlay];
-    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"i"]) {
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"i"] &&
+               !multiMonitorPresentation) {
         [self openSettingsEditorKind:@"intro"];
-    } else if (!event.isARepeat && shiftOnly && [characters isEqualToString:@"m"]) {
+    } else if (!event.isARepeat && shiftOnly && [characters isEqualToString:@"m"] &&
+               !multiMonitorPresentation) {
         BOOL enabled = [self toggleMessagesShortcut];
         [self showShortcutToastForLabel:@"Messages" enabled:enabled];
-    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"m"]) {
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"m"] &&
+               !multiMonitorPresentation) {
         [self openSettingsEditorKind:@"messages"];
-    } else if (!event.isARepeat && shiftOnly && [characters isEqualToString:@"x"]) {
+    } else if (!event.isARepeat && shiftOnly && [characters isEqualToString:@"x"] &&
+               !multiMonitorPresentation) {
         BOOL enabled = [self toggleImagesShortcut];
         [self showShortcutToastForLabel:@"Images" enabled:enabled];
-    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"x"]) {
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"x"] &&
+               !multiMonitorPresentation) {
         [self openSettingsEditorKind:@"images"];
-    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"c"]) {
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"c"] &&
+               !multiMonitorPresentation) {
         [self openSettingsEditorKind:@"countdown"];
-    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"n"]) {
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"n"] &&
+               !multiMonitorPresentation) {
         BOOL enabled = [self toggleMessagesShortcut];
         [self showShortcutToastForLabel:@"Messages" enabled:enabled];
-    } else if (!event.isARepeat && bareWebShortcut &&
+    } else if (bareWebShortcut &&
                ([characters isEqualToString:@"-"] || [typedCharacters isEqualToString:@"_"])) {
         [self nudgeDensityByFactor:1.0 / MatrixCodeDensityKeyStep];
-    } else if (!event.isARepeat && bareWebShortcut &&
+    } else if (bareWebShortcut &&
                ([characters isEqualToString:@"="] || [typedCharacters isEqualToString:@"+"])) {
         [self nudgeDensityByFactor:MatrixCodeDensityKeyStep];
-    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"p"]) {
+    } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"p"] &&
+               !multiMonitorPresentation) {
         [self toggleUserPaused];
+    } else if (self.introPreviewCompletion && self.introOverlay.playing && event.keyCode == 53) {
+        [self.introOverlay skip];
     } else if (self.configurationController && event.keyCode == 53) {
         [self.configurationController cancelOperation:self];
     } else if (event.keyCode == 53 && [self exitStandalonePresentationIfNeeded]) {
