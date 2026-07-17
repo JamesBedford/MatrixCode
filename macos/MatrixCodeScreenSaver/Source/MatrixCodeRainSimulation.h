@@ -64,6 +64,7 @@ FOUNDATION_EXPORT double MatrixCodeRainEffectiveTrailLengthForControls(
     double _messageIntensity;
     double _messageScramble;
     NSString *_glyphMode;
+    NSInteger _glyphModeKind;
 }
 
 - (instancetype)initWithColumns:(NSInteger)columns

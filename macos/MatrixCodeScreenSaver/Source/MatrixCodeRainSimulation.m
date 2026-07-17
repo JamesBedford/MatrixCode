@@ -101,6 +101,27 @@ static BOOL MatrixCodeRainValidGlyphMode(NSString *mode) {
     return [mode isKindOfClass:NSString.class] && [modes containsObject:mode];
 }
 
+// randomGlyphIndex runs on every head light and glyph mutation, so the mode is
+// resolved to this enum once in setGlyphMode: instead of comparing strings per
+// call.
+typedef NS_ENUM(NSInteger, MatrixCodeRainGlyphModeKind) {
+    MatrixCodeRainGlyphModeKindMatrix = 0,
+    MatrixCodeRainGlyphModeKindKatakana,
+    MatrixCodeRainGlyphModeKindBinary,
+    MatrixCodeRainGlyphModeKindDigits,
+    MatrixCodeRainGlyphModeKindLatin,
+    MatrixCodeRainGlyphModeKindSymbols,
+};
+
+static NSInteger MatrixCodeRainGlyphModeKindForMode(NSString *mode) {
+    if ([mode isEqualToString:@"katakana"]) return MatrixCodeRainGlyphModeKindKatakana;
+    if ([mode isEqualToString:@"binary"]) return MatrixCodeRainGlyphModeKindBinary;
+    if ([mode isEqualToString:@"digits"]) return MatrixCodeRainGlyphModeKindDigits;
+    if ([mode isEqualToString:@"latin"]) return MatrixCodeRainGlyphModeKindLatin;
+    if ([mode isEqualToString:@"symbols"]) return MatrixCodeRainGlyphModeKindSymbols;
+    return MatrixCodeRainGlyphModeKindMatrix;
+}
+
 static double MatrixCodeRainControlNumber(NSDictionary<NSString *, id> *controls,
                                           NSString *key,
                                           double fallback) {
@@ -270,6 +291,7 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
     _spawnRateScale = 1;
     _messageIntensity = 1;
     _glyphMode = MatrixCodeRainValidGlyphMode(glyphMode) ? [glyphMode copy] : @"matrix";
+    _glyphModeKind = MatrixCodeRainGlyphModeKindForMode(_glyphMode);
     _storage = MatrixCodeRainCreateStorage(columns, rows, seed);
     _stateData = [NSMutableData dataWithLength:(NSUInteger)columns * (NSUInteger)rows * 4];
     [self seedColumnsFrom:0 to:columns storage:(MatrixCodeRainSimulationStorage *)_storage];
@@ -290,6 +312,7 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
 
 - (void)setGlyphMode:(NSString *)glyphMode {
     _glyphMode = MatrixCodeRainValidGlyphMode(glyphMode) ? [glyphMode copy] : @"matrix";
+    _glyphModeKind = MatrixCodeRainGlyphModeKindForMode(_glyphMode);
 }
 
 - (BOOL)hasMessageTargets {
@@ -307,25 +330,24 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
 }
 
 - (uint8_t)randomGlyphIndex {
-    if ([_glyphMode isEqualToString:@"binary"]) {
-        return (uint8_t)(MatrixCodeRainDigitStart +
-            floor(MatrixCodeRainNextRandom(&_rngState) * 2));
-    }
-    if ([_glyphMode isEqualToString:@"katakana"]) {
-        return (uint8_t)floor(MatrixCodeRainNextRandom(&_rngState) *
-                              MatrixCodeRainKatakanaCount);
-    }
-    if ([_glyphMode isEqualToString:@"digits"]) {
-        return (uint8_t)(MatrixCodeRainDigitStart +
-            floor(MatrixCodeRainNextRandom(&_rngState) * MatrixCodeRainDigitCount));
-    }
-    if ([_glyphMode isEqualToString:@"latin"]) {
-        return (uint8_t)(MatrixCodeRainLatinStart +
-            floor(MatrixCodeRainNextRandom(&_rngState) * MatrixCodeRainLatinCount));
-    }
-    if ([_glyphMode isEqualToString:@"symbols"]) {
-        return (uint8_t)(MatrixCodeRainSymbolsStart +
-            floor(MatrixCodeRainNextRandom(&_rngState) * MatrixCodeRainSymbolsCount));
+    switch (_glyphModeKind) {
+        case MatrixCodeRainGlyphModeKindBinary:
+            return (uint8_t)(MatrixCodeRainDigitStart +
+                floor(MatrixCodeRainNextRandom(&_rngState) * 2));
+        case MatrixCodeRainGlyphModeKindKatakana:
+            return (uint8_t)floor(MatrixCodeRainNextRandom(&_rngState) *
+                                  MatrixCodeRainKatakanaCount);
+        case MatrixCodeRainGlyphModeKindDigits:
+            return (uint8_t)(MatrixCodeRainDigitStart +
+                floor(MatrixCodeRainNextRandom(&_rngState) * MatrixCodeRainDigitCount));
+        case MatrixCodeRainGlyphModeKindLatin:
+            return (uint8_t)(MatrixCodeRainLatinStart +
+                floor(MatrixCodeRainNextRandom(&_rngState) * MatrixCodeRainLatinCount));
+        case MatrixCodeRainGlyphModeKindSymbols:
+            return (uint8_t)(MatrixCodeRainSymbolsStart +
+                floor(MatrixCodeRainNextRandom(&_rngState) * MatrixCodeRainSymbolsCount));
+        default:
+            break;
     }
 
     static const double weights[] = {0.8, 0.11, 0.05, 0.04};
@@ -498,7 +520,9 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
                    controls:(NSDictionary<NSString *,id> *)controls {
     NSString *requestedGlyphMode = [controls[@"glyphMode"] isKindOfClass:NSString.class]
         ? controls[@"glyphMode"] : nil;
-    if (requestedGlyphMode) self.glyphMode = requestedGlyphMode;
+    if (requestedGlyphMode && ![requestedGlyphMode isEqualToString:_glyphMode]) {
+        self.glyphMode = requestedGlyphMode;
+    }
 
     double dt = MatrixCodeRainClamp(deltaTime, 0, 1.0 / 15.0);
     _simulationTime += dt;
