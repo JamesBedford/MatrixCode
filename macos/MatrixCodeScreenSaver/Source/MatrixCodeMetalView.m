@@ -15,11 +15,11 @@
 #import "MatrixCodeRainSimulation.h"
 #import "MatrixCodeTokenResolver.h"
 
+// Per-cell data only; the cell size and atlas cell extent are identical for
+// every instance in a frame, so they live in MatrixCodeUniforms.
 typedef struct {
     vector_float2 origin;
-    vector_float2 size;
     vector_float2 atlasOrigin;
-    vector_float2 atlasSize;
     vector_float2 oldAtlasOrigin;
     float crossfade;
     float brightness;
@@ -42,6 +42,8 @@ typedef struct {
     float scanlines;
     float leadBrightness;
     vector_float3 backgroundColor;
+    vector_float2 cellSize;
+    vector_float2 atlasCellSize;
 } MatrixCodeUniforms;
 
 // MatrixCodeShaders.msl declares these structs a second time and is compiled
@@ -49,19 +51,17 @@ typedef struct {
 // silently reinterpret every subsequent field rather than fail to build. Sizes
 // alone do not pin the layout — trailing scalars land in padding that a float3's
 // 16-byte alignment already reserves — so each offset is asserted individually.
-_Static_assert(sizeof(MatrixCodeGlyphInstance) == 56,
+_Static_assert(sizeof(MatrixCodeGlyphInstance) == 40,
                "MatrixCodeGlyphInstance must match MatrixCodeShaders.msl");
 _Static_assert(offsetof(MatrixCodeGlyphInstance, origin) == 0, "layout drift");
-_Static_assert(offsetof(MatrixCodeGlyphInstance, size) == 8, "layout drift");
-_Static_assert(offsetof(MatrixCodeGlyphInstance, atlasOrigin) == 16, "layout drift");
-_Static_assert(offsetof(MatrixCodeGlyphInstance, atlasSize) == 24, "layout drift");
-_Static_assert(offsetof(MatrixCodeGlyphInstance, oldAtlasOrigin) == 32, "layout drift");
-_Static_assert(offsetof(MatrixCodeGlyphInstance, crossfade) == 40, "layout drift");
-_Static_assert(offsetof(MatrixCodeGlyphInstance, brightness) == 44, "layout drift");
-_Static_assert(offsetof(MatrixCodeGlyphInstance, isHead) == 48, "layout drift");
-_Static_assert(offsetof(MatrixCodeGlyphInstance, whiteHead) == 52, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, atlasOrigin) == 8, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, oldAtlasOrigin) == 16, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, crossfade) == 24, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, brightness) == 28, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, isHead) == 32, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, whiteHead) == 36, "layout drift");
 
-_Static_assert(sizeof(MatrixCodeUniforms) == 176,
+_Static_assert(sizeof(MatrixCodeUniforms) == 192,
                "MatrixCodeUniforms must match MatrixCodeShaders.msl");
 _Static_assert(offsetof(MatrixCodeUniforms, viewport) == 0, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, tailColor) == 16, "layout drift");
@@ -73,6 +73,8 @@ _Static_assert(offsetof(MatrixCodeUniforms, vignette) == 136, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, scanlines) == 140, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, leadBrightness) == 144, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, backgroundColor) == 160, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, cellSize) == 176, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, atlasCellSize) == 184, "layout drift");
 
 typedef struct {
     vector_float2 direction;
@@ -2432,12 +2434,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                         localOriginXPixels + (column + lane.offset) * cellWidthPixels,
                         localOriginYPixels + row * cellHeightPixels,
                     },
-                    .size = {cellWidthPixels, cellHeightPixels},
                     .atlasOrigin = {
                         (float)atlasColumn / atlasColumns,
                         (float)(atlasRows - atlasRow) / atlasRows,
                     },
-                    .atlasSize = {1.0f / atlasColumns, -1.0f / atlasRows},
                     .oldAtlasOrigin = {
                         (float)oldAtlasColumn / atlasColumns,
                         (float)(atlasRows - oldAtlasRow) / atlasRows,
@@ -2455,7 +2455,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                     column == columns - 1) {
                     instance.origin.x = localOriginXPixels +
                         (-1 + lane.offset) * cellWidthPixels;
-                    if (instance.origin.x + instance.size.x > 0) {
+                    if (instance.origin.x + cellWidthPixels > 0) {
                         instances[count++] = instance;
                     }
                 }
@@ -2465,6 +2465,8 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.instanceCount = count;
     MatrixCodeUniforms uniforms = self.uniforms;
     uniforms.viewport = (vector_float2){drawableSize.width, drawableSize.height};
+    uniforms.cellSize = (vector_float2){cellWidthPixels, cellHeightPixels};
+    uniforms.atlasCellSize = (vector_float2){1.0f / atlasColumns, -1.0f / atlasRows};
     self.uniforms = uniforms;
 }
 

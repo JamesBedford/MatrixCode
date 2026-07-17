@@ -1,11 +1,11 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// Per-cell data only; the cell size and atlas cell extent are identical for
+// every instance in a frame, so they live in MatrixCodeUniforms.
 struct MatrixCodeGlyphInstance {
     float2 origin;
-    float2 size;
     float2 atlasOrigin;
-    float2 atlasSize;
     float2 oldAtlasOrigin;
     float crossfade;
     float brightness;
@@ -28,6 +28,8 @@ struct MatrixCodeUniforms {
     float scanlines;
     float leadBrightness;
     float3 backgroundColor;
+    float2 cellSize;
+    float2 atlasCellSize;
 };
 
 struct MatrixCodeBlurUniforms {
@@ -61,7 +63,7 @@ vertex MatrixCodeVertexOut matrixVertex(
     };
     MatrixCodeGlyphInstance instance = instances[instanceID];
     float2 corner = corners[vertexID];
-    float2 pixelPosition = instance.origin + corner * instance.size;
+    float2 pixelPosition = instance.origin + corner * uniforms.cellSize;
     MatrixCodeVertexOut out;
     out.position = float4(
         pixelPosition.x / uniforms.viewport.x * 2.0 - 1.0,
@@ -69,8 +71,8 @@ vertex MatrixCodeVertexOut matrixVertex(
         0,
         1
     );
-    out.uv = instance.atlasOrigin + corner * instance.atlasSize;
-    out.oldUV = instance.oldAtlasOrigin + corner * instance.atlasSize;
+    out.uv = instance.atlasOrigin + corner * uniforms.atlasCellSize;
+    out.oldUV = instance.oldAtlasOrigin + corner * uniforms.atlasCellSize;
     out.crossfade = instance.crossfade;
     out.brightness = instance.brightness;
     out.isHead = instance.isHead;
