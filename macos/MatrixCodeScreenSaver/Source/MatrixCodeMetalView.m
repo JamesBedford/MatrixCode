@@ -411,13 +411,21 @@ static NSInteger MatrixCodeImageGlyphForLuminance(float luminance,
 
 static NSString *MatrixCodeGlyphMode(NSDictionary *dictionary) {
     id value = dictionary[@"glyphMode"];
-    NSArray<NSString *> *modes = @[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"];
+    static NSArray<NSString *> *modes;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        modes = @[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"];
+    });
     return [value isKindOfClass:NSString.class] && [modes containsObject:value] ? value : @"matrix";
 }
 
 static NSString *MatrixCodeGlyphFont(NSDictionary *dictionary) {
     id value = dictionary[@"glyphFont"];
-    NSArray<NSString *> *fonts = @[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"];
+    static NSArray<NSString *> *fonts;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        fonts = @[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"];
+    });
     return [value isKindOfClass:NSString.class] && [fonts containsObject:value] ? value : @"matrix";
 }
 
@@ -2216,16 +2224,18 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             NSInteger steps = MatrixCodeSimulationStepPlan(frameElapsed, &stepDelta);
             NSDictionary<NSString *, id> *baseControls =
                 MatrixCodeRainControlsWithDensity(self.controls, lanes[0].density);
+            NSDictionary<NSString *, id> *laneControls[8] = {};
+            for (NSInteger position = 1; position < laneCount; position++) {
+                laneControls[position] = MatrixCodeRainControlsWithDensity(
+                    self.controls, lanes[position].density);
+            }
             for (NSInteger step = 0; step < steps; step++) {
                 [self.rainSimulation updateWithDeltaTime:stepDelta controls:baseControls];
                 for (NSInteger position = 1; position < laneCount; position++) {
-                    MatrixCodeRainLane lane = lanes[position];
                     MatrixCodeRainSimulation *simulation =
-                        self.overlapSimulations[(NSUInteger)(lane.index - 1)];
-                    [simulation
-                        updateWithDeltaTime:stepDelta
-                                  controls:MatrixCodeRainControlsWithDensity(self.controls,
-                                                                            lane.density)];
+                        self.overlapSimulations[(NSUInteger)(lanes[position].index - 1)];
+                    [simulation updateWithDeltaTime:stepDelta
+                                           controls:laneControls[position]];
                 }
             }
             self.activeOverlapLaneIndexes = nextActiveOverlapLanes;
