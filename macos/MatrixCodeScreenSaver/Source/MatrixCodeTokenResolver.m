@@ -111,12 +111,65 @@ static NSNumber *MatrixCodeSanitizedTarget(id value) {
     return @(fmin(8.64e15, fmax(0, [value doubleValue])));
 }
 
-static NSCalendar *MatrixCodeLocalGregorianCalendar(void) {
+// Token resolution runs every frame while a token message is displayed, so the
+// calendar and per-directive formatters are cached. All consumers run on the
+// main thread, and the caches are discarded when the system time zone changes
+// so long-running savers keep tracking the current zone without mutating the
+// cached objects after construction.
+static NSCalendar *MatrixCodeCreateLocalGregorianCalendar(void) {
     NSCalendar *calendar = [[NSCalendar alloc]
         initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
     calendar.timeZone = NSTimeZone.localTimeZone;
     calendar.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
     return calendar;
+}
+
+static NSCalendar *MatrixCodeLocalGregorianCalendar(void) {
+    static NSCalendar *calendar;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        calendar = MatrixCodeCreateLocalGregorianCalendar();
+        [NSNotificationCenter.defaultCenter
+            addObserverForName:NSSystemTimeZoneDidChangeNotification
+                        object:nil
+                         queue:NSOperationQueue.mainQueue
+                    usingBlock:^(NSNotification *notification) {
+            (void)notification;
+            calendar = MatrixCodeCreateLocalGregorianCalendar();
+        }];
+    });
+    return calendar;
+}
+
+static NSDateFormatter *MatrixCodeCachedFormatterForDateFormat(NSString *dateFormat) {
+    static NSMutableDictionary<NSString *, NSDateFormatter *> *formatters;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formatters = [NSMutableDictionary dictionary];
+        [NSNotificationCenter.defaultCenter
+            addObserverForName:NSSystemTimeZoneDidChangeNotification
+                        object:nil
+                         queue:NSOperationQueue.mainQueue
+                    usingBlock:^(NSNotification *notification) {
+            (void)notification;
+            [formatters removeAllObjects];
+        }];
+    });
+    NSDateFormatter *formatter = formatters[dateFormat];
+    if (!formatter) {
+        formatter = [[NSDateFormatter alloc] init];
+        formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        // The formatter owns a private calendar so it cannot mutate the shared
+        // cached instance above.
+        NSCalendar *calendar = [[NSCalendar alloc]
+            initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+        calendar.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        formatter.calendar = calendar;
+        formatter.timeZone = NSTimeZone.localTimeZone;
+        formatter.dateFormat = dateFormat;
+        formatters[dateFormat] = formatter;
+    }
+    return formatter;
 }
 
 @interface MatrixCodeTokenResolver ()
@@ -204,11 +257,15 @@ static NSCalendar *MatrixCodeLocalGregorianCalendar(void) {
 }
 
 + (NSString *)strftime:(NSString *)format date:(NSDate *)date {
-    NSDictionary<NSString *, NSString *> *formats = @{
-        @"H": @"HH", @"I": @"hh", @"M": @"mm", @"S": @"ss", @"p": @"a",
-        @"Y": @"yyyy", @"y": @"yy", @"m": @"MM", @"d": @"dd", @"e": @"d",
-        @"A": @"EEEE", @"a": @"EEE", @"B": @"MMMM", @"b": @"MMM", @"j": @"DDD",
-    };
+    static NSDictionary<NSString *, NSString *> *formats;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formats = @{
+            @"H": @"HH", @"I": @"hh", @"M": @"mm", @"S": @"ss", @"p": @"a",
+            @"Y": @"yyyy", @"y": @"yy", @"m": @"MM", @"d": @"dd", @"e": @"d",
+            @"A": @"EEEE", @"a": @"EEE", @"B": @"MMMM", @"b": @"MMM", @"j": @"DDD",
+        };
+    });
     NSMutableString *result = [NSMutableString string];
     for (NSUInteger index = 0; index < format.length; index++) {
         unichar character = [format characterAtIndex:index];
@@ -227,11 +284,7 @@ static NSCalendar *MatrixCodeLocalGregorianCalendar(void) {
             [result appendFormat:@"%%%C", directive];
             continue;
         }
-        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-        formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-        formatter.calendar = MatrixCodeLocalGregorianCalendar();
-        formatter.timeZone = NSTimeZone.localTimeZone;
-        formatter.dateFormat = dateFormat;
+        NSDateFormatter *formatter = MatrixCodeCachedFormatterForDateFormat(dateFormat);
         NSString *value = [formatter stringFromDate:date];
         if ([key isEqualToString:@"e"]) {
             NSInteger day = [MatrixCodeLocalGregorianCalendar() component:NSCalendarUnitDay
