@@ -134,19 +134,21 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
         NSView *title = MatrixCodeVisualDescendant(panel, @"settings-title");
         XCTAssertNotNil(title);
 
-        // The Save & close button sits in the top-right corner of the panel header:
-        // right of the title and pinned near the top of the panel's content.
-        [panel layoutSubtreeIfNeeded];
-        NSView *done = MatrixCodeVisualDescendant(panel, @"settings-done");
-        XCTAssertNotNil(done, @"Missing Save & close button at %@", sizeValue);
-        NSRect titleInPanel = [title convertRect:title.bounds toView:panel];
-        NSRect doneInPanel = [done convertRect:done.bounds toView:panel];
-        XCTAssertGreaterThan(NSMinX(doneInPanel), NSMaxX(titleInPanel),
-                             @"Save & close button should be right of the title at %@", sizeValue);
-        XCTAssertLessThan(NSMaxX(panel.bounds) - NSMaxX(doneInPanel), 24,
-                          @"Save & close button should hug the panel's right edge at %@", sizeValue);
-        XCTAssertLessThan(NSMaxY(panel.bounds) - NSMaxY(doneInPanel), 40,
-                          @"Save & close button should sit near the panel's top at %@", sizeValue);
+        // The dismiss button floats in the settings window's top-right corner
+        // over the rain — outside the panel column, hugging the window's top and
+        // trailing edges.
+        [content layoutSubtreeIfNeeded];
+        XCTAssertNil(MatrixCodeVisualDescendant(panel, @"settings-close"),
+                     @"Dismiss button should not live inside the panel at %@", sizeValue);
+        NSView *close = MatrixCodeVisualDescendant(content, @"settings-close");
+        XCTAssertNotNil(close, @"Missing dismiss button at %@", sizeValue);
+        NSRect closeInContent = [close convertRect:close.bounds toView:content];
+        XCTAssertGreaterThan(NSMinX(closeInContent), NSMaxX(panel.frame),
+                             @"Dismiss button should sit right of the panel at %@", sizeValue);
+        XCTAssertLessThan(NSMaxX(content.bounds) - NSMaxX(closeInContent), 24,
+                          @"Dismiss button should hug the window's right edge at %@", sizeValue);
+        XCTAssertLessThan(NSMaxY(content.bounds) - NSMaxY(closeInContent), 40,
+                          @"Dismiss button should sit near the window's top at %@", sizeValue);
 
         XCTAssertEqualWithAccuracy(panel.frame.origin.x, 16, 0.5);
         XCTAssertEqualWithAccuracy(panel.frame.origin.y, 16, 0.5);

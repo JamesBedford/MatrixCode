@@ -496,6 +496,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic, strong) MatrixCodeMetalView *charactersPreviewView;
 @property(nonatomic) BOOL settingsPanelVisible;
 @property(nonatomic) BOOL settingsPanelDismissing;
+@property(nonatomic, strong, nullable) NSButton *settingsCloseButton;
 @property(nonatomic, weak) NSView *embeddedHostView;
 @property(nonatomic) BOOL embeddedPresentation;
 @property(nonatomic) BOOL restrictedToMultiMonitorControls;
@@ -959,6 +960,27 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     self.settingsPanel = panel;
     MatrixCodePinViewToSuperviewEdges(overlay, content, NSEdgeInsetsMake(0, 0, 0, 0));
     MatrixCodePinSettingsPanelToOverlay(panel, overlay);
+    // The System Settings Options sheet paints the rain across the whole window
+    // with no chrome to close it, so a persistent dismiss button sits in the
+    // top-right corner over the rain. Every control commits live, so this only
+    // closes the sheet. The standalone app instead already carries its own
+    // top-right presentation chrome and is dismissed with Command+, / H / Escape.
+    if (!self.embeddedPresentation) {
+        NSButton *close = [self settingsButton:@"✕"
+                                        action:@selector(accept:)
+                                    identifier:@"settings-close"];
+        close.toolTip = @"Close settings";
+        close.accessibilityLabel = @"Close settings";
+        close.translatesAutoresizingMaskIntoConstraints = NO;
+        [overlay addSubview:close];
+        [NSLayoutConstraint activateConstraints:@[
+            [close.topAnchor constraintEqualToAnchor:overlay.topAnchor constant:18],
+            [close.trailingAnchor constraintEqualToAnchor:overlay.trailingAnchor constant:-18],
+            [close.widthAnchor constraintEqualToConstant:36],
+            [close.heightAnchor constraintEqualToConstant:36],
+        ]];
+        self.settingsCloseButton = close;
+    }
     if (self.settingsMetalView) {
         MatrixCodePinViewToSuperviewEdges(self.settingsMetalView, content, NSEdgeInsetsMake(0, 0, 0, 0));
     }
@@ -1096,23 +1118,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     NSTextField *title = [NSTextField labelWithString:@"MATRIX"];
     title.identifier = @"settings-title";
     [MatrixCodeSettingsTheme.sharedTheme styleHeading:title level:1];
-
-    NSButton *done = [self settingsButton:@"✕"
-                                   action:@selector(accept:)
-                               identifier:@"settings-done"];
-    done.toolTip = @"Save & close (Esc)";
-    done.accessibilityLabel = @"Save and close settings";
-    [done.widthAnchor constraintEqualToConstant:30].active = YES;
-
-    NSStackView *header = [NSStackView stackViewWithViews:@[title, [self panelFlexibleSpacer], done]];
-    header.identifier = @"settings-header";
-    header.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    header.alignment = NSLayoutAttributeCenterY;
-    header.distribution = NSStackViewDistributionFill;
-    header.spacing = 8;
-    [header.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
-    [stack addArrangedSubview:header];
-    [stack setCustomSpacing:10 afterView:header];
+    [stack addArrangedSubview:title];
+    [stack setCustomSpacing:10 afterView:title];
 
     NSTextField *name = [[NSTextField alloc] initWithFrame:NSZeroRect];
     name.placeholderString = @"Neo";

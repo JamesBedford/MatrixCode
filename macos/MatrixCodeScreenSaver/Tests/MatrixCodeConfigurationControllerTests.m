@@ -105,31 +105,37 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
                                     @"reset-controls"]) {
         XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(panel, identifier), @"%@", identifier);
     }
-    NSButton *done = (NSButton *)MatrixCodeDescendantWithIdentifier(panel, @"settings-done");
-    XCTAssertNotNil(done);
-    XCTAssertTrue([done isKindOfClass:NSButton.class]);
-    XCTAssertEqualObjects(done.target, controller);
+    // The dismiss button lives in the settings window's top-right corner over
+    // the rain, not inside the panel column.
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-close"));
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-done"));
+    NSButton *close = (NSButton *)MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                                     @"settings-close");
+    XCTAssertNotNil(close);
+    XCTAssertTrue([close isKindOfClass:NSButton.class]);
+    XCTAssertEqualObjects(close.target, controller);
     XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-hint"));
     XCTAssertNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
                                                     @"ambient-title"));
 }
 
-- (void)testSettingsDonePersistsChangesAndClosesConfigurationSheet {
+- (void)testSettingsCloseButtonDismissesConfigurationSheet {
     __block BOOL closed = NO;
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{ closed = YES; }];
-    NSView *panel = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
-                                                       @"settings-panel");
-    NSButton *done = (NSButton *)MatrixCodeDescendantWithIdentifier(panel, @"settings-done");
-    XCTAssertNotNil(done);
+    NSButton *close = (NSButton *)MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                                     @"settings-close");
+    XCTAssertNotNil(close);
 
+    // Controls already persist as they change, so a nudge is committed before
+    // the corner button is used purely to dismiss the sheet.
     [controller nudgeDensityByFactor:1.5];
-    [done performClick:nil];
-
-    XCTAssertTrue(closed);
     NSDictionary *controls = MatrixCodeJSONDictionary([self.preferences storedValues][@"mx-controls"]);
     XCTAssertNotNil(controls);
     XCTAssertGreaterThan([controls[@"density"] doubleValue], 2.0);
+
+    [close performClick:nil];
+    XCTAssertTrue(closed);
 }
 
 - (void)testSettingsBackdropUsesMetalDisplayLinkWithoutDuplicateTimer {
