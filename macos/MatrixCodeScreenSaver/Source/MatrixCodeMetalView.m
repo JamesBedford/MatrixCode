@@ -2279,9 +2279,15 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     }
     float imageIntensity = self.activeImageFrameIntensity;
     float imageScramble = self.activeImageFrameScramble;
+    NSData *activeImageMaskData = self.activeImageMaskData;
+    NSInteger activeImageWidth = self.activeImageWidth;
+    NSInteger activeImageHeight = self.activeImageHeight;
+    uint32_t animationBucket = (uint32_t)floorf(
+        (float)(now - self.epochSeconds) * 18.0f);
     NSInteger atlasColumns = self.atlasColumns;
     NSInteger atlasRows = self.atlasRows;
     NSInteger rainGlyphCount = self.rainGlyphCount;
+    NSInteger glyphCount = self.glyphCount;
     NSData *sharedLocalState = usesSharedDisplayGrid
         ? [self extractSharedSimulationStateAtColumn:firstGlobalColumn
                                                   row:firstGlobalRow
@@ -2302,10 +2308,15 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             ? self.seed
             : MatrixCodeRainSeedForLane(MatrixCodeNormalRainSeed, lane.index);
 
-        for (NSInteger column = 0; column < columns; column++) {
-            NSInteger globalColumn = firstGlobalColumn + column;
-            for (NSInteger row = 0; row < rows; row++) {
-                NSInteger globalRow = firstGlobalRow + row;
+        // Row-major traversal matches the packed-state layout so reads are
+        // sequential. Instances land in the buffer row-by-row instead of
+        // column-by-column, which is invisible to the additive scene pass:
+        // within a lane the grid quads are disjoint, and lanes keep their
+        // relative submission order.
+        for (NSInteger row = 0; row < rows; row++) {
+            NSInteger globalRow = firstGlobalRow + row;
+            for (NSInteger column = 0; column < columns; column++) {
+                NSInteger globalColumn = firstGlobalColumn + column;
                 NSUInteger stateOffset =
                     ((NSUInteger)row * (NSUInteger)columns + (NSUInteger)column) * 4;
                 NSInteger glyph = state[stateOffset];
@@ -2327,9 +2338,9 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                     float v = ((float)globalRow + 0.5f - imageOriginRow) / imageRows;
                     if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
                         float imageLuminance = MatrixCodeImageSampleMask(
-                            self.activeImageMaskData,
-                            self.activeImageWidth,
-                            self.activeImageHeight,
+                            activeImageMaskData,
+                            activeImageWidth,
+                            activeImageHeight,
                             u,
                             v);
                         float signal = MatrixCodeImageSignalForLuminance(imageLuminance);
@@ -2350,8 +2361,6 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                                 laneSeed);
                             float revealGate = fmaxf(trailGate, fallingGate * 0.48f);
                             float dissolve = 1;
-                            uint32_t animationBucket = (uint32_t)floorf(
-                                (float)(now - self.epochSeconds) * 18.0f);
                             if (imageScramble > 0) {
                                 float roll = MatrixCodeUnit(
                                     identity ^ animationBucket * 0x9e3779b9U ^ 0xb4b82e39U);
@@ -2402,8 +2411,8 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                 }
 
                 if (packedBrightnessByte == 0 && brightness <= 0) continue;
-                if (glyph < 0 || glyph >= self.glyphCount) glyph = 0;
-                if (oldGlyph < 0 || oldGlyph >= self.glyphCount) oldGlyph = glyph;
+                if (glyph < 0 || glyph >= glyphCount) glyph = 0;
+                if (oldGlyph < 0 || oldGlyph >= glyphCount) oldGlyph = glyph;
                 NSInteger atlasColumn = glyph % atlasColumns;
                 NSInteger atlasRow = glyph / atlasColumns;
                 NSInteger oldAtlasColumn = oldGlyph % atlasColumns;
@@ -2542,8 +2551,9 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     const uint8_t *state = stateData.bytes;
     const MatrixCodeGlyphInstance *instances = self.instanceBuffer.contents;
     NSUInteger renderedIndex = 0;
-    for (NSInteger column = 0; column < columns; column++) {
-        for (NSInteger row = 0; row < rows; row++) {
+    // Instances are emitted in the renderer's row-major traversal order.
+    for (NSInteger row = 0; row < rows; row++) {
+        for (NSInteger column = 0; column < columns; column++) {
             NSUInteger offset =
                 ((NSUInteger)row * (NSUInteger)columns + (NSUInteger)column) * 4;
             float brightness = state[offset + 1] / 255.0f;
