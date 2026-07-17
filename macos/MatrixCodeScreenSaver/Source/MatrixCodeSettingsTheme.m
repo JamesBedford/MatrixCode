@@ -11,6 +11,7 @@ typedef NS_ENUM(NSInteger, MatrixCodeStyledControlRole) {
     MatrixCodeStyledControlRoleLabel,
     MatrixCodeStyledControlRoleHint,
     MatrixCodeStyledControlRoleButton,
+    MatrixCodeStyledControlRoleCloseButton,
     MatrixCodeStyledControlRoleIconButton,
     MatrixCodeStyledControlRoleToggle,
     MatrixCodeStyledControlRoleTextField,
@@ -199,6 +200,30 @@ static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeSettingsPalett
     button.layer.shadowOpacity = 0.0;
 }
 
+- (void)styleCloseButton:(NSButton *)button {
+    [self registerView:button role:MatrixCodeStyledControlRoleCloseButton];
+    button.bordered = NO;
+    button.attributedTitle =
+        [self uppercaseString:button.title.length ? button.title : @"✕"
+                         size:15
+                       weight:NSFontWeightSemibold
+                        color:self.accentColor
+                     tracking:0];
+    button.wantsLayer = YES;
+    button.layer.cornerRadius = 9.0;
+    button.layer.masksToBounds = NO;
+    button.layer.borderWidth = 1.5;
+    // A bright ring plus an opaque, slightly raised fill and an accent glow keep
+    // the button clearly bounded and anchored even while the rain behind it is
+    // still pure black, without touching the rain preview itself.
+    button.layer.borderColor = [self.accentColor colorWithAlphaComponent:0.85].CGColor;
+    button.layer.backgroundColor = MatrixCodeSRGB(0x0e1d13, 0.96).CGColor;
+    button.layer.shadowColor = self.accentColor.CGColor;
+    button.layer.shadowOpacity = 0.5;
+    button.layer.shadowRadius = 8.0;
+    button.layer.shadowOffset = CGSizeZero;
+}
+
 - (void)styleIconButton:(NSButton *)button {
     [self registerView:button role:MatrixCodeStyledControlRoleIconButton];
     NSString *original = button.title;
@@ -281,6 +306,7 @@ static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeSettingsPalett
             case MatrixCodeStyledControlRoleLabel: [self styleLabel:(NSTextField *)view]; break;
             case MatrixCodeStyledControlRoleHint: [self styleHintLabel:(NSTextField *)view]; break;
             case MatrixCodeStyledControlRoleButton: [self styleButton:(NSButton *)view]; break;
+            case MatrixCodeStyledControlRoleCloseButton: [self styleCloseButton:(NSButton *)view]; break;
             case MatrixCodeStyledControlRoleIconButton: [self styleIconButton:(NSButton *)view]; break;
             case MatrixCodeStyledControlRoleToggle:
                 [self styleToggleButton:(NSButton *)view on:((NSButton *)view).state == NSControlStateValueOn];

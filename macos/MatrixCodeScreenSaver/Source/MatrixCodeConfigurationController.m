@@ -971,10 +971,10 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     // closes the sheet. The standalone app instead already carries its own
     // top-right presentation chrome and is dismissed with Command+, / H / Escape.
     if (!self.embeddedPresentation) {
-        NSButton *close = [self settingsButton:@"✕"
-                                        action:@selector(accept:)
-                                    identifier:@"settings-close"];
+        NSButton *close = [NSButton buttonWithTitle:@"✕" target:self action:@selector(accept:)];
+        close.identifier = @"settings-close";
         close.toolTip = @"Close settings";
+        [MatrixCodeSettingsTheme.sharedTheme styleCloseButton:close];
         close.accessibilityLabel = @"Close settings";
         close.translatesAutoresizingMaskIntoConstraints = NO;
         [overlay addSubview:close];

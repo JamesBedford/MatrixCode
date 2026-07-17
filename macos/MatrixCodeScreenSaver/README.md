@@ -140,8 +140,10 @@ Images, and Countdown editor cards. Root-panel edits apply live to the running
 rain and are persisted as they change, so no explicit save step is needed. In
 the System Settings **Options** sheet — a bare Matrix backdrop with no window
 chrome to close it — a persistent **✕** dismiss button sits in the top-right
-corner over the rain and closes the sheet (matching the Escape key). It is a
-native-only affordance for that host: the browser panel is a full page toggled
+corner over the rain and closes the sheet (matching the Escape key). It carries
+a brighter, opaque, glowing treatment than the panel controls so it stays a
+clearly bounded, anchored button even before any rain has fallen and the
+backdrop is still pure black. It is a native-only affordance for that host: the browser panel is a full page toggled
 with `H`, and the standalone app already carries its own top-right presentation
 chrome and closes the panel with **⌘,** / **H** / **Escape**, so neither adds a
 separate corner button. Editor cards still provide their web-equivalent scoped

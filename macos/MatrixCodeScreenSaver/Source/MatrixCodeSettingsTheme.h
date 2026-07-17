@@ -25,6 +25,8 @@ FOUNDATION_EXPORT NSNotificationName const MatrixCodeSettingsThemeDidChangeNotif
 - (void)styleHintLabel:(NSTextField *)label;
 - (void)styleButton:(NSButton *)button;
 - (void)styleIconButton:(NSButton *)button;
+/// High-contrast floating dismiss button that stays legible over black rain.
+- (void)styleCloseButton:(NSButton *)button;
 - (void)styleToggleButton:(NSButton *)button on:(BOOL)on;
 - (void)styleTextField:(NSTextField *)textField;
 - (void)stylePopupButton:(NSPopUpButton *)popup;

@@ -138,6 +138,22 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertTrue(closed);
 }
 
+- (void)testSettingsCloseButtonStaysLegibleOverBlackRain {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSButton *close = (NSButton *)MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                                     @"settings-close");
+    XCTAssertNotNil(close);
+    XCTAssertNotNil(close.layer);
+    // A visible border, a mostly-opaque fill, and an accent glow keep the button
+    // clearly bounded and anchored while the rain behind it is still pure black,
+    // instead of reading as a lone floating glyph.
+    XCTAssertGreaterThanOrEqual(close.layer.borderWidth, 1.0);
+    XCTAssertGreaterThan(CGColorGetAlpha(close.layer.borderColor), 0.6);
+    XCTAssertGreaterThan(CGColorGetAlpha(close.layer.backgroundColor), 0.6);
+    XCTAssertGreaterThan(close.layer.shadowOpacity, 0.0);
+}
+
 - (void)testOptionsSheetPanelDoesNotScheduleIdleAutoHide {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
