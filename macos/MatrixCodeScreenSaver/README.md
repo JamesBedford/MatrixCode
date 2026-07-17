@@ -64,14 +64,46 @@ From this directory:
 
 ```sh
 ./test.sh
-./build.sh
+./build.sh --release
+./build.sh --debug
 ```
 
-The release products are written to `build/MatrixCode.saver`,
-`build/MatrixCode.saver.zip`, `build/MatrixCode.app`, and
-`build/MatrixCode.app.zip`. Packaging stages, signs, and verifies the products
-under `/private/tmp` before copying them back, so the zips are the safest
-artifacts to move out of a cloud-synced working tree.
+`./build.sh` defaults to Release and also accepts `--configuration Debug` or
+`--configuration Release`. The products are written to the matching
+`build/Debug/` or `build/Release/` directory. Each contains `MatrixCode.saver`,
+`MatrixCode.saver.zip`, `MatrixCode.app`, `MatrixCode.app.zip`, and SHA-256
+checksums for the packaged archives. Release output also includes matching
+dSYMs and executable UUIDs for symbolicating crash reports. Packaging stages,
+ad-hoc signs, and verifies the products before publishing them, so a failed
+build leaves the last successful artifacts untouched. These contributor builds
+are local and are not notarized. The established `build/MatrixCode.*` paths
+continue to point at the latest Release products.
+
+For a distributable Release, use the repository-root entry point:
+
+```sh
+./scripts/build-release.sh --release               # sign, notarize, and staple
+./scripts/build-release.sh --release --skip-notarize
+./scripts/build-release.sh --debug
+```
+
+The distribution workflow mirrors the SpotifyCDFinder release script. It uses
+the `Developer ID Application: James Bedford (7NBMEUUG5K)` identity and the
+`notarytool` Keychain profile, then writes a versioned DMG, dSYMs, UUID report,
+and checksums to `dist/`. `--skip-notarize` still uses Developer ID signing but
+avoids the Apple notarization round trip. The script discovers Xcode without
+changing the system-wide `xcode-select` setting. Set `XCODE_APP` for a
+nonstandard Xcode application path or `DEVELOPER_DIR` for an explicit developer
+directory.
+
+Configure the Keychain profile once before the first notarized build:
+
+```sh
+xcrun notarytool store-credentials "notarytool" \
+  --key /path/to/AuthKey_XXXXXXXXXX.p8 \
+  --key-id XXXXXXXXXX \
+  --issuer <issuer-uuid>
+```
 
 The project is generated from `project.yml` with XcodeGen. Source files live in
 `Source/`, Metal shaders live in `Resources/MatrixCodeShaders.msl`, and native
@@ -83,10 +115,11 @@ regression tests live in `Tests/`.
 ./install.sh
 ```
 
-Alternatively, expand `build/MatrixCode.saver.zip` outside the cloud-synced
-working tree and double-click the resulting saver. Select **MatrixCode** in
-System Settings → Screen Saver. To run it as a standalone app, open
-`build/MatrixCode.app` or expand and open `build/MatrixCode.app.zip`.
+Alternatively, expand `build/Release/MatrixCode.saver.zip` outside the
+cloud-synced working tree and double-click the resulting saver. Select
+**MatrixCode** in System Settings → Screen Saver. To run it as a standalone
+app, open `build/Release/MatrixCode.app` or expand and open
+`build/Release/MatrixCode.app.zip`.
 
 Use **MatrixCode → Settings…** in the standalone app to edit settings directly
 over the running Matrix rain, matching the browser's hover/fade HUD instead of

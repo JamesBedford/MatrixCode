@@ -71,9 +71,20 @@ build, test, and manual-install scripts for the Apple-Silicon `MatrixCode.saver`
 ```sh
 cd macos/MatrixCodeScreenSaver
 ./test.sh
-./build.sh
+./build.sh --release  # defaults to Release
+./build.sh --debug
 ./install.sh
 ```
+
+For a distributable build, run `./scripts/build-release.sh --release` from the
+repository root. The script signs with Developer ID, notarizes, and staples a
+versioned DMG; `--skip-notarize` omits the Apple round trip, and `--debug`
+creates a local Debug build. It detects Xcode even when installed outside
+`/Applications`, generates the project in a temporary directory, and writes
+verified app and screen-saver packages to
+`macos/MatrixCodeScreenSaver/build/<Configuration>/`. Distribution artifacts,
+matching dSYMs, executable UUIDs, and checksums are written to
+`macos/MatrixCodeScreenSaver/dist/`.
 
 The installed saver is configured from System Settings → Screen Saver →
 **MatrixCode** → **Options…**. Its settings intentionally mirror the web app:
