@@ -659,9 +659,6 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
                             sink:(id<MatrixCodeMessageSink>)sink
                          regions:(NSArray<MatrixCodeMessageRegion *> *)regions {
     MatrixCodeMessageSchedulerState *state = self.schedulerState;
-    NSArray<MatrixCodeNormalizedMessageRegion *> *placementRegions =
-        [self normalizeRegionsForSink:sink regions:regions];
-    NSString *placementKey = [self keyForRegions:placementRegions];
     if (state.pendingClear) {
         [sink clearMessageTargets];
         state.pendingClear = NO;
@@ -671,6 +668,10 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
     if (!configuration ||
         !MatrixCodeMessageBoolean(configuration, @"enabled", NO) ||
         !state.hasRenderable) {
+        // Skip region normalization and key building on this every-frame
+        // default path. placementKey is left stale: it is only consulted while
+        // a message is active, and hasActiveUntil is cleared here, so the next
+        // enabled update stores a fresh key before any comparison matters.
         if (state.hasActiveUntil) {
             [sink clearMessageTargets];
             state.hasActiveStart = NO;
@@ -679,10 +680,12 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
         state.hasNextFireAt = NO;
         state.lastColumns = sink.columns;
         state.lastRows = sink.rows;
-        state.placementKey = placementKey;
         return;
     }
 
+    NSArray<MatrixCodeNormalizedMessageRegion *> *placementRegions =
+        [self normalizeRegionsForSink:sink regions:regions];
+    NSString *placementKey = [self keyForRegions:placementRegions];
     BOOL placementChanged = ![placementKey isEqualToString:state.placementKey];
     if ((sink.columns != state.lastColumns ||
          sink.rows != state.lastRows ||
