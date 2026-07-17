@@ -131,9 +131,15 @@ Apple's configure-sheet container.
 
 The settings UI mirrors the browser's Matrix-terminal surface with
 preset-coloured native controls and centered Characters, Intro, Messages,
-Images, and Countdown editor cards. The root settings session is transactional: **Save**
-commits all changes and **Cancel** discards them; editor cards also provide
-their web-equivalent scoped reset and save/cancel actions.
+Images, and Countdown editor cards. Root-panel edits apply live to the running
+rain and are persisted as they change; a **✕ (Save & close)** button in the
+top-right corner of the panel header commits the current values and dismisses
+the panel, matching the Escape key. The corner button is a native-only
+affordance: the browser panel is an ambient overlay that hover-fades away,
+whereas the native controller is also hosted as System Settings' modal Screen
+Saver Options sheet, which needs an explicit, always-visible way to dismiss it.
+Editor cards still provide their web-equivalent scoped reset and save/cancel
+actions.
 
 The implementation uses AppKit controls throughout—there is no embedded web
 runtime. Three intentional platform differences remain: System Settings supplies

@@ -105,11 +105,31 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
                                     @"reset-controls"]) {
         XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(panel, identifier), @"%@", identifier);
     }
-    XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-cancel"));
-    XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-save"));
+    NSButton *done = (NSButton *)MatrixCodeDescendantWithIdentifier(panel, @"settings-done");
+    XCTAssertNotNil(done);
+    XCTAssertTrue([done isKindOfClass:NSButton.class]);
+    XCTAssertEqualObjects(done.target, controller);
     XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-hint"));
     XCTAssertNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
                                                     @"ambient-title"));
+}
+
+- (void)testSettingsDonePersistsChangesAndClosesConfigurationSheet {
+    __block BOOL closed = NO;
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{ closed = YES; }];
+    NSView *panel = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-panel");
+    NSButton *done = (NSButton *)MatrixCodeDescendantWithIdentifier(panel, @"settings-done");
+    XCTAssertNotNil(done);
+
+    [controller nudgeDensityByFactor:1.5];
+    [done performClick:nil];
+
+    XCTAssertTrue(closed);
+    NSDictionary *controls = MatrixCodeJSONDictionary([self.preferences storedValues][@"mx-controls"]);
+    XCTAssertNotNil(controls);
+    XCTAssertGreaterThan([controls[@"density"] doubleValue], 2.0);
 }
 
 - (void)testSettingsBackdropUsesMetalDisplayLinkWithoutDuplicateTimer {

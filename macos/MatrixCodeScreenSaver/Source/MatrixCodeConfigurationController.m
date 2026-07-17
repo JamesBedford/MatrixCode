@@ -1071,8 +1071,23 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     NSTextField *title = [NSTextField labelWithString:@"MATRIX"];
     title.identifier = @"settings-title";
     [MatrixCodeSettingsTheme.sharedTheme styleHeading:title level:1];
-    [stack addArrangedSubview:title];
-    [stack setCustomSpacing:10 afterView:title];
+
+    NSButton *done = [self settingsButton:@"✕"
+                                   action:@selector(accept:)
+                               identifier:@"settings-done"];
+    done.toolTip = @"Save & close (Esc)";
+    done.accessibilityLabel = @"Save and close settings";
+    [done.widthAnchor constraintEqualToConstant:30].active = YES;
+
+    NSStackView *header = [NSStackView stackViewWithViews:@[title, [self panelFlexibleSpacer], done]];
+    header.identifier = @"settings-header";
+    header.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    header.alignment = NSLayoutAttributeCenterY;
+    header.distribution = NSStackViewDistributionFill;
+    header.spacing = 8;
+    [header.widthAnchor constraintEqualToConstant:MatrixCodeSettingsPanelContentWidth].active = YES;
+    [stack addArrangedSubview:header];
+    [stack setCustomSpacing:10 afterView:header];
 
     NSTextField *name = [[NSTextField alloc] initWithFrame:NSZeroRect];
     name.placeholderString = @"Neo";

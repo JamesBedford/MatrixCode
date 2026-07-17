@@ -131,7 +131,22 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
         NSView *panel = MatrixCodeVisualDescendant(content, @"settings-panel");
         XCTAssertNotNil(panel, @"Missing primary settings panel at %@", sizeValue);
         XCTAssertNotNil(MatrixCodeVisualDescendant(content, @"settings-rain-backdrop"));
-        XCTAssertNotNil(MatrixCodeVisualDescendant(panel, @"settings-title"));
+        NSView *title = MatrixCodeVisualDescendant(panel, @"settings-title");
+        XCTAssertNotNil(title);
+
+        // The Save & close button sits in the top-right corner of the panel header:
+        // right of the title and pinned near the top of the panel's content.
+        [panel layoutSubtreeIfNeeded];
+        NSView *done = MatrixCodeVisualDescendant(panel, @"settings-done");
+        XCTAssertNotNil(done, @"Missing Save & close button at %@", sizeValue);
+        NSRect titleInPanel = [title convertRect:title.bounds toView:panel];
+        NSRect doneInPanel = [done convertRect:done.bounds toView:panel];
+        XCTAssertGreaterThan(NSMinX(doneInPanel), NSMaxX(titleInPanel),
+                             @"Save & close button should be right of the title at %@", sizeValue);
+        XCTAssertLessThan(NSMaxX(panel.bounds) - NSMaxX(doneInPanel), 24,
+                          @"Save & close button should hug the panel's right edge at %@", sizeValue);
+        XCTAssertLessThan(NSMaxY(panel.bounds) - NSMaxY(doneInPanel), 40,
+                          @"Save & close button should sit near the panel's top at %@", sizeValue);
 
         XCTAssertEqualWithAccuracy(panel.frame.origin.x, 16, 0.5);
         XCTAssertEqualWithAccuracy(panel.frame.origin.y, 16, 0.5);
