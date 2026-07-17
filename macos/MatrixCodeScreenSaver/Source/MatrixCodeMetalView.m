@@ -517,6 +517,9 @@ static NSString *MatrixCodeAtlasDisplayGlyph(NSString *glyph,
     return glyph;
 }
 
+#if DEBUG
+// Backs the DEBUG-only diagnosticProceduralDigitValueForGlyphIndex accessor;
+// unused in Release, so it is compiled only where its caller is.
 static float MatrixCodeProceduralDigitValueForRainGlyphMode(NSInteger glyph,
                                                             NSInteger rainGlyphCount,
                                                             NSString *glyphMode) {
@@ -524,6 +527,7 @@ static float MatrixCodeProceduralDigitValueForRainGlyphMode(NSInteger glyph,
     NSInteger digit = MatrixCodeRainDigitValueForGlyphIndex(glyph, glyphMode);
     return digit == NSNotFound ? -1 : (float)digit;
 }
+#endif
 
 static BOOL MatrixCodeDigitSegments(unichar digit, BOOL segments[7]) {
     static const BOOL segmentMap[10][7] = {
