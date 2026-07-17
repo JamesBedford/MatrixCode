@@ -668,6 +668,11 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (void)scheduleSettingsPanelHide {
     [self.settingsHideTimer invalidate];
+    self.settingsHideTimer = nil;
+    // Only the standalone app's ambient HUD idle-fades. The System Settings
+    // Options sheet stays open until it is explicitly dismissed (✕ / Escape),
+    // so a viewer configuring the screen saver never watches it disappear.
+    if (!self.embeddedPresentation) return;
     __weak typeof(self) weakSelf = self;
     self.settingsHideTimer =
         [NSTimer scheduledTimerWithTimeInterval:MatrixCodeSettingsHideDelay

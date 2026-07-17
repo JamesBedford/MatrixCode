@@ -138,6 +138,21 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertTrue(closed);
 }
 
+- (void)testOptionsSheetPanelDoesNotScheduleIdleAutoHide {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+
+    // The Screen Saver Options sheet stays open: it is not embedded, so no
+    // idle-hide timer is armed and the panel remains visible.
+    XCTAssertNil([controller valueForKey:@"settingsHideTimer"]);
+    XCTAssertTrue([[controller valueForKey:@"settingsPanelVisible"] boolValue]);
+
+    // Pointer activity keeps it visible without ever arming an auto-hide.
+    [controller showSettingsPanel];
+    XCTAssertNil([controller valueForKey:@"settingsHideTimer"]);
+    XCTAssertTrue([[controller valueForKey:@"settingsPanelVisible"] boolValue]);
+}
+
 - (void)testSettingsBackdropUsesMetalDisplayLinkWithoutDuplicateTimer {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];

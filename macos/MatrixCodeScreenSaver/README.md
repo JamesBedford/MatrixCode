@@ -130,7 +130,9 @@ web-style **H** shortcut toggle the panel — summoning it when hidden and, when
 it is already on screen, dismissing it with the same fade the idle auto-hide
 uses (mirroring the browser's `H` toggle). The same native controller is hosted as **Options…** in
 System Settings for the screen saver, where ScreenSaver.framework requires
-Apple's configure-sheet container.
+Apple's configure-sheet container. Only the standalone app's ambient HUD
+idle-fades; the Options sheet keeps its panel on screen until it is explicitly
+dismissed, so configuring the screen saver never makes the controls vanish.
 
 The settings UI mirrors the browser's Matrix-terminal surface with
 preset-coloured native controls and centered Characters, Intro, Messages,

@@ -998,6 +998,28 @@ suppressesIntroOverlay:YES];
     XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
 }
 
+- (void)testStandaloneSettingsOverlayArmsIdleAutoHide {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = NO;
+    window.contentView = hostView;
+
+    // Unlike the Options sheet, the standalone app's ambient HUD idle-fades, so
+    // showing it arms the auto-hide timer.
+    [hostView showSettingsOverlay];
+    id controller = [hostView valueForKey:@"configurationController"];
+    XCTAssertNotNil(controller);
+    XCTAssertNotNil([controller valueForKey:@"settingsHideTimer"]);
+}
+
 - (void)testWebEditorShortcutKeysOpenMatchingNativeEditors {
     NSArray<NSArray<NSString *> *> *shortcuts = @[
         @[@"i", @"intro"],
