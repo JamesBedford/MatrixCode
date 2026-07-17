@@ -1239,7 +1239,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     if (self.mode != MatrixCodeRainHostModeStandalone) return;
     if ([self isStandaloneMultiMonitorPresentation] && ![self isStandaloneMultiMonitorControlHost]) return;
     if (self.configurationController) {
-        [self.configurationController cancelOperation:self];
+        [self.configurationController dismissSettingsPanelAnimated];
         [self hidePresentationChrome];
     } else {
         [self showSettingsOverlay];
@@ -1627,7 +1627,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     }
     if (!event.isARepeat && commandOnly && [characters isEqualToString:@","] &&
         self.mode == MatrixCodeRainHostModeStandalone && !multiMonitorPresentation) {
-        [self showSettingsOverlay];
+        [self toggleSettingsOverlay];
     } else if (!event.isARepeat && optionOnly && [characters isEqualToString:@"f"]) {
         [self toggleFPSOverlay];
     } else if (!event.isARepeat && bareWebShortcut && [characters isEqualToString:@"f"] &&

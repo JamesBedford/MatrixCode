@@ -125,7 +125,10 @@ Use **MatrixCode → Settings…** in the standalone app to edit settings direct
 over the running Matrix rain, matching the browser's hover/fade HUD instead of
 opening a separate sheet: hovering or moving the pointer over the rain window
 fades in the translucent 320-point control panel, then it fades out again after
-a short idle delay unless the pointer is over it. The same native controller is hosted as **Options…** in
+a short idle delay unless the pointer is over it. **Settings…** (⌘,) and the
+web-style **H** shortcut toggle the panel — summoning it when hidden and, when
+it is already on screen, dismissing it with the same fade the idle auto-hide
+uses (mirroring the browser's `H` toggle). The same native controller is hosted as **Options…** in
 System Settings for the screen saver, where ScreenSaver.framework requires
 Apple's configure-sheet container.
 

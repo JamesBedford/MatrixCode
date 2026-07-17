@@ -34,6 +34,7 @@ typedef void (^MatrixCodeMessagePreviewHandler)(
   restrictedToMultiMonitorControls:(BOOL)restrictedToMultiMonitorControls;
 - (instancetype)init NS_UNAVAILABLE;
 - (void)showSettingsPanel;
+- (void)dismissSettingsPanelAnimated;
 - (void)openEditorKind:(NSString *)kind;
 - (void)refreshEmbeddedPresentationLayout;
 - (BOOL)toggleMessagesEnabled;

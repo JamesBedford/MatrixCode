@@ -495,6 +495,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic, strong, nullable) NSTimer *messagePreviewRestoreTimer;
 @property(nonatomic, strong) MatrixCodeMetalView *charactersPreviewView;
 @property(nonatomic) BOOL settingsPanelVisible;
+@property(nonatomic) BOOL settingsPanelDismissing;
 @property(nonatomic, weak) NSView *embeddedHostView;
 @property(nonatomic) BOOL embeddedPresentation;
 @property(nonatomic) BOOL restrictedToMultiMonitorControls;
@@ -682,6 +683,12 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (void)setSettingsPanelVisible:(BOOL)visible immediate:(BOOL)immediate {
+    [self setSettingsPanelVisible:visible immediate:immediate completion:nil];
+}
+
+- (void)setSettingsPanelVisible:(BOOL)visible
+                      immediate:(BOOL)immediate
+                     completion:(nullable dispatch_block_t)completion {
     self.settingsPanelVisible = visible;
     if (visible) {
         self.settingsPanel.hidden = NO;
@@ -693,32 +700,50 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     void (^changes)(void) = ^{
         self.settingsPanel.alphaValue = visible ? 1.0 : 0.0;
     };
-    void (^completion)(void) = ^{
+    void (^animationCompletion)(void) = ^{
         if (!self.settingsPanelVisible) {
             self.settingsPanel.hidden = YES;
         }
+        if (completion) completion();
     };
 
     if (immediate) {
         changes();
-        completion();
+        animationCompletion();
     } else {
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = MatrixCodeSettingsFadeDuration;
             context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             self.settingsPanel.animator.alphaValue = visible ? 1.0 : 0.0;
-        } completionHandler:completion];
+        } completionHandler:animationCompletion];
     }
 
     if (visible) [self scheduleSettingsPanelHide];
 }
 
 - (void)settingsPointerActivity {
+    if (self.settingsPanelDismissing) return;
     [self setSettingsPanelVisible:YES immediate:NO];
 }
 
 - (void)showSettingsPanel {
     [self settingsPointerActivity];
+}
+
+// Fades the panel out with the usual auto-hide animation, then dismisses the
+// controller. Used by the Command+, / H toggle so an on-screen panel disappears
+// with the same fade the idle auto-hide uses instead of vanishing instantly.
+- (void)dismissSettingsPanelAnimated {
+    if (!self.embeddedPresentation || self.editorBackdrop ||
+        !self.settingsPanelVisible || !self.settingsPanel || self.settingsPanel.hidden) {
+        [self cancel:nil];
+        return;
+    }
+    self.settingsPanelDismissing = YES;
+    __weak typeof(self) weakSelf = self;
+    [self setSettingsPanelVisible:NO immediate:NO completion:^{
+        [weakSelf cancel:nil];
+    }];
 }
 
 - (void)loadModels {

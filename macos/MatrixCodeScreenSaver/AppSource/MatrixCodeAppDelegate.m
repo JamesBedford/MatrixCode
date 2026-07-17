@@ -177,7 +177,7 @@ static NSString * const MatrixCodeDisplayName = @"Matrix Code";
 
 - (IBAction)showSettings:(id)sender {
     MatrixCodeRainHostView *hostView = [self hostViewForSettings];
-    [hostView showSettingsOverlay];
+    [hostView toggleSettingsOverlay];
     [NSApp activateIgnoringOtherApps:YES];
 }
 

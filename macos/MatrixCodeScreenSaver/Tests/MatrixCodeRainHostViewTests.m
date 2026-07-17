@@ -224,6 +224,20 @@ static NSEvent *MatrixCodeCommandShiftMKeyEvent(BOOL repeat) {
                                        repeat);
 }
 
+static NSEvent *MatrixCodeCommandCommaKeyEvent(BOOL repeat) {
+    return MatrixCodeKeyEventWithFlags(nil, @",", 43, NSEventModifierFlagCommand, repeat);
+}
+
+// Spins the main run loop until `condition` is satisfied or `timeout` elapses,
+// so tests can await the settings panel's fade-out animation completing.
+static void MatrixCodeSpinRunLoopUntil(BOOL (^condition)(void), NSTimeInterval timeout) {
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:timeout];
+    while (!condition() && [deadline timeIntervalSinceNow] > 0) {
+        [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
+                                 beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    }
+}
+
 static NSEvent *MatrixCodeShiftXKeyEvent(void) {
     return MatrixCodeKeyEventWithFlags(nil, @"X", 7, NSEventModifierFlagShift, NO);
 }
@@ -933,8 +947,55 @@ suppressesIntroOverlay:YES];
 
     [hostView keyDown:MatrixCodeLetterKeyEvent(@"h")];
     [hostView layoutSubtreeIfNeeded];
+    // Dismissal fades the panel out before tearing the overlay down.
+    MatrixCodeSpinRunLoopUntil(^BOOL{
+        return [hostView valueForKey:@"configurationController"] == nil;
+    }, 2.0);
+    [hostView layoutSubtreeIfNeeded];
     XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
     XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
+}
+
+- (void)testCommandCommaTogglesStandaloneSettingsOverlayWithFade {
+    NSWindow *window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 520)
+                                    styleMask:NSWindowStyleMaskTitled
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:window.contentView.bounds
+                                                 mode:MatrixCodeRainHostModeStandalone
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    hostView.usesInternalAnimationTimer = NO;
+    window.contentView = hostView;
+
+    // First Command+, summons the settings overlay.
+    [hostView keyDown:MatrixCodeCommandCommaKeyEvent(NO)];
+    [hostView layoutSubtreeIfNeeded];
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
+    id controller = [hostView valueForKey:@"configurationController"];
+    XCTAssertNotNil(controller);
+
+    // Second Command+, dismisses it. The panel is hidden immediately but the
+    // overlay lingers through the fade animation rather than vanishing at once.
+    [hostView keyDown:MatrixCodeCommandCommaKeyEvent(NO)];
+    XCTAssertEqualObjects([controller valueForKey:@"settingsPanelVisible"], @NO);
+    XCTAssertEqualObjects([controller valueForKey:@"settingsPanelDismissing"], @YES);
+
+    MatrixCodeSpinRunLoopUntil(^BOOL{
+        return [hostView valueForKey:@"configurationController"] == nil;
+    }, 2.0);
+    [hostView layoutSubtreeIfNeeded];
+    XCTAssertNil([hostView valueForKey:@"configurationController"]);
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
+    XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
+
+    // A third Command+, brings the overlay back, confirming a true toggle.
+    [hostView keyDown:MatrixCodeCommandCommaKeyEvent(NO)];
+    [hostView layoutSubtreeIfNeeded];
+    XCTAssertNotNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-panel"));
 }
 
 - (void)testWebEditorShortcutKeysOpenMatchingNativeEditors {

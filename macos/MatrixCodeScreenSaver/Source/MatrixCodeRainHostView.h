@@ -23,6 +23,7 @@ typedef NS_ENUM(NSInteger, MatrixCodeRainHostMode) {
 - (void)animateOneFrame;
 - (NSWindow *)configureWindow;
 - (void)showSettingsOverlay;
+- (void)toggleSettingsOverlay;
 - (void)setFPSOverlayVisible:(BOOL)visible;
 
 @end
