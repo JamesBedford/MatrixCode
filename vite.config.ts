@@ -35,5 +35,10 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["test/**/*.test.ts"],
+    // The simulation suites are CPU-bound and run files in parallel, so a test that
+    // needs ~1s alone can sit far longer waiting behind its siblings. The default 5s
+    // turns that contention into spurious failures; this keeps the gate meaningful
+    // for genuine hangs while leaving room for a loaded machine.
+    testTimeout: 30000,
   },
 });

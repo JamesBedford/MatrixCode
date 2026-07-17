@@ -127,59 +127,9 @@ readonly OUTPUT_DIR="${BUILD_ROOT}/${CONFIGURATION}"
 readonly DIST_DIR="${NATIVE_DIR}/dist"
 readonly LOCK_FILE="${BUILD_ROOT}/.${CONFIGURATION}.lock"
 
-developer_dir_for_path() {
-    local candidate="$1"
-    if [[ -d "${candidate}/Contents/Developer" ]]; then
-        candidate="${candidate}/Contents/Developer"
-    fi
-    [[ -x "${candidate}/usr/bin/xcodebuild" ]] || return 1
-    printf '%s\n' "${candidate}"
-}
+. "${REPO_ROOT}/scripts/lib/xcode-developer-dir.sh"
 
-resolve_developer_dir() {
-    local candidate=""
-
-    if [[ -n "${DEVELOPER_DIR:-}" ]]; then
-        developer_dir_for_path "${DEVELOPER_DIR}" \
-            || fail "DEVELOPER_DIR is not a valid Xcode developer directory: ${DEVELOPER_DIR}"
-        return
-    fi
-
-    if [[ -n "${XCODE_APP:-}" ]]; then
-        developer_dir_for_path "${XCODE_APP}" \
-            || fail "XCODE_APP is not a valid Xcode application: ${XCODE_APP}"
-        return
-    fi
-
-    candidate="$(xcode-select -p 2>/dev/null || true)"
-    if [[ -n "${candidate}" && "${candidate}" != *CommandLineTools* ]] && \
-       developer_dir_for_path "${candidate}"; then
-        return
-    fi
-
-    local app
-    for app in \
-        "/Applications/Xcode.app" \
-        "/Volumes/Data/Applications/Xcode.app" \
-        "/Volumes/DATA/Applications/Xcode.app"; do
-        if developer_dir_for_path "${app}"; then
-            return
-        fi
-    done
-
-    local spotlight_results
-    spotlight_results="$(mdfind "kMDItemCFBundleIdentifier == 'com.apple.dt.Xcode'" 2>/dev/null || true)"
-    while IFS= read -r app; do
-        [[ -n "${app}" ]] || continue
-        if developer_dir_for_path "${app}"; then
-            return
-        fi
-    done <<<"${spotlight_results}"
-
-    fail "Xcode not found. Install it, set XCODE_APP, or set DEVELOPER_DIR."
-}
-
-DEVELOPER_DIR="$(resolve_developer_dir)"
+DEVELOPER_DIR="$(matrixcode_resolve_developer_dir)" || exit 1
 export DEVELOPER_DIR
 readonly DEVELOPER_DIR
 readonly XCODEBUILD="${DEVELOPER_DIR}/usr/bin/xcodebuild"

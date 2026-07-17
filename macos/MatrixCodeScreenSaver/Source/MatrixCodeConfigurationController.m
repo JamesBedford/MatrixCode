@@ -16,6 +16,9 @@ NSNotificationName const MatrixCodePreviewValuesDidChangeNotification =
     @"MatrixCodePreviewValuesDidChangeNotification";
 NSString * const MatrixCodePreviewValuesKey = @"values";
 
+/** Matches the web viewer-name field's maxLength, so mx-user-name round-trips unchanged. */
+static const NSUInteger MatrixCodeUserNameMaximumLength = 80;
+
 static const NSTimeInterval MatrixCodeSettingsFadeDuration = 0.24;
 static const NSTimeInterval MatrixCodeSettingsHideDelay = 2.8;
 static const CGFloat MatrixCodeSettingsPanelWidth = 320.0;
@@ -1499,13 +1502,6 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [self buildInterface];
 }
 
-- (NSTabViewItem *)tabItem:(NSString *)label view:(NSView *)view {
-    NSTabViewItem *item = [[NSTabViewItem alloc] initWithIdentifier:label];
-    item.label = label;
-    item.view = view;
-    return item;
-}
-
 - (NSTextField *)heading:(NSString *)text {
     NSTextField *label = [NSTextField labelWithString:text];
     label.font = [NSFont preferredFontForTextStyle:NSFontTextStyleTitle2 options:@{}];
@@ -1702,63 +1698,6 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     return card;
 }
 
-- (NSView *)rainTab {
-    NSStackView *stack;
-    NSView *scroll = [self scrollingStack:&stack];
-    [stack addArrangedSubview:[self heading:@"Rain"]];
-    NSTextField *name = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    name.placeholderString = @"Neo";
-    name.stringValue = self.stagedValues[@"mx-user-name"] ?: @"";
-    name.identifier = @"mx-user-name";
-    name.target = self;
-    name.action = @selector(nameChanged:);
-    [name.widthAnchor constraintEqualToConstant:260].active = YES;
-    [stack addArrangedSubview:[self rowWithLabel:@"Viewer name" control:name]];
-    NSArray *specs = @[
-        @[@"Density", @"density", @0.1, @100], @[@"Ramp-up (ms)", @"rampUpMs", @0, @60000],
-        @[@"Trail length", @"trailLength", @0.01, @0.5],
-        @[@"Trail variation", @"trailVariation", @0, @1],
-        @[@"Speed", @"speed", @0.1, @3],
-        @[@"Glyph size", @"glyphScale", @0.5, @10],
-        @[@"Glow", @"glow", @0, @2.5], @[@"Lead glow", @"leadBrightness", @0, @3],
-        @[@"Vignette", @"vignette", @0, @1],
-    ];
-    for (NSArray *spec in specs) {
-        [stack addArrangedSubview:[self rowWithLabel:spec[0]
-                                            control:[self slider:spec[1]
-                                                             min:[spec[2] doubleValue]
-                                                             max:[spec[3] doubleValue]]]];
-    }
-    NSArray *presetItems = @[
-        @[@"Green (Classic)", @"classic"], @[@"Amber", @"amber"],
-        @[@"Gold", @"gold"], @[@"Red", @"red"],
-        @[@"Pink", @"pink"], @[@"Purple", @"purple"],
-        @[@"Blue", @"blue"], @[@"White", @"white"],
-    ];
-    NSPopUpButton *preset = [self settingsPopupWithIdentifier:@"preset"
-                                                selectedValue:self.controls[@"preset"]
-                                                        items:presetItems
-                                                       action:@selector(controlChanged:)];
-    [stack addArrangedSubview:[self rowWithLabel:@"Color" control:preset]];
-    NSArray *qualityItems = @[
-        @[@"Low", @"low"], @[@"Medium", @"med"], @[@"High", @"high"],
-    ];
-    NSPopUpButton *quality = [self settingsPopupWithIdentifier:@"quality"
-                                                 selectedValue:self.controls[@"quality"]
-                                                         items:qualityItems
-                                                        action:@selector(controlChanged:)];
-    [stack addArrangedSubview:[self rowWithLabel:@"Quality" control:quality]];
-    for (NSArray *toggle in @[@[@"Scanlines", @"scanlines"], @[@"Allow overlap", @"allowOverlap"]]) {
-        NSButton *button = [NSButton checkboxWithTitle:toggle[0] target:self action:@selector(controlChanged:)];
-        button.identifier = toggle[1];
-        button.state = [self.controls[toggle[1]] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
-        [stack addArrangedSubview:button];
-    }
-    NSButton *preview = [NSButton buttonWithTitle:@"Preview" target:self action:@selector(previewRain:)];
-    [stack addArrangedSubview:preview];
-    return scroll;
-}
-
 - (NSView *)charactersTab {
     NSStackView *stack;
     NSView *scroll = [self scrollingStack:&stack];
@@ -1887,7 +1826,9 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (void)nameChanged:(NSTextField *)sender {
-    NSString *name = [sender.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *name = sender.stringValue;
+    name = [name substringToIndex:MIN(MatrixCodeUserNameMaximumLength, name.length)];
+    name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (name.length) {
         self.stagedValues[@"mx-user-name"] = name;
         [self.explicitlyClearedStorageKeys removeObject:@"mx-user-name"];
@@ -2779,7 +2720,6 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 - (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message {
     [self showPreviewWithIntro:intro message:message image:NO];
 }
-- (void)previewRain:(id)sender { [self showPreviewWithIntro:NO message:NO image:NO]; }
 - (void)previewImage:(id)sender { [self showPreviewWithIntro:NO message:NO image:YES]; }
 
 - (void)beginEmbeddedEditorPreview {
@@ -2849,10 +2789,6 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     self.settingsHideTimer = nil;
     [self setSettingsPanelVisible:NO immediate:YES];
     self.replayIntroHandler();
-}
-
-- (void)resetAll:(id)sender {
-    [self resetControls:sender];
 }
 
 - (void)accept:(id)sender {

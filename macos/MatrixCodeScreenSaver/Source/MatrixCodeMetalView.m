@@ -4,6 +4,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <float.h>
 #import <simd/simd.h>
+#import <stddef.h>
 #import <string.h>
 
 #import "MatrixCodeConstants.h"
@@ -24,11 +25,7 @@ typedef struct {
     float brightness;
     float isHead;
     float whiteHead;
-    float digitValue;
 } MatrixCodeGlyphInstance;
-
-_Static_assert(sizeof(MatrixCodeGlyphInstance) == 64,
-               "MatrixCodeGlyphInstance must match MatrixCodeShaders.msl");
 
 typedef struct {
     vector_float2 viewport;
@@ -43,10 +40,39 @@ typedef struct {
     float glow;
     float vignette;
     float scanlines;
-    float glowRadius;
     float leadBrightness;
     vector_float3 backgroundColor;
 } MatrixCodeUniforms;
+
+// MatrixCodeShaders.msl declares these structs a second time and is compiled
+// from source at runtime, so a field added or removed on one side only would
+// silently reinterpret every subsequent field rather than fail to build. Sizes
+// alone do not pin the layout — trailing scalars land in padding that a float3's
+// 16-byte alignment already reserves — so each offset is asserted individually.
+_Static_assert(sizeof(MatrixCodeGlyphInstance) == 56,
+               "MatrixCodeGlyphInstance must match MatrixCodeShaders.msl");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, origin) == 0, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, size) == 8, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, atlasOrigin) == 16, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, atlasSize) == 24, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, oldAtlasOrigin) == 32, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, crossfade) == 40, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, brightness) == 44, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, isHead) == 48, "layout drift");
+_Static_assert(offsetof(MatrixCodeGlyphInstance, whiteHead) == 52, "layout drift");
+
+_Static_assert(sizeof(MatrixCodeUniforms) == 176,
+               "MatrixCodeUniforms must match MatrixCodeShaders.msl");
+_Static_assert(offsetof(MatrixCodeUniforms, viewport) == 0, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, tailColor) == 16, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, bodyColor) == 48, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, brightColor) == 80, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, headColor) == 112, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, glow) == 132, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, vignette) == 136, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, scanlines) == 140, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, leadBrightness) == 144, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, backgroundColor) == 160, "layout drift");
 
 typedef struct {
     vector_float2 direction;
@@ -113,8 +139,10 @@ static NSInteger MatrixCodeComputeRainLanes(double density,
     if (!allowOverlap || density <= MatrixCodeOverlapOnsetDensity) return 1;
 
     lanes[0].density = MatrixCodeOverlapOnsetDensity;
-    double level = fmin(3, fmax(0,
-        3 * (density - MatrixCodeOverlapOnsetDensity) /
+    // Subdivision doublings available before the lane budget is spent: 1 -> 2 -> 4 -> 8.
+    const double maximumLevel = log2((double)MatrixCodeMaximumRainLanes);
+    double level = fmin(maximumLevel, fmax(0,
+        maximumLevel * (density - MatrixCodeOverlapOnsetDensity) /
             (MatrixCodeMaximumDensity - MatrixCodeOverlapOnsetDensity)));
     NSInteger full = 1 << (NSInteger)floor(level);
     double fade = level - floor(level);
@@ -652,24 +680,6 @@ static vector_float3 MatrixCodeRGB(uint32_t rgb) {
     };
 }
 
-#if DEBUG
-static float MatrixCodeEffectiveTrailLength(float trailLength, float rows, float speedControl) {
-    const float controlMin = 0.01f;
-    const float controlMax = 0.5f;
-    const float maxTrailViewports = 3.0f;
-    float percent = fminf(1, fmaxf(0, (trailLength - controlMin) / (controlMax - controlMin)));
-
-    float averageSpeed = (3.5f + 8.0f * 0.5f) * fmaxf(speedControl, 0.1f);
-    float viewportRows = fmaxf(1, rows);
-    float previousMaxRows = averageSpeed * 1.2f * logf(0.004f) / logf(controlMax);
-    float minRows = viewportRows;
-    float maxRows = fmaxf(fmaxf(viewportRows * maxTrailViewports, previousMaxRows), minRows + 1);
-    float targetRows = minRows * powf(maxRows / minRows, percent);
-
-    return expf(logf(0.004f) * 1.2f * averageSpeed / fmaxf(1, targetRows));
-}
-#endif
-
 static void MatrixCodeConsiderRefreshRate(double refreshRate, double *best) {
     if (!isfinite(refreshRate) || refreshRate < 24) return;
     *best = fmax(*best, refreshRate);
@@ -893,7 +903,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 + (float)diagnosticEffectiveTrailLength:(float)trailLength
                                   rows:(float)rows
                           speedControl:(float)speedControl {
-    return MatrixCodeEffectiveTrailLength(trailLength, rows, speedControl);
+    return (float)MatrixCodeRainEffectiveTrailLengthForControls(
+        @{@"trailLength": @(trailLength), @"speed": @(speedControl)},
+        (NSInteger)rows,
+        MatrixCodeRainSimulationDefaultConfig());
 }
 
 + (NSInteger)diagnosticFramesPerSecondForScreenMaximum:(NSInteger)screenMaximum
@@ -1842,10 +1855,6 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     uniforms.vignette = MatrixCodeVignette(self.controls);
     uniforms.scanlines = MatrixCodeBool(self.controls, @"scanlines", NO) ? 1 : 0;
     uniforms.leadBrightness = MatrixCodeNumber(self.controls, @"leadBrightness", 1.6, 0, 3);
-    NSString *quality = [self.controls[@"quality"] isKindOfClass:NSString.class]
-        ? self.controls[@"quality"] : @"high";
-    uniforms.glowRadius = [quality isEqualToString:@"low"] ? 1 :
-        ([quality isEqualToString:@"med"] ? 2 : 3);
     self.uniforms = uniforms;
 }
 
@@ -2020,7 +2029,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         ? drawableSize.width / self.bounds.size.width : fallbackScale;
     if (!isfinite(scale) || scale <= 0) scale = fallbackScale;
     double glyphScale = MatrixCodeNumber(self.controls, @"glyphScale", 1, 0.5, 10);
-    CGFloat cellPoints = 18.0 * glyphScale;
+    CGFloat cellPoints = MatrixCodeRainSimulationDefaultConfig().targetCellPx * glyphScale;
     CGFloat cellPixels = cellPoints * scale;
     NSInteger firstGlobalColumn = 0;
     NSInteger firstGlobalRow = 0;
@@ -2395,8 +2404,6 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                 NSInteger atlasRow = glyph / atlasColumns;
                 NSInteger oldAtlasColumn = oldGlyph % atlasColumns;
                 NSInteger oldAtlasRow = oldGlyph / atlasColumns;
-                float digitValue = MatrixCodeProceduralDigitValueForRainGlyphMode(
-                    glyph, rainGlyphCount, glyphMode);
                 MatrixCodeGlyphInstance instance = (MatrixCodeGlyphInstance){
                     .origin = {
                         localOriginXPixels + (column + lane.offset) * cellWidthPixels,
@@ -2416,7 +2423,6 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                     .brightness = brightness,
                     .isHead = head ? 1 : 0,
                     .whiteHead = whiteHead ? 1 : 0,
-                    .digitValue = digitValue,
                 };
                 instances[count++] = instance;
 
@@ -2489,7 +2495,8 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 
 + (NSInteger)diagnosticNormalGridDimensionForPoints:(float)points
                                            glyphScale:(float)glyphScale {
-    return MatrixCodeNormalGridDimension(points, 18.0f * glyphScale);
+    return MatrixCodeNormalGridDimension(
+        points, (float)MatrixCodeRainSimulationDefaultConfig().targetCellPx * glyphScale);
 }
 
 + (BOOL)diagnosticMessagesUseLocalCoordinatesForSession:(NSDictionary *)session

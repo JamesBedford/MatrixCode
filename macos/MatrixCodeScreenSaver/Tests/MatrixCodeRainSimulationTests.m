@@ -29,6 +29,17 @@ static NSDictionary<NSString *, id> *MatrixCodeWebGoldenControls(void) {
     };
 }
 
+/**
+ * trailVariation below 1 decays every lit cell by its own pow() against the stream's
+ * blended speed, rather than the shared per-frame multiplier the other goldens take.
+ * Shared with the VARIED_TRAIL controls in test/rainSimGolden.test.ts.
+ */
+static NSDictionary<NSString *, id> *MatrixCodeWebVariedTrailGoldenControls(void) {
+    NSMutableDictionary *controls = [MatrixCodeWebGoldenControls() mutableCopy];
+    controls[@"trailVariation"] = @0.35;
+    return controls;
+}
+
 static uint32_t MatrixCodeFNV1aChecksum(NSData *data) {
     const uint8_t *bytes = data.bytes;
     uint32_t hash = 0x811c9dc5U;
@@ -95,6 +106,31 @@ static uint32_t MatrixCodeFNV1aChecksum(NSData *data) {
 
     XCTAssertTrue(simulation.hasMessageTargets);
     XCTAssertEqual(MatrixCodeFNV1aChecksum(simulation.stateData), 3260864663U);
+}
+
+- (void)testVariedTrailDecayMatchesWebPackedStateGoldenChecksum {
+    // Shared with test/rainSimGolden.test.ts. Covers the per-stream varied-decay
+    // branch, which the trailVariation: 1 goldens never reach.
+    MatrixCodeRainSimulation *simulation =
+        [[MatrixCodeRainSimulation alloc] initWithColumns:40 rows:60 seed:0xc0ffeeU];
+    NSDictionary *controls = MatrixCodeWebVariedTrailGoldenControls();
+    [simulation warmUpWithControls:controls seconds:3 step:1.0 / 60.0];
+    for (NSUInteger frame = 0; frame < 300; frame++) {
+        [simulation updateWithDeltaTime:1.0 / 60.0 controls:controls];
+    }
+
+    XCTAssertEqual(MatrixCodeFNV1aChecksum(simulation.stateData), 1771342251U);
+}
+
+- (void)testVariedTrailDistributedWarmUpMatchesWebPackedStateGoldenChecksum {
+    // Shared with test/rainSimGolden.test.ts. The distributed warm-up ages each
+    // seeded cell against the same blended stream speed.
+    MatrixCodeRainSimulation *simulation =
+        [[MatrixCodeRainSimulation alloc] initWithColumns:24 rows:90 seed:13579U];
+    NSDictionary *controls = MatrixCodeWebVariedTrailGoldenControls();
+    [simulation warmUpDistributedWithControls:controls seconds:2.5 step:1.0 / 60.0];
+
+    XCTAssertEqual(MatrixCodeFNV1aChecksum(simulation.stateData), 3061054872U);
 }
 
 - (void)testResizePreservesStreamsAndReplacesCellState {

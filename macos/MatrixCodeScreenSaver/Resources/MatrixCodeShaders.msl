@@ -11,7 +11,6 @@ struct MatrixCodeGlyphInstance {
     float brightness;
     float isHead;
     float whiteHead;
-    float digitValue;
 };
 
 struct MatrixCodeUniforms {
@@ -27,7 +26,6 @@ struct MatrixCodeUniforms {
     float glow;
     float vignette;
     float scanlines;
-    float glowRadius;
     float leadBrightness;
     float3 backgroundColor;
 };

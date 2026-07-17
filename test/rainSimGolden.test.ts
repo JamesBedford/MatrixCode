@@ -30,6 +30,11 @@ const CONTROLS: Controls = {
   quality: "high",
 };
 const DENSE: Controls = { ...CONTROLS, density: 6 };
+// trailVariation below 1 blends each stream's own speed toward the average and decays
+// every lit cell by its own pow(), instead of the single shared per-frame multiplier
+// the other goldens exercise. Pinned because it is the branch the native port is most
+// able to drift on unnoticed.
+const VARIED_TRAIL: Controls = { ...DENSE, trailVariation: 0.35 };
 
 function makeSim(cols = 24, rows = 40, seed = 12345): RainSim {
   return new RainSim({ cols, rows, config: DEFAULT_SIM_CONFIG, glyphSet: createGlyphSet(), seed });
@@ -72,5 +77,20 @@ describe("RainSim golden output (locks byte-exact packing across perf refactors)
     const sim = makeSim(24, 90, 13579);
     sim.warmUpDistributed(DENSE, 2.5);
     expect(checksum(sim.state)).toBe(3658144001);
+  });
+
+  it("varied trail decay, per-stream trail speed", () => {
+    const sim = makeSim(40, 60, 0xc0ffee);
+    sim.warmUp(VARIED_TRAIL, 3);
+    for (let i = 0; i < 300; i++) sim.update(1 / 60, VARIED_TRAIL);
+    // Differs from the trailVariation: 1 checksum above on the same seed and grid,
+    // which is what proves the varied branch is the one being measured.
+    expect(checksum(sim.state)).toBe(1771342251);
+  });
+
+  it("varied trail decay through the distributed warm-up", () => {
+    const sim = makeSim(24, 90, 13579);
+    sim.warmUpDistributed(VARIED_TRAIL, 2.5);
+    expect(checksum(sim.state)).toBe(3061054872);
   });
 });

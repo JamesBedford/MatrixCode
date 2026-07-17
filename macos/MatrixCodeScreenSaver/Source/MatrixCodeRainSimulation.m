@@ -225,6 +225,12 @@ static double MatrixCodeRainEffectiveTrailLength(NSDictionary<NSString *, id> *c
         targetRows, averageSpeed, config.trailLengthScale);
 }
 
+double MatrixCodeRainEffectiveTrailLengthForControls(NSDictionary<NSString *, id> *controls,
+                                                     NSInteger rows,
+                                                     MatrixCodeRainSimulationConfig config) {
+    return MatrixCodeRainEffectiveTrailLength(controls, rows, config);
+}
+
 static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
                                                 double speedControl,
                                                 double variation,

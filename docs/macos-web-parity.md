@@ -59,3 +59,9 @@ release-build/package checks. Cross-language state fixtures and native
 render-graph/shader-contract tests are part of those suites. It verifies the
 deterministic inputs and rendering algorithm, but not the manual cross-backend
 image threshold described above.
+
+Xcode is located by `scripts/lib/xcode-developer-dir.sh`, which prefers
+`DEVELOPER_DIR`, then `XCODE_APP`, then a non-Command-Line-Tools `xcode-select
+-p`, then the usual install locations, then Spotlight. An Xcode outside
+`/Applications` therefore needs no `xcode-select --switch`; set `XCODE_APP` to
+pin a specific one.

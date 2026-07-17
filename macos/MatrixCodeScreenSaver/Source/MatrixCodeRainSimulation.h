@@ -29,6 +29,17 @@ typedef struct {
 FOUNDATION_EXPORT MatrixCodeRainSimulationConfig MatrixCodeRainSimulationDefaultConfig(void);
 
 /**
+ * Maps the `trailLength` control onto the per-second brightness decay the
+ * simulation applies, mirroring RainSim's effectiveTrailLength. Exposed so
+ * render-side diagnostics measure the same curve the rain actually uses
+ * rather than re-deriving it.
+ */
+FOUNDATION_EXPORT double MatrixCodeRainEffectiveTrailLengthForControls(
+    NSDictionary<NSString *, id> *controls,
+    NSInteger rows,
+    MatrixCodeRainSimulationConfig config);
+
+/**
  * Direct CPU-side port of the web RainSim. `stateData` uses the same locked
  * RGBA8 cell layout as src/types.ts:
  *
