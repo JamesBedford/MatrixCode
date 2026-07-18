@@ -58,7 +58,7 @@ These were established experimentally before this plan was written:
 Create `test/test_dmg_background.py`:
 
 ```python
-"""Run with: python3 -m pytest test/test_dmg_background.py -v"""
+"""Run with: /private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python -m pytest test/test_dmg_background.py -v"""
 import subprocess
 import sys
 from pathlib import Path
@@ -92,7 +92,7 @@ def test_writes_committed_artwork():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `python3 -m pytest test/test_dmg_background.py -v`
+Run: `/private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python -m pytest test/test_dmg_background.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'generate_dmg_background'`
 
 - [ ] **Step 3: Write the generator**
@@ -258,7 +258,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `python3 -m pytest test/test_dmg_background.py -v`
+Run: `/private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python -m pytest test/test_dmg_background.py -v`
 Expected: 3 passed.
 
 - [ ] **Step 5: Visual review — STOP HERE**
@@ -294,8 +294,8 @@ git commit -m "Add the DMG window background artwork and its generator"
 release build's dependency set. Install them into a throwaway venv:
 
 ```bash
-python3 -m venv /tmp/dmgvenv
-/tmp/dmgvenv/bin/pip install ds_store mac_alias pillow
+python3 -m venv /private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv
+/private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/pip install ds_store mac_alias pillow pytest
 ```
 
 - [ ] **Step 1: Write the failing test**
@@ -303,7 +303,7 @@ python3 -m venv /tmp/dmgvenv
 Create `test/test_dmg_layout.py`:
 
 ```python
-"""Run with: /tmp/dmgvenv/bin/python -m pytest test/test_dmg_layout.py -v"""
+"""Run with: /private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python -m pytest test/test_dmg_layout.py -v"""
 import plistlib
 from pathlib import Path
 
@@ -365,7 +365,7 @@ def test_window_geometry():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/dmgvenv/bin/python -m pytest test/test_dmg_layout.py -v`
+Run: `/private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python -m pytest test/test_dmg_layout.py -v`
 Expected: FAIL — `DS_Store` does not exist.
 
 - [ ] **Step 3: Write the layout generator**
@@ -386,7 +386,7 @@ scripts/build-release.sh.
 Requires ds_store + mac_alias (not needed by the release build):
     python3 -m venv /tmp/dmgvenv
     /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow
-    /tmp/dmgvenv/bin/python scripts/generate_dmg_layout.py
+    /private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python scripts/generate_dmg_layout.py
 """
 from __future__ import annotations
 
@@ -518,8 +518,8 @@ if __name__ == "__main__":
 - [ ] **Step 4: Generate the layout and run the tests**
 
 ```bash
-/tmp/dmgvenv/bin/python scripts/generate_dmg_layout.py
-/tmp/dmgvenv/bin/python -m pytest test/test_dmg_layout.py -v
+/private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python scripts/generate_dmg_layout.py
+/private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python -m pytest test/test_dmg_layout.py -v
 ```
 
 Expected: layout written, 4 passed.
@@ -746,7 +746,23 @@ In the summary block after line 501, add:
 printf '  DMG            %s\n' "${OUTPUT_DIR}/${DMG_NAME}"
 ```
 
-- [ ] **Step 7: Update .gitignore and README**
+- [ ] **Step 7: Update the existing Vitest build-script test**
+
+`test/buildReleaseScript.test.ts:44` asserts the usage text contains
+`"MatrixCodeScreenSaver/dist"`, which this task deletes. Change that assertion to
+expect the DMG's new home instead:
+
+```ts
+    expect(result.stdout).toContain("build/Release");
+    expect(result.stdout).toContain("MatrixCode.dmg");
+```
+
+Then run the suite to confirm nothing else in it depended on `dist/`:
+
+Run: `npm test -- test/buildReleaseScript.test.ts`
+Expected: all tests pass.
+
+- [ ] **Step 8: Update .gitignore and README**
 
 In `macos/MatrixCodeScreenSaver/.gitignore`, delete the `dist/` line.
 
@@ -768,13 +784,13 @@ tooling. To change the look:
 
     python3 scripts/generate_dmg_background.py       # artwork
     python3 -m venv /tmp/dmgvenv && /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow
-    /tmp/dmgvenv/bin/python scripts/generate_dmg_layout.py   # window + icon layout
+    /private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python scripts/generate_dmg_layout.py   # window + icon layout
 
 Then commit the regenerated `Resources/DMG/` files. The volume name must stay
 `Matrix Code`: Finder keys the layout to it.
 ```
 
-- [ ] **Step 8: Build and verify end-to-end**
+- [ ] **Step 9: Build and verify end-to-end**
 
 ```bash
 cd macos/MatrixCodeScreenSaver && ./build.sh
@@ -791,7 +807,7 @@ ls -la macos/MatrixCodeScreenSaver/build/Release/MatrixCode.dmg
 ./scripts/verify_dmg.sh macos/MatrixCodeScreenSaver/build/Release/MatrixCode.dmg
 ```
 
-- [ ] **Step 9: Visual review — STOP HERE**
+- [ ] **Step 10: Visual review — STOP HERE**
 
 ```bash
 open macos/MatrixCodeScreenSaver/build/Release/MatrixCode.dmg
@@ -804,10 +820,10 @@ generic, restyle by building `-format UDRW`, mounting, running
 `SetFile -a C "${MOUNT}"`, detaching, then `hdiutil convert -format UDZO`. Treat a
 generic volume icon as a defect to fix, not as acceptable.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add scripts/build-release.sh scripts/verify_dmg.sh \
+git add scripts/build-release.sh scripts/verify_dmg.sh test/buildReleaseScript.test.ts \
         macos/MatrixCodeScreenSaver/.gitignore \
         macos/MatrixCodeScreenSaver/README.md
 git commit -m "Build a styled MatrixCode.dmg into build/Release and retire dist/"
