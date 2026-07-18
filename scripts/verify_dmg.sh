@@ -10,18 +10,26 @@ set -euo pipefail
 DMG="${1:?Usage: verify_dmg.sh <path-to-dmg>}"
 [[ -f "${DMG}" ]] || { printf 'No such DMG: %s\n' "${DMG}" >&2; exit 1; }
 
+TEMP_ROOT=""
 MOUNT=""
 cleanup() {
     if [[ -n "${MOUNT}" && -d "${MOUNT}" ]]; then
         hdiutil detach "${MOUNT}" -quiet 2>/dev/null \
             || hdiutil detach "${MOUNT}" -force -quiet 2>/dev/null || true
     fi
+    [[ -z "${TEMP_ROOT}" || ! -d "${TEMP_ROOT}" ]] || rm -rf "${TEMP_ROOT}"
 }
 trap cleanup EXIT
 
-MOUNT="$(hdiutil attach "${DMG}" -nobrowse -noautoopen -readonly \
-    | grep -o '/Volumes/.*' | head -1)"
-[[ -n "${MOUNT}" ]] || { printf 'Could not mount %s\n' "${DMG}" >&2; exit 1; }
+# Mount at a private mountpoint rather than letting the volume land in /Volumes.
+# A volume named "Matrix Code" that is already mounted — typically the previous
+# build's DMG still open in Finder — would otherwise push this one to
+# "/Volumes/Matrix Code 1" and make the mount path useless for identifying it.
+TEMP_ROOT="$(mktemp -d)"
+MOUNT="${TEMP_ROOT}/mnt"
+mkdir -p "${MOUNT}"
+hdiutil attach "${DMG}" -nobrowse -noautoopen -readonly -mountpoint "${MOUNT}" >/dev/null \
+    || { printf 'Could not mount %s\n' "${DMG}" >&2; MOUNT=""; exit 1; }
 
 failures=0
 check() {
@@ -44,7 +52,12 @@ check ".VolumeIcon.icns"
 [[ -L "${MOUNT}/Applications" ]] || {
     printf '  Applications is not a symlink\n'; failures=$((failures + 1)); }
 
-volume_name="$(basename "${MOUNT}")"
+# The volume's real name, read from the filesystem rather than inferred from the
+# mount path. hdiutil imageinfo does not report it for these APFS images, so ask
+# diskutil about the mounted volume instead.
+volume_info="${TEMP_ROOT}/volume-info.plist"
+diskutil info -plist "${MOUNT}" > "${volume_info}" 2>/dev/null || true
+volume_name="$(/usr/libexec/PlistBuddy -c 'Print :VolumeName' "${volume_info}" 2>/dev/null || true)"
 if [[ "${volume_name}" != "Matrix Code" ]]; then
     printf '  Volume name is "%s", expected "Matrix Code" — the committed\n' "${volume_name}"
     printf '  layout is keyed to that name and will not apply.\n'

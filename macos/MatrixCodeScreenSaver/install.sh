@@ -7,6 +7,17 @@ SCRIPT_DIR=${0:A:h}
 INSTALL_DIR="${HOME}/Library/Screen Savers"
 mkdir -p "${INSTALL_DIR}"
 SOURCE_SAVER="${SCRIPT_DIR}/build/Release/Matrix Code.saver"
+
+# Installs from before the rename are called MatrixCode.saver but carry the same
+# bundle identifier, so leaving one behind lets System Settings list two entries
+# and lets legacyScreenSaver keep loading the stale bundle — which makes a fresh
+# install look like it did nothing.
+LEGACY_SAVER="${INSTALL_DIR}/MatrixCode.saver"
+if [[ -e "${LEGACY_SAVER}" ]]; then
+  rm -rf "${LEGACY_SAVER}"
+  echo "Removed the legacy install at ${LEGACY_SAVER}."
+fi
+
 rm -rf "${INSTALL_DIR}/Matrix Code.saver"
 ditto "${SOURCE_SAVER}" "${INSTALL_DIR}/Matrix Code.saver"
 xattr -cr "${INSTALL_DIR}/Matrix Code.saver"

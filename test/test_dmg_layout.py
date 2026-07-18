@@ -5,6 +5,7 @@ See scripts/generate_dmg_layout.py for how to create that venv.
 import plistlib
 from pathlib import Path
 
+import mac_alias
 from ds_store import DSStore
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +31,27 @@ def test_background_is_a_picture_with_an_alias():
     assert icvp["backgroundColorRed"] == 1.0
     assert icvp["backgroundColorGreen"] == 1.0
     assert icvp["backgroundColorBlue"] == 1.0
-    assert len(bytes(icvp["backgroundImageAlias"])) > 100
+
+
+def test_background_alias_targets_the_committed_backdrop():
+    """The alias must resolve to the real backdrop inside the real volume.
+
+    Renaming the volume or the backdrop silently breaks the background — Finder
+    just falls back to the plain colour — so decode the committed alias and
+    assert on where it actually points rather than on its size.
+    """
+    alias = mac_alias.Alias.from_bytes(bytes(_icvp()["backgroundImageAlias"]))
+
+    assert alias.volume.name == "Matrix Code"
+    assert alias.volume.posix_path == "/Volumes/Matrix Code"
+    assert alias.target.filename == "background.tiff"
+    assert alias.target.folder_name == ".background"
+    assert alias.target.posix_path == "/.background/background.tiff"
+    # carbon_path is stored as bytes, colon-separated in classic Mac form.
+    carbon_path = bytes(alias.target.carbon_path)
+    assert carbon_path.startswith(b"Matrix Code:")
+    assert carbon_path.endswith(b"background.tiff")
+    assert b".background" in carbon_path
 
 
 def test_icon_metrics():

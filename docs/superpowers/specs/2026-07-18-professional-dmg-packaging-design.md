@@ -5,8 +5,8 @@
 
 ## Goal
 
-Ship one styled disk image containing both native products — `MatrixCode.app` and
-`MatrixCode.saver` — at `macos/MatrixCodeScreenSaver/build/Release/MatrixCode.dmg`.
+Ship one styled disk image containing both native products — `Matrix Code.app` and
+`Matrix Code.saver` — at `macos/MatrixCodeScreenSaver/build/Release/MatrixCode.dmg`.
 
 `scripts/build-release.sh` already builds a DMG with both products and an
 `/Applications` symlink, signs it, notarizes it and staples it. Two things are
@@ -24,10 +24,10 @@ existing output directory:
 ```
 macos/MatrixCodeScreenSaver/build/Release/
 ├── MatrixCode.dmg              <- styled, signed, notarized, stapled
-├── MatrixCode.app.zip
-├── MatrixCode.saver.zip
-├── MatrixCode-dSYMs.zip
-├── MatrixCode-UUIDs.txt
+├── Matrix Code.app.zip
+├── Matrix Code.saver.zip
+├── Matrix Code-dSYMs.zip
+├── Matrix Code-UUIDs.txt
 └── SHA256SUMS.txt              <- now also covers MatrixCode.dmg
 ```
 
@@ -57,7 +57,7 @@ image from a `.DS_Store` at the volume root. Three files are committed under
 | Committed file    | Copied into the volume as | Purpose                          |
 | ----------------- | ------------------------- | -------------------------------- |
 | `DS_Store`        | `.DS_Store`               | window geometry + icon positions  |
-| `background.png`  | `.background/background.png` | window backdrop                |
+| `background.tiff` | `.background/background.tiff` | window backdrop                |
 | `VolumeIcon.icns` | `.VolumeIcon.icns`        | volume icon in Finder / desktop   |
 
 The build copies these three into the staging folder before the existing
@@ -80,6 +80,12 @@ when the layout changes, and its output is committed. This keeps layout
 regeneration repeatable and reviewable while leaving the release build
 dependency-free.
 
+The background is set through the `icvp` record, which needs more than the alias:
+`backgroundType` (2 == picture), the `backgroundImageAlias`, **and**
+`backgroundColorRed` / `backgroundColorGreen` / `backgroundColorBlue`. Omit the
+colour keys and Finder silently ignores the image and draws a plain background,
+with no error anywhere — so the layout test asserts all five.
+
 Rejected alternative: `create-dmg`, or hand-rolled AppleScript, which drive Finder
 to place icons. Both need a GUI session and Automation permission, which is a poor
 fit for a script this hermetic, and neither is reproducible in CI.
@@ -93,21 +99,30 @@ Same end state; regeneration becomes manual rather than scripted.
 
 ## The artwork
 
-`background.png` is rendered by `scripts/generate_dmg_background.py`, a sibling of
+`background.tiff` is rendered by `scripts/generate_dmg_background.py`, a sibling of
 the existing `scripts/generate_native_icons.py`, reusing that script's Matrix-rain
 drawing and `trail_color` phosphor ramp so the DMG matches the app icon rather
 than inventing a second visual language.
 
-Window content area 700×480; the PNG is rendered at 2× (1400×960) so it stays
-crisp on Retina.
+**A multi-representation TIFF, not a PNG.** Finder maps one backdrop pixel to one
+point and never scales the image, so a 2× PNG does not render at half size — it
+renders at double size and overflows the window. Retina crispness instead comes
+from a HiDPI TIFF carrying both a 1× and a 2× representation, combined with
+`tiffutil -cathidpicheck`; Finder lays the 1× representation out in points and
+draws the 2× one on a Retina display.
+
+The composition is laid out against a nominal 700×560 window box, but the canvas
+is **1200×950** — the artwork deliberately bleeds well past the window on every
+side, so a user who drags the window larger sees more rain rather than white.
+Every element that must stay visible is kept inside the smaller safe area.
 
 ```
 ┌──────────────────────────────────────────┐
 │   ▒ ░ █ ▒   MATRIX CODE   ░ █ ▒ ░        │
 │                                          │
-│    [MatrixCode.app]  ──▶  [Applications] │
+│   [Matrix Code.app]  ──▶  [Applications] │
 │                                          │
-│         [MatrixCode.saver]               │
+│         [Matrix Code.saver]              │
 │    Double-click to install the saver     │
 └──────────────────────────────────────────┘
 ```
@@ -128,17 +143,27 @@ which installs it.
 The release path cannot run unattended (it needs the Developer ID identity in the
 Keychain and a notarization round-trip), so verification is split:
 
-1. **Layout generation** — `scripts/generate_dmg_layout.py` is deterministic;
-   regenerating it produces a byte-identical `DS_Store`.
+1. **Artwork and layout generation** — `scripts/generate_dmg_background.py` is
+   deterministic: it is seeded, so re-rendering produces byte-identical artwork,
+   and a test asserts that. `scripts/generate_dmg_layout.py` is **not** — the
+   background alias embeds volume metadata (creation timestamps, CNIDs) from
+   whatever volume it was generated against, so a regenerated `DS_Store` differs
+   byte-for-byte from the committed one even when the layout is unchanged. The
+   layout is therefore tested by reading the committed `DS_Store` back and
+   asserting on its contents — icon positions, window geometry, the `icvp` keys,
+   and that the decoded alias really targets `background.tiff` inside the
+   `Matrix Code` volume — rather than by re-generating and diffing.
 2. **Structural check on the built DMG** — attach the image and assert it
-   contains `MatrixCode.app`, `MatrixCode.saver`, the `Applications` symlink,
-   `.DS_Store`, `.background/background.png` and `.VolumeIcon.icns`; then detach.
-   This runs against the real product without needing notarization.
+   contains `Matrix Code.app`, `Matrix Code.saver`, the `Applications` symlink,
+   `.DS_Store`, `.background/background.tiff` and `.VolumeIcon.icns`; then detach.
+   It mounts at a private mountpoint and reads the volume name from the
+   filesystem, so an already-mounted `Matrix Code` volume cannot skew it. This
+   runs against the real product without needing notarization.
 3. **Existing verification is preserved** — `codesign --verify`, the
    `spctl -a -t install` Gatekeeper assessment, `stapler validate`, and the
    published-artifact checksum check all still run against the DMG in its new
    location.
-4. **Visual confirmation** — the rendered `background.png` is reviewed before it
+4. **Visual confirmation** — the rendered `background.tiff` is reviewed before it
    is committed. Automated tests cannot judge "beautiful".
 
 ## Out of scope

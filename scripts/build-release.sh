@@ -65,6 +65,10 @@ CONFIGURATION="Release"
 configuration_was_selected=false
 SKIP_NOTARIZE=false
 LOCAL_SIGNING=false
+# Tracks an explicit --local-signing argument, as distinct from the ad-hoc
+# signing that a Debug configuration implies. Only the explicit form conflicts
+# with --auto-signing.
+local_signing_was_requested=false
 AUTO_SIGNING=false
 
 select_configuration() {
@@ -103,6 +107,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --local-signing)
             LOCAL_SIGNING=true
+            local_signing_was_requested=true
             ;;
         --auto-signing)
             AUTO_SIGNING=true
@@ -134,7 +139,7 @@ fi
 # needs the network and several minutes, which a routine local build should not
 # pay. Use --release for a notarized distribution build.
 if [[ "${AUTO_SIGNING}" == true ]]; then
-    if [[ "${LOCAL_SIGNING}" == true || "${SKIP_NOTARIZE}" == true ]]; then
+    if [[ "${local_signing_was_requested}" == true || "${SKIP_NOTARIZE}" == true ]]; then
         fail "--auto-signing cannot be combined with --local-signing or --skip-notarize."
     fi
     if [[ "${CONFIGURATION}" == "Debug" ]]; then
@@ -171,6 +176,10 @@ for command in xcodegen codesign ditto dwarfdump find hdiutil lipo lockf otool s
     command -v "${command}" >/dev/null 2>&1 || fail "Required command not found: ${command}"
 done
 [[ -x /usr/libexec/PlistBuddy ]] || fail "Required command not found: /usr/libexec/PlistBuddy"
+# SetFile is only needed at DMG staging time, near the end of the build. Check it
+# here so a missing one costs two seconds rather than a whole build and notarize.
+readonly SETFILE="${DEVELOPER_DIR}/usr/bin/SetFile"
+[[ -x "${SETFILE}" ]] || fail "Required command not found: ${SETFILE}"
 
 if [[ "${LOCAL_SIGNING}" == false ]]; then
     identities="$(security find-identity -v -p codesigning 2>/dev/null || true)"
@@ -433,7 +442,7 @@ hdiutil create -volname "${VOLUME_NAME}" -srcfolder "${DMG_STAGE}" \
 DMG_MOUNT="$(hdiutil attach "${DMG_READWRITE}" -nobrowse -noautoopen \
     | grep -o '/Volumes/.*' | head -1)"
 [[ -n "${DMG_MOUNT}" ]] || fail "Could not mount the DMG to set its volume icon."
-"${DEVELOPER_DIR}/usr/bin/SetFile" -a C "${DMG_MOUNT}" \
+"${SETFILE}" -a C "${DMG_MOUNT}" \
     || fail "Could not set the custom-icon attribute on the DMG volume."
 hdiutil detach "${DMG_MOUNT}" -quiet \
     || hdiutil detach "${DMG_MOUNT}" -force -quiet \
