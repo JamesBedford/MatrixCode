@@ -1,4 +1,9 @@
-"""Run with: /private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python -m pytest test/test_dmg_background.py -v"""
+"""Run with: /tmp/dmgvenv/bin/python -m pytest test/test_dmg_background.py -v
+
+Set up that venv with:
+    python3 -m venv /tmp/dmgvenv
+    /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow pytest
+"""
 import subprocess
 import sys
 from pathlib import Path
