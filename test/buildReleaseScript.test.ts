@@ -64,6 +64,14 @@ describe("native build script", () => {
     expect(wrapper).not.toContain("--local-signing");
   });
 
+  it("builds the disk image with a compressed format", () => {
+    const source = readFileSync(script, "utf8");
+    // The read-write image is only an intermediate for setting the volume icon;
+    // the published image must be converted to a compressed format.
+    expect(source).toMatch(/readonly DMG_FORMAT="(ULMO|ULFO|UDBZ|UDZO)"/);
+    expect(source).toContain('hdiutil convert "${DMG_READWRITE}" -format "${DMG_FORMAT}"');
+  });
+
   it("refuses to combine auto-signing with an explicit signing mode", () => {
     for (const conflicting of ["--local-signing", "--skip-notarize"]) {
       const result = runScript(["--auto-signing", conflicting]);
