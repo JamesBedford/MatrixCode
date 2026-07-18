@@ -1,4 +1,7 @@
-"""Run with: /private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python -m pytest test/test_dmg_layout.py -v"""
+"""Run with: /tmp/dmgvenv/bin/python -m pytest test/test_dmg_layout.py -v
+
+See scripts/generate_dmg_layout.py for how to create that venv.
+"""
 import plistlib
 from pathlib import Path
 

@@ -10,8 +10,8 @@ scripts/build-release.sh.
 
 Requires ds_store + mac_alias (not needed by the release build):
     python3 -m venv /tmp/dmgvenv
-    /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow
-    /private/tmp/claude-501/-Users-james-Library-CloudStorage-Dropbox-Source-MatrixCode/45c98aa4-cd20-4cc0-a910-b06ed5fdb1d9/scratchpad/dmgvenv/bin/python scripts/generate_dmg_layout.py
+    /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow pytest
+    /tmp/dmgvenv/bin/python scripts/generate_dmg_layout.py
 """
 from __future__ import annotations
 
@@ -40,26 +40,55 @@ VOLUME_NAME = "Matrix Code"  # must match build-release.sh
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(args, check=True, capture_output=True, text=True)
+    result = subprocess.run(args, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"command failed ({result.returncode}): {' '.join(args)}\n"
+            f"{result.stderr.strip()}"
+        )
+    return result
 
 
 def attach(dmg: Path) -> Path:
     out = run("hdiutil", "attach", str(dmg), "-nobrowse", "-noautoopen").stdout
+    device = None
     for line in out.splitlines():
+        stripped = line.strip()
+        if device is None and stripped.startswith("/dev/"):
+            device = stripped.split()[0]
         if "/Volumes/" in line:
             return Path("/Volumes/" + line.split("/Volumes/")[1].strip())
+    # hdiutil reported success but we could not parse a mount point out of its
+    # output, so the image may still be attached. Detach it — by device node
+    # if we found one, otherwise by the volume name we asked hdiutil to use —
+    # before raising, so a parsing failure here can never leak a mounted volume.
+    try:
+        detach(device or f"/Volumes/{VOLUME_NAME}")
+    except RuntimeError as detach_exc:
+        raise RuntimeError(
+            f"could not find mount point in:\n{out}\n"
+            f"cleanup after this failure also failed: {detach_exc}"
+        ) from detach_exc
     raise RuntimeError(f"could not find mount point in:\n{out}")
 
 
-def detach(mount: Path) -> None:
+def detach(target: Path | str) -> None:
     for _ in range(4):
         try:
-            run("hdiutil", "detach", str(mount), "-quiet")
+            run("hdiutil", "detach", str(target), "-quiet")
             return
-        except subprocess.CalledProcessError:
+        except RuntimeError:
             subprocess.run(["sync"], check=False)
             time.sleep(1)
-    subprocess.run(["hdiutil", "detach", str(mount), "-force", "-quiet"], check=False)
+    result = subprocess.run(
+        ["hdiutil", "detach", str(target), "-force", "-quiet"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"failed to detach {target} even with -force; a mount may have "
+            f"leaked (stderr: {result.stderr.strip()})"
+        )
 
 
 def write_layout(volume: Path) -> None:
