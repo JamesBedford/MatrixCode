@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds and packages the native MatrixCode app and screen saver.
+# Builds and packages the native Matrix Code app and screen saver.
 #
 # Usage:
 #   ./scripts/build-release.sh                         # Release (default)
@@ -25,6 +25,7 @@ readonly TEAM_ID="7NBMEUUG5K"
 readonly SIGN_IDENTITY="Developer ID Application: James Bedford (${TEAM_ID})"
 readonly NOTARY_PROFILE="notarytool"
 readonly VOLUME_NAME="Matrix Code"
+readonly DMG_NAME="MatrixCode.dmg"
 
 info() { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$1"; }
 fail() { printf '\n\033[1;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
@@ -33,14 +34,17 @@ usage() {
     cat <<'USAGE'
 Usage: ./scripts/build-release.sh [options]
 
-Build and package the native MatrixCode.app and MatrixCode.saver.
+Build and package the native Matrix Code.app and Matrix Code.saver.
 
 Options:
   --release                    Build the Release configuration (default).
   --debug                      Build the Debug configuration.
   -c, --configuration VALUE    Build Debug or Release.
   --skip-notarize              Developer ID sign Release, but do not notarize.
-  --local-signing              Ad-hoc sign without a DMG (used by build.sh).
+  --local-signing              Ad-hoc sign for local use.
+  --auto-signing               Developer ID sign if the identity is available,
+                               otherwise warn and fall back to ad-hoc signing
+                               (used by build.sh). Does not notarize.
   -h, --help                   Show this help.
 
 Environment:
@@ -50,10 +54,10 @@ Environment:
 Outputs:
   macos/MatrixCodeScreenSaver/build/Debug/
   macos/MatrixCodeScreenSaver/build/Release/
-  macos/MatrixCodeScreenSaver/dist/              (distribution Release)
 
-Release builds also include matching dSYMs and a UUID report. By default they
-are Developer ID signed and notarized as a versioned DMG in dist/.
+Release builds also include matching dSYMs and a UUID report. The styled
+MatrixCode.dmg is Developer ID signed and notarized unless --local-signing or
+--skip-notarize is supplied.
 USAGE
 }
 
@@ -61,6 +65,7 @@ CONFIGURATION="Release"
 configuration_was_selected=false
 SKIP_NOTARIZE=false
 LOCAL_SIGNING=false
+AUTO_SIGNING=false
 
 select_configuration() {
     local requested="$1"
@@ -99,6 +104,9 @@ while [[ $# -gt 0 ]]; do
         --local-signing)
             LOCAL_SIGNING=true
             ;;
+        --auto-signing)
+            AUTO_SIGNING=true
+            ;;
         -h|--help)
             usage
             exit 0
@@ -120,11 +128,35 @@ if [[ "${LOCAL_SIGNING}" == true && "${SKIP_NOTARIZE}" == true ]]; then
     fail "Choose either --local-signing or --skip-notarize, not both."
 fi
 
+# --auto-signing prefers the real Developer ID identity and degrades to ad-hoc
+# signing rather than failing the build, so a machine without the certificate can
+# still produce working local products. Notarization is never attempted here: it
+# needs the network and several minutes, which a routine local build should not
+# pay. Use --release for a notarized distribution build.
+if [[ "${AUTO_SIGNING}" == true ]]; then
+    if [[ "${LOCAL_SIGNING}" == true || "${SKIP_NOTARIZE}" == true ]]; then
+        fail "--auto-signing cannot be combined with --local-signing or --skip-notarize."
+    fi
+    if [[ "${CONFIGURATION}" == "Debug" ]]; then
+        LOCAL_SIGNING=true
+    elif security find-identity -v -p codesigning 2>/dev/null \
+        | grep -qF "${SIGN_IDENTITY}"; then
+        SKIP_NOTARIZE=true
+        printf '\n\033[1;34m==>\033[0m Signing with %s\n' "${SIGN_IDENTITY}"
+    else
+        LOCAL_SIGNING=true
+        printf '\n\033[1;33mWarning:\033[0m Developer ID identity not found in the Keychain:\n' >&2
+        printf '  %s\n' "${SIGN_IDENTITY}" >&2
+        printf 'Falling back to ad-hoc signing. These products are for local use only\n' >&2
+        printf 'and will not pass Gatekeeper on another Mac.\n' >&2
+    fi
+fi
+
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly NATIVE_DIR="${REPO_ROOT}/macos/MatrixCodeScreenSaver"
 readonly BUILD_ROOT="${NATIVE_DIR}/build"
 readonly OUTPUT_DIR="${BUILD_ROOT}/${CONFIGURATION}"
-readonly DIST_DIR="${NATIVE_DIR}/dist"
+readonly DMG_RESOURCES="${NATIVE_DIR}/Resources/DMG"
 readonly LOCK_FILE="${BUILD_ROOT}/.${CONFIGURATION}.lock"
 
 . "${REPO_ROOT}/scripts/lib/xcode-developer-dir.sh"
@@ -134,15 +166,13 @@ export DEVELOPER_DIR
 readonly DEVELOPER_DIR
 readonly XCODEBUILD="${DEVELOPER_DIR}/usr/bin/xcodebuild"
 
-for command in xcodegen codesign ditto dwarfdump find lipo lockf otool shasum unzip xattr; do
+for command in xcodegen codesign ditto dwarfdump find hdiutil lipo lockf otool security \
+    shasum spctl unzip xattr xcrun; do
     command -v "${command}" >/dev/null 2>&1 || fail "Required command not found: ${command}"
 done
 [[ -x /usr/libexec/PlistBuddy ]] || fail "Required command not found: /usr/libexec/PlistBuddy"
 
 if [[ "${LOCAL_SIGNING}" == false ]]; then
-    for command in hdiutil security spctl xcrun; do
-        command -v "${command}" >/dev/null 2>&1 || fail "Required command not found: ${command}"
-    done
     identities="$(security find-identity -v -p codesigning 2>/dev/null || true)"
     grep -qF "${SIGN_IDENTITY}" <<<"${identities}" \
         || fail "Signing identity not found in Keychain: ${SIGN_IDENTITY}"
@@ -160,11 +190,13 @@ temp_parent="${temp_parent%/}"
 TEMP_ROOT="$(mktemp -d "${temp_parent}/MatrixCodeBuild.XXXXXX")"
 PUBLISH_DIR=""
 BACKUP_DIR=""
-DIST_PUBLISH_DIR=""
-DIST_BACKUP_DIR=""
-DIST_OUTPUT_DIR=""
+DMG_MOUNT=""
 
 cleanup() {
+    if [[ -n "${DMG_MOUNT:-}" && -d "${DMG_MOUNT}" ]]; then
+        hdiutil detach "${DMG_MOUNT}" -quiet 2>/dev/null \
+            || hdiutil detach "${DMG_MOUNT}" -force -quiet 2>/dev/null || true
+    fi
     [[ -z "${TEMP_ROOT:-}" || ! -d "${TEMP_ROOT}" ]] || rm -rf "${TEMP_ROOT}"
     [[ -z "${PUBLISH_DIR:-}" || ! -e "${PUBLISH_DIR}" ]] || rm -rf "${PUBLISH_DIR}"
     if [[ -n "${BACKUP_DIR:-}" && -e "${BACKUP_DIR}" ]]; then
@@ -172,15 +204,6 @@ cleanup() {
             mv "${BACKUP_DIR}" "${OUTPUT_DIR}" 2>/dev/null || true
         else
             rm -rf "${BACKUP_DIR}"
-        fi
-    fi
-    [[ -z "${DIST_PUBLISH_DIR:-}" || ! -e "${DIST_PUBLISH_DIR}" ]] \
-        || rm -rf "${DIST_PUBLISH_DIR}"
-    if [[ -n "${DIST_BACKUP_DIR:-}" && -e "${DIST_BACKUP_DIR}" ]]; then
-        if [[ -n "${DIST_OUTPUT_DIR:-}" && ! -e "${DIST_OUTPUT_DIR}" ]]; then
-            mv "${DIST_BACKUP_DIR}" "${DIST_OUTPUT_DIR}" 2>/dev/null || true
-        else
-            rm -rf "${DIST_BACKUP_DIR}"
         fi
     fi
 }
@@ -202,8 +225,7 @@ readonly PROJECT_STAGE="${TEMP_ROOT}/project"
 readonly DERIVED_DATA="${TEMP_ROOT}/DerivedData"
 readonly PACKAGE_STAGE="${TEMP_ROOT}/package"
 readonly ZIP_CHECK_STAGE="${TEMP_ROOT}/zip-check"
-readonly DIST_STAGE="${TEMP_ROOT}/dist"
-mkdir -p "${PROJECT_STAGE}" "${PACKAGE_STAGE}" "${ZIP_CHECK_STAGE}" "${DIST_STAGE}"
+mkdir -p "${PROJECT_STAGE}" "${PACKAGE_STAGE}" "${ZIP_CHECK_STAGE}"
 
 # XcodeGen writes Info.plists and the project it generates. Keep all of those
 # writes in the temporary build tree so a build cannot modify the repository's
@@ -232,13 +254,13 @@ info "Building ${CONFIGURATION}"
     || fail "${CONFIGURATION} build failed"
 
 readonly PRODUCTS_DIR="${DERIVED_DATA}/Build/Products/${CONFIGURATION}"
-readonly SOURCE_APP="${PRODUCTS_DIR}/MatrixCode.app"
-readonly SOURCE_SAVER="${PRODUCTS_DIR}/MatrixCode.saver"
-[[ -d "${SOURCE_APP}" ]] || fail "Build did not produce MatrixCode.app."
-[[ -d "${SOURCE_SAVER}" ]] || fail "Build did not produce MatrixCode.saver."
+readonly SOURCE_APP="${PRODUCTS_DIR}/Matrix Code.app"
+readonly SOURCE_SAVER="${PRODUCTS_DIR}/Matrix Code.saver"
+[[ -d "${SOURCE_APP}" ]] || fail "Build did not produce Matrix Code.app."
+[[ -d "${SOURCE_SAVER}" ]] || fail "Build did not produce Matrix Code.saver."
 
-ditto "${SOURCE_APP}" "${PACKAGE_STAGE}/MatrixCode.app"
-ditto "${SOURCE_SAVER}" "${PACKAGE_STAGE}/MatrixCode.saver"
+ditto "${SOURCE_APP}" "${PACKAGE_STAGE}/Matrix Code.app"
+ditto "${SOURCE_SAVER}" "${PACKAGE_STAGE}/Matrix Code.saver"
 
 codesign_with_retry() {
     local description="$1"
@@ -251,7 +273,7 @@ codesign_with_retry() {
     codesign "$@" >/dev/null || fail "Developer ID signing failed for ${description}."
 }
 
-for product in "${PACKAGE_STAGE}/MatrixCode.app" "${PACKAGE_STAGE}/MatrixCode.saver"; do
+for product in "${PACKAGE_STAGE}/Matrix Code.app" "${PACKAGE_STAGE}/Matrix Code.saver"; do
     xattr -cr "${product}"
     touch "${product}"
     if [[ "${LOCAL_SIGNING}" == true ]]; then
@@ -265,7 +287,7 @@ done
 
 validate_product() {
     local product="$1"
-    local executable="${product}/Contents/MacOS/MatrixCode"
+    local executable="${product}/Contents/MacOS/Matrix Code"
     [[ -f "${executable}" ]] || fail "$(basename "${product}") is missing its executable."
     [[ -f "${product}/Contents/Resources/MatrixCodeShaders.msl" ]] \
         || fail "$(basename "${product}") is missing MatrixCodeShaders.msl."
@@ -296,19 +318,19 @@ validate_product() {
 }
 
 info "Verifying native products"
-validate_product "${PACKAGE_STAGE}/MatrixCode.app"
-validate_product "${PACKAGE_STAGE}/MatrixCode.saver"
+validate_product "${PACKAGE_STAGE}/Matrix Code.app"
+validate_product "${PACKAGE_STAGE}/Matrix Code.saver"
 
 read_plist() {
     /usr/libexec/PlistBuddy -c "Print :$2" "$1/Contents/Info.plist"
 }
 
-APP_VERSION="$(read_plist "${PACKAGE_STAGE}/MatrixCode.app" CFBundleShortVersionString)"
-APP_BUILD="$(read_plist "${PACKAGE_STAGE}/MatrixCode.app" CFBundleVersion)"
-APP_MINIMUM_SYSTEM="$(read_plist "${PACKAGE_STAGE}/MatrixCode.app" LSMinimumSystemVersion)"
-SAVER_VERSION="$(read_plist "${PACKAGE_STAGE}/MatrixCode.saver" CFBundleShortVersionString)"
-SAVER_BUILD="$(read_plist "${PACKAGE_STAGE}/MatrixCode.saver" CFBundleVersion)"
-SAVER_MINIMUM_SYSTEM="$(read_plist "${PACKAGE_STAGE}/MatrixCode.saver" LSMinimumSystemVersion)"
+APP_VERSION="$(read_plist "${PACKAGE_STAGE}/Matrix Code.app" CFBundleShortVersionString)"
+APP_BUILD="$(read_plist "${PACKAGE_STAGE}/Matrix Code.app" CFBundleVersion)"
+APP_MINIMUM_SYSTEM="$(read_plist "${PACKAGE_STAGE}/Matrix Code.app" LSMinimumSystemVersion)"
+SAVER_VERSION="$(read_plist "${PACKAGE_STAGE}/Matrix Code.saver" CFBundleShortVersionString)"
+SAVER_BUILD="$(read_plist "${PACKAGE_STAGE}/Matrix Code.saver" CFBundleVersion)"
+SAVER_MINIMUM_SYSTEM="$(read_plist "${PACKAGE_STAGE}/Matrix Code.saver" LSMinimumSystemVersion)"
 [[ "${APP_VERSION}" == "${SAVER_VERSION}" ]] || fail "App and saver versions do not match."
 [[ "${APP_BUILD}" == "${SAVER_BUILD}" ]] || fail "App and saver build numbers do not match."
 [[ "${APP_MINIMUM_SYSTEM}" == "${SAVER_MINIMUM_SYSTEM}" ]] \
@@ -320,91 +342,123 @@ create_zip() {
 }
 
 if [[ "${LOCAL_SIGNING}" == false && "${SKIP_NOTARIZE}" == false ]]; then
-    info "Notarizing MatrixCode.app"
-    create_zip "${PACKAGE_STAGE}/MatrixCode.app" "${TEMP_ROOT}/MatrixCode.app.zip"
-    xcrun notarytool submit "${TEMP_ROOT}/MatrixCode.app.zip" \
+    info "Notarizing Matrix Code.app"
+    create_zip "${PACKAGE_STAGE}/Matrix Code.app" "${TEMP_ROOT}/Matrix Code.app.zip"
+    xcrun notarytool submit "${TEMP_ROOT}/Matrix Code.app.zip" \
         --keychain-profile "${NOTARY_PROFILE}" --wait \
-        || fail "MatrixCode.app notarization failed"
-    xcrun stapler staple "${PACKAGE_STAGE}/MatrixCode.app" \
-        || fail "Stapling MatrixCode.app failed"
-    validate_product "${PACKAGE_STAGE}/MatrixCode.app"
+        || fail "Matrix Code.app notarization failed"
+    xcrun stapler staple "${PACKAGE_STAGE}/Matrix Code.app" \
+        || fail "Stapling Matrix Code.app failed"
+    validate_product "${PACKAGE_STAGE}/Matrix Code.app"
 fi
 
-info "Packaging MatrixCode ${APP_VERSION} (${APP_BUILD})"
-create_zip "${PACKAGE_STAGE}/MatrixCode.app" "${PACKAGE_STAGE}/MatrixCode.app.zip"
-create_zip "${PACKAGE_STAGE}/MatrixCode.saver" "${PACKAGE_STAGE}/MatrixCode.saver.zip"
-unzip -tq "${PACKAGE_STAGE}/MatrixCode.app.zip" >/dev/null
-unzip -tq "${PACKAGE_STAGE}/MatrixCode.saver.zip" >/dev/null
+info "Packaging Matrix Code ${APP_VERSION} (${APP_BUILD})"
+create_zip "${PACKAGE_STAGE}/Matrix Code.app" "${PACKAGE_STAGE}/Matrix Code.app.zip"
+create_zip "${PACKAGE_STAGE}/Matrix Code.saver" "${PACKAGE_STAGE}/Matrix Code.saver.zip"
+unzip -tq "${PACKAGE_STAGE}/Matrix Code.app.zip" >/dev/null
+unzip -tq "${PACKAGE_STAGE}/Matrix Code.saver.zip" >/dev/null
 
 mkdir -p "${ZIP_CHECK_STAGE}/app" "${ZIP_CHECK_STAGE}/saver"
-unzip -q "${PACKAGE_STAGE}/MatrixCode.app.zip" -d "${ZIP_CHECK_STAGE}/app"
-unzip -q "${PACKAGE_STAGE}/MatrixCode.saver.zip" -d "${ZIP_CHECK_STAGE}/saver"
-validate_product "${ZIP_CHECK_STAGE}/app/MatrixCode.app"
-validate_product "${ZIP_CHECK_STAGE}/saver/MatrixCode.saver"
+unzip -q "${PACKAGE_STAGE}/Matrix Code.app.zip" -d "${ZIP_CHECK_STAGE}/app"
+unzip -q "${PACKAGE_STAGE}/Matrix Code.saver.zip" -d "${ZIP_CHECK_STAGE}/saver"
+validate_product "${ZIP_CHECK_STAGE}/app/Matrix Code.app"
+validate_product "${ZIP_CHECK_STAGE}/saver/Matrix Code.saver"
 
-checksum_files=("MatrixCode.app.zip" "MatrixCode.saver.zip")
+checksum_files=("Matrix Code.app.zip" "Matrix Code.saver.zip")
 if [[ "${CONFIGURATION}" == "Release" ]]; then
-    readonly APP_DSYM="${PRODUCTS_DIR}/MatrixCode.app.dSYM"
-    readonly SAVER_DSYM="${PRODUCTS_DIR}/MatrixCode.saver.dSYM"
-    [[ -d "${APP_DSYM}" ]] || fail "Release build did not produce MatrixCode.app.dSYM."
-    [[ -d "${SAVER_DSYM}" ]] || fail "Release build did not produce MatrixCode.saver.dSYM."
+    readonly APP_DSYM="${PRODUCTS_DIR}/Matrix Code.app.dSYM"
+    readonly SAVER_DSYM="${PRODUCTS_DIR}/Matrix Code.saver.dSYM"
+    [[ -d "${APP_DSYM}" ]] || fail "Release build did not produce Matrix Code.app.dSYM."
+    [[ -d "${SAVER_DSYM}" ]] || fail "Release build did not produce Matrix Code.saver.dSYM."
 
-    app_binary_uuids="$(dwarfdump --uuid "${PACKAGE_STAGE}/MatrixCode.app/Contents/MacOS/MatrixCode" | awk '{print $2}' | sort)"
+    app_binary_uuids="$(dwarfdump --uuid "${PACKAGE_STAGE}/Matrix Code.app/Contents/MacOS/Matrix Code" | awk '{print $2}' | sort)"
     app_dsym_uuids="$(dwarfdump --uuid "${APP_DSYM}" | awk '{print $2}' | sort)"
-    saver_binary_uuids="$(dwarfdump --uuid "${PACKAGE_STAGE}/MatrixCode.saver/Contents/MacOS/MatrixCode" | awk '{print $2}' | sort)"
+    saver_binary_uuids="$(dwarfdump --uuid "${PACKAGE_STAGE}/Matrix Code.saver/Contents/MacOS/Matrix Code" | awk '{print $2}' | sort)"
     saver_dsym_uuids="$(dwarfdump --uuid "${SAVER_DSYM}" | awk '{print $2}' | sort)"
     [[ "${app_binary_uuids}" == "${app_dsym_uuids}" ]] \
-        || fail "MatrixCode.app dSYM UUIDs do not match its executable."
+        || fail "Matrix Code.app dSYM UUIDs do not match its executable."
     [[ "${saver_binary_uuids}" == "${saver_dsym_uuids}" ]] \
-        || fail "MatrixCode.saver dSYM UUIDs do not match its executable."
+        || fail "Matrix Code.saver dSYM UUIDs do not match its executable."
 
     mkdir -p "${TEMP_ROOT}/dSYMs"
-    ditto "${APP_DSYM}" "${TEMP_ROOT}/dSYMs/MatrixCode.app.dSYM"
-    ditto "${SAVER_DSYM}" "${TEMP_ROOT}/dSYMs/MatrixCode.saver.dSYM"
-    create_zip "${TEMP_ROOT}/dSYMs" "${PACKAGE_STAGE}/MatrixCode-dSYMs.zip"
+    ditto "${APP_DSYM}" "${TEMP_ROOT}/dSYMs/Matrix Code.app.dSYM"
+    ditto "${SAVER_DSYM}" "${TEMP_ROOT}/dSYMs/Matrix Code.saver.dSYM"
+    create_zip "${TEMP_ROOT}/dSYMs" "${PACKAGE_STAGE}/Matrix Code-dSYMs.zip"
     {
-        printf 'MatrixCode.app\n'
-        dwarfdump --uuid "${PACKAGE_STAGE}/MatrixCode.app/Contents/MacOS/MatrixCode"
-        printf '\nMatrixCode.saver\n'
-        dwarfdump --uuid "${PACKAGE_STAGE}/MatrixCode.saver/Contents/MacOS/MatrixCode"
-    } > "${PACKAGE_STAGE}/MatrixCode-UUIDs.txt"
-    unzip -tq "${PACKAGE_STAGE}/MatrixCode-dSYMs.zip" >/dev/null
+        printf 'Matrix Code.app\n'
+        dwarfdump --uuid "${PACKAGE_STAGE}/Matrix Code.app/Contents/MacOS/Matrix Code"
+        printf '\nMatrix Code.saver\n'
+        dwarfdump --uuid "${PACKAGE_STAGE}/Matrix Code.saver/Contents/MacOS/Matrix Code"
+    } > "${PACKAGE_STAGE}/Matrix Code-UUIDs.txt"
+    unzip -tq "${PACKAGE_STAGE}/Matrix Code-dSYMs.zip" >/dev/null
     mkdir -p "${ZIP_CHECK_STAGE}/dSYMs"
-    unzip -q "${PACKAGE_STAGE}/MatrixCode-dSYMs.zip" -d "${ZIP_CHECK_STAGE}/dSYMs"
-    extracted_app_dsym_uuids="$(dwarfdump --uuid "${ZIP_CHECK_STAGE}/dSYMs/dSYMs/MatrixCode.app.dSYM" | awk '{print $2}' | sort)"
-    extracted_saver_dsym_uuids="$(dwarfdump --uuid "${ZIP_CHECK_STAGE}/dSYMs/dSYMs/MatrixCode.saver.dSYM" | awk '{print $2}' | sort)"
+    unzip -q "${PACKAGE_STAGE}/Matrix Code-dSYMs.zip" -d "${ZIP_CHECK_STAGE}/dSYMs"
+    extracted_app_dsym_uuids="$(dwarfdump --uuid "${ZIP_CHECK_STAGE}/dSYMs/dSYMs/Matrix Code.app.dSYM" | awk '{print $2}' | sort)"
+    extracted_saver_dsym_uuids="$(dwarfdump --uuid "${ZIP_CHECK_STAGE}/dSYMs/dSYMs/Matrix Code.saver.dSYM" | awk '{print $2}' | sort)"
     [[ "${app_binary_uuids}" == "${extracted_app_dsym_uuids}" ]] \
-        || fail "Archived MatrixCode.app dSYM UUIDs do not match its executable."
+        || fail "Archived Matrix Code.app dSYM UUIDs do not match its executable."
     [[ "${saver_binary_uuids}" == "${extracted_saver_dsym_uuids}" ]] \
-        || fail "Archived MatrixCode.saver dSYM UUIDs do not match its executable."
-    checksum_files+=("MatrixCode-dSYMs.zip" "MatrixCode-UUIDs.txt")
+        || fail "Archived Matrix Code.saver dSYM UUIDs do not match its executable."
+    checksum_files+=("Matrix Code-dSYMs.zip" "Matrix Code-UUIDs.txt")
 fi
 
-if [[ "${LOCAL_SIGNING}" == false ]]; then
-    readonly RELEASE_BASENAME="MatrixCode-${APP_VERSION}"
-    readonly DMG_STAGE="${TEMP_ROOT}/dmg-stage"
-    readonly DMG_PATH="${DIST_STAGE}/${RELEASE_BASENAME}.dmg"
-    mkdir -p "${DMG_STAGE}"
-    ditto "${PACKAGE_STAGE}/MatrixCode.app" "${DMG_STAGE}/MatrixCode.app"
-    ditto "${PACKAGE_STAGE}/MatrixCode.saver" "${DMG_STAGE}/MatrixCode.saver"
-    ln -s /Applications "${DMG_STAGE}/Applications"
+readonly DMG_STAGE="${TEMP_ROOT}/dmg-stage"
+readonly DMG_PATH="${PACKAGE_STAGE}/${DMG_NAME}"
+mkdir -p "${DMG_STAGE}/.background"
+ditto "${PACKAGE_STAGE}/Matrix Code.app" "${DMG_STAGE}/Matrix Code.app"
+ditto "${PACKAGE_STAGE}/Matrix Code.saver" "${DMG_STAGE}/Matrix Code.saver"
+ln -s /Applications "${DMG_STAGE}/Applications"
 
-    info "Building signed distribution DMG"
-    hdiutil create -volname "${VOLUME_NAME}" -srcfolder "${DMG_STAGE}" \
-        -ov -format UDZO -quiet "${DMG_PATH}" \
-        || fail "DMG creation failed"
-    codesign_with_retry "${RELEASE_BASENAME}.dmg" \
+# Finder reads the window geometry, icon positions and background from these.
+# They are generated by scripts/generate_dmg_{background,layout}.py and committed;
+# a normal build only copies them in, so it needs no extra tooling.
+for styling in DS_Store background.tiff VolumeIcon.icns; do
+    [[ -f "${DMG_RESOURCES}/${styling}" ]] \
+        || fail "Missing DMG styling resource: ${DMG_RESOURCES}/${styling}"
+done
+cp "${DMG_RESOURCES}/DS_Store" "${DMG_STAGE}/.DS_Store"
+cp "${DMG_RESOURCES}/background.tiff" "${DMG_STAGE}/.background/background.tiff"
+cp "${DMG_RESOURCES}/VolumeIcon.icns" "${DMG_STAGE}/.VolumeIcon.icns"
+
+info "Building styled DMG"
+# The custom-icon bit has to be set on the mounted volume itself: hdiutil does
+# not carry it over from the staging folder, and without it Finder shows the
+# generic disc icon instead of .VolumeIcon.icns. So build read/write, mount,
+# flag the volume, then compress.
+readonly DMG_READWRITE="${TEMP_ROOT}/MatrixCode-rw.dmg"
+hdiutil create -volname "${VOLUME_NAME}" -srcfolder "${DMG_STAGE}" \
+    -ov -format UDRW -quiet "${DMG_READWRITE}" \
+    || fail "DMG creation failed"
+
+DMG_MOUNT="$(hdiutil attach "${DMG_READWRITE}" -nobrowse -noautoopen \
+    | grep -o '/Volumes/.*' | head -1)"
+[[ -n "${DMG_MOUNT}" ]] || fail "Could not mount the DMG to set its volume icon."
+"${DEVELOPER_DIR}/usr/bin/SetFile" -a C "${DMG_MOUNT}" \
+    || fail "Could not set the custom-icon attribute on the DMG volume."
+hdiutil detach "${DMG_MOUNT}" -quiet \
+    || hdiutil detach "${DMG_MOUNT}" -force -quiet \
+    || fail "Could not detach the DMG after setting its volume icon."
+DMG_MOUNT=""
+
+hdiutil convert "${DMG_READWRITE}" -format UDZO -ov -quiet -o "${DMG_PATH}" \
+    || fail "DMG compression failed"
+
+if [[ "${LOCAL_SIGNING}" == true ]]; then
+    codesign --force --sign - "${DMG_PATH}" >/dev/null
+else
+    codesign_with_retry "${DMG_NAME}" \
         --force --sign "${SIGN_IDENTITY}" --timestamp "${DMG_PATH}"
 
     if [[ "${SKIP_NOTARIZE}" == false ]]; then
-        info "Notarizing distribution DMG"
+        info "Notarizing DMG"
         xcrun notarytool submit "${DMG_PATH}" \
             --keychain-profile "${NOTARY_PROFILE}" --wait \
             || fail "DMG notarization failed"
         xcrun stapler staple "${DMG_PATH}" || fail "Stapling DMG failed"
     fi
 
-    codesign --verify --verbose=2 "${DMG_PATH}" || fail "DMG signature verification failed"
+    codesign --verify --verbose=2 "${DMG_PATH}" \
+        || fail "DMG signature verification failed"
     if [[ "${SKIP_NOTARIZE}" == false ]]; then
         assessment="$(spctl -a -vvv -t install "${DMG_PATH}" 2>&1 || true)"
         grep -q "source=Notarized Developer ID" <<<"${assessment}" \
@@ -412,20 +466,12 @@ if [[ "${LOCAL_SIGNING}" == false ]]; then
         xcrun stapler validate "${DMG_PATH}" >/dev/null \
             || fail "DMG staple validation failed"
     fi
-
-    ditto "${PACKAGE_STAGE}/MatrixCode-dSYMs.zip" \
-        "${DIST_STAGE}/${RELEASE_BASENAME}-dSYMs.zip"
-    ditto "${PACKAGE_STAGE}/MatrixCode-UUIDs.txt" \
-        "${DIST_STAGE}/${RELEASE_BASENAME}-UUIDs.txt"
-    (
-        cd "${DIST_STAGE}"
-        shasum -a 256 \
-            "${RELEASE_BASENAME}.dmg" \
-            "${RELEASE_BASENAME}-dSYMs.zip" \
-            "${RELEASE_BASENAME}-UUIDs.txt" \
-            > "${RELEASE_BASENAME}-SHA256SUMS.txt"
-    )
 fi
+
+info "Verifying DMG structure"
+"${REPO_ROOT}/scripts/verify_dmg.sh" "${DMG_PATH}" || fail "DMG structure check failed"
+
+checksum_files+=("${DMG_NAME}")
 
 (
     cd "${PACKAGE_STAGE}"
@@ -453,43 +499,12 @@ fi
 
 if [[ "${CONFIGURATION}" == "Release" ]]; then
     for legacy_product in \
-        MatrixCode.app MatrixCode.app.zip MatrixCode.saver MatrixCode.saver.zip; do
+        "Matrix Code.app" "Matrix Code.app.zip" \
+        "Matrix Code.saver" "Matrix Code.saver.zip" \
+        "MatrixCode.dmg"; do
         rm -rf "${BUILD_ROOT}/${legacy_product}"
         ln -s "Release/${legacy_product}" "${BUILD_ROOT}/${legacy_product}"
     done
-fi
-
-if [[ "${LOCAL_SIGNING}" == false ]]; then
-    mkdir -p "${DIST_DIR}"
-    DIST_OUTPUT_DIR="${DIST_DIR}/${RELEASE_BASENAME}"
-    DIST_PUBLISH_DIR="${DIST_DIR}/.${RELEASE_BASENAME}.new.$$"
-    DIST_BACKUP_DIR="${DIST_DIR}/.${RELEASE_BASENAME}.previous.$$"
-    rm -rf "${DIST_PUBLISH_DIR}" "${DIST_BACKUP_DIR}"
-    mkdir -p "${DIST_PUBLISH_DIR}"
-    ditto "${DIST_STAGE}" "${DIST_PUBLISH_DIR}"
-    codesign --verify --verbose=2 "${DIST_PUBLISH_DIR}/${RELEASE_BASENAME}.dmg" \
-        || fail "Published DMG signature verification failed"
-    (
-        cd "${DIST_PUBLISH_DIR}"
-        shasum -a 256 -c "${RELEASE_BASENAME}-SHA256SUMS.txt" >/dev/null
-    ) || fail "Published distribution checksums failed"
-    if [[ "${SKIP_NOTARIZE}" == false ]]; then
-        xcrun stapler validate "${DIST_PUBLISH_DIR}/${RELEASE_BASENAME}.dmg" >/dev/null \
-            || fail "Published DMG staple validation failed"
-    fi
-
-    if [[ -e "${DIST_OUTPUT_DIR}" ]]; then
-        mv "${DIST_OUTPUT_DIR}" "${DIST_BACKUP_DIR}"
-    fi
-    if mv "${DIST_PUBLISH_DIR}" "${DIST_OUTPUT_DIR}"; then
-        DIST_PUBLISH_DIR=""
-        rm -rf "${DIST_BACKUP_DIR}"
-        DIST_BACKUP_DIR=""
-    else
-        [[ ! -e "${DIST_BACKUP_DIR}" ]] \
-            || mv "${DIST_BACKUP_DIR}" "${DIST_OUTPUT_DIR}"
-        fail "Could not publish distribution artifacts to ${DIST_OUTPUT_DIR}."
-    fi
 fi
 
 printf '\n\033[1;32mBuild complete\033[0m\n'
@@ -497,17 +512,15 @@ printf '  Configuration  %s\n' "${CONFIGURATION}"
 printf '  Version        %s (%s)\n' "${APP_VERSION}" "${APP_BUILD}"
 printf '  Minimum macOS  %s\n' "${APP_MINIMUM_SYSTEM}"
 printf '  Output         %s\n' "${OUTPUT_DIR}"
-printf '  App zip        %s\n' "${OUTPUT_DIR}/MatrixCode.app.zip"
-printf '  Saver zip      %s\n' "${OUTPUT_DIR}/MatrixCode.saver.zip"
+printf '  App zip        %s\n' "${OUTPUT_DIR}/Matrix Code.app.zip"
+printf '  Saver zip      %s\n' "${OUTPUT_DIR}/Matrix Code.saver.zip"
+printf '  DMG            %s\n' "${OUTPUT_DIR}/${DMG_NAME}"
 if [[ "${CONFIGURATION}" == "Release" ]]; then
-    printf '  dSYMs          %s\n' "${OUTPUT_DIR}/MatrixCode-dSYMs.zip"
-    printf '  UUIDs          %s\n' "${OUTPUT_DIR}/MatrixCode-UUIDs.txt"
+    printf '  dSYMs          %s\n' "${OUTPUT_DIR}/Matrix Code-dSYMs.zip"
+    printf '  UUIDs          %s\n' "${OUTPUT_DIR}/Matrix Code-UUIDs.txt"
 fi
 printf '  SHA-256        %s\n' "${OUTPUT_DIR}/SHA256SUMS.txt"
 if [[ "${LOCAL_SIGNING}" == false ]]; then
-    printf '  Distribution   %s\n' "${DIST_OUTPUT_DIR}"
-    printf '  DMG            %s\n' "${DIST_OUTPUT_DIR}/${RELEASE_BASENAME}.dmg"
-    printf '  Release SHA-256 %s\n' "${DIST_OUTPUT_DIR}/${RELEASE_BASENAME}-SHA256SUMS.txt"
     if [[ "${SKIP_NOTARIZE}" == true ]]; then
         printf '\nRelease products are Developer ID signed but not notarized.\n'
     else

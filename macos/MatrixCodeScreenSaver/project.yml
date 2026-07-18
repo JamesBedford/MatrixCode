@@ -52,7 +52,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matrixcode.screensaver
-        PRODUCT_NAME: MatrixCode
+        PRODUCT_NAME: "Matrix Code"
         WRAPPER_EXTENSION: saver
         MACH_O_TYPE: mh_bundle
         SKIP_INSTALL: NO
@@ -91,7 +91,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matrixcode.app
-        PRODUCT_NAME: MatrixCode
+        PRODUCT_NAME: "Matrix Code"
         SKIP_INSTALL: NO
         HEADER_SEARCH_PATHS: "$(SRCROOT)/Source"
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"

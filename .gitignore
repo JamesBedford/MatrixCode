@@ -6,3 +6,5 @@ dist-ssr
 .vite
 coverage
 .claude/
+__pycache__/
+.pytest_cache/

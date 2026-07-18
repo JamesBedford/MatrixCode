@@ -66,7 +66,7 @@ The native macOS 13+ project lives in
 independent AppKit + Metal implementation—there is no TypeScript, HTML, WebGL,
 or WKWebView in the screen saver bundle. It provides native settings, intro,
 messages, countdown/countup tokens, and continuous multi-display rendering, plus
-build, test, and manual-install scripts for the Apple-Silicon `MatrixCode.saver`.
+build, test, and manual-install scripts for the Apple-Silicon `Matrix Code.saver`.
 
 ```sh
 cd macos/MatrixCodeScreenSaver
@@ -77,14 +77,13 @@ cd macos/MatrixCodeScreenSaver
 ```
 
 For a distributable build, run `./scripts/build-release.sh --release` from the
-repository root. The script signs with Developer ID, notarizes, and staples a
-versioned DMG; `--skip-notarize` omits the Apple round trip, and `--debug`
-creates a local Debug build. It detects Xcode even when installed outside
-`/Applications`, generates the project in a temporary directory, and writes
-verified app and screen-saver packages to
-`macos/MatrixCodeScreenSaver/build/<Configuration>/`. Distribution artifacts,
-matching dSYMs, executable UUIDs, and checksums are written to
-`macos/MatrixCodeScreenSaver/dist/`.
+repository root. The script signs with Developer ID, notarizes, and staples the
+DMG; `--skip-notarize` omits the Apple round trip, and `--debug` creates a local
+Debug build. It detects Xcode even when installed outside `/Applications`,
+generates the project in a temporary directory, and writes verified app and
+screen-saver packages to `macos/MatrixCodeScreenSaver/build/<Configuration>/`.
+The styled `MatrixCode.dmg`, matching dSYMs, executable UUIDs, and checksums are
+written alongside them.
 
 The installed saver is configured from System Settings → Screen Saver →
 **MatrixCode** → **Options…**. Its settings intentionally mirror the web app:

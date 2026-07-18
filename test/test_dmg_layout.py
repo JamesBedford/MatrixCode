@@ -57,5 +57,11 @@ def test_window_geometry():
                     if e.filename == "." and e.code in (b"bwsp", "bwsp"))
     if isinstance(bwsp, (bytes, bytearray)):
         bwsp = plistlib.loads(bytes(bwsp))
-    assert "{700, 520}" in bwsp["WindowBounds"]
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from generate_dmg_background import WINDOW_BOUNDS_H, WINDOW_W
+
+    # The stored height is the whole window, not the content area — Finder's
+    # title bar and tab bar come out of it.
+    assert f"{{{WINDOW_W}, {WINDOW_BOUNDS_H}}}" in bwsp["WindowBounds"]
     assert bwsp["ShowToolbar"] is False

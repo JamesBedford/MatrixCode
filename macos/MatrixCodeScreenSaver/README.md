@@ -1,6 +1,6 @@
 # MatrixCode for macOS
 
-`MatrixCode.saver` and `MatrixCode.app` are independent, Apple-Silicon macOS 13+
+`Matrix Code.saver` and `Matrix Code.app` are independent, Apple-Silicon macOS 13+
 implementations of MatrixCode. Playback uses AppKit and Metal, with
 ScreenSaver.framework used for the saver entry point. The Options sheet is
 native AppKit. The bundles contain no TypeScript, HTML, WebGL, JavaScript
@@ -70,14 +70,14 @@ From this directory:
 
 `./build.sh` defaults to Release and also accepts `--configuration Debug` or
 `--configuration Release`. The products are written to the matching
-`build/Debug/` or `build/Release/` directory. Each contains `MatrixCode.saver`,
-`MatrixCode.saver.zip`, `MatrixCode.app`, `MatrixCode.app.zip`, and SHA-256
+`build/Debug/` or `build/Release/` directory. Each contains `Matrix Code.saver`,
+`Matrix Code.saver.zip`, `Matrix Code.app`, `Matrix Code.app.zip`, and SHA-256
 checksums for the packaged archives. Release output also includes matching
 dSYMs and executable UUIDs for symbolicating crash reports. Packaging stages,
 ad-hoc signs, and verifies the products before publishing them, so a failed
 build leaves the last successful artifacts untouched. These contributor builds
-are local and are not notarized. The established `build/MatrixCode.*` paths
-continue to point at the latest Release products.
+are local and are not notarized. The established `build/Matrix Code.*` and
+`build/MatrixCode.dmg` paths continue to point at the latest Release products.
 
 For a distributable Release, use the repository-root entry point:
 
@@ -89,12 +89,31 @@ For a distributable Release, use the repository-root entry point:
 
 The distribution workflow mirrors the SpotifyCDFinder release script. It uses
 the `Developer ID Application: James Bedford (7NBMEUUG5K)` identity and the
-`notarytool` Keychain profile, then writes a versioned DMG, dSYMs, UUID report,
-and checksums to `dist/`. `--skip-notarize` still uses Developer ID signing but
-avoids the Apple notarization round trip. The script discovers Xcode without
+`notarytool` Keychain profile, then writes the DMG, dSYMs, UUID report, and
+checksums to `build/Release/`. `--skip-notarize` still uses Developer ID signing
+but avoids the Apple notarization round trip. The script discovers Xcode without
 changing the system-wide `xcode-select` setting. Set `XCODE_APP` for a
 nonstandard Xcode application path or `DEVELOPER_DIR` for an explicit developer
 directory.
+
+## Disk image
+
+`./build.sh` and `scripts/build-release.sh` produce a styled
+`build/Release/MatrixCode.dmg` containing both `Matrix Code.app` and
+`Matrix Code.saver`. Drag the app to `Applications`; double-click the saver to
+install it (a screen saver cannot have a drag target, because
+`~/Library/Screen Savers` is a per-user path).
+
+The window's background, size and icon positions come from three committed files
+in `Resources/DMG/` — a normal build only copies them in and needs no extra
+tooling. To change the look:
+
+    python3 scripts/generate_dmg_background.py       # artwork
+    python3 -m venv /tmp/dmgvenv && /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow
+    /tmp/dmgvenv/bin/python scripts/generate_dmg_layout.py   # window + icon layout
+
+Then commit the regenerated `Resources/DMG/` files. The volume name must stay
+`Matrix Code`: Finder keys the layout to it.
 
 Configure the Keychain profile once before the first notarized build:
 
@@ -115,13 +134,13 @@ regression tests live in `Tests/`.
 ./install.sh
 ```
 
-Alternatively, expand `build/Release/MatrixCode.saver.zip` outside the
+Alternatively, expand `build/Release/Matrix Code.saver.zip` outside the
 cloud-synced working tree and double-click the resulting saver. Select
-**MatrixCode** in System Settings → Screen Saver. To run it as a standalone
-app, open `build/Release/MatrixCode.app` or expand and open
-`build/Release/MatrixCode.app.zip`.
+**Matrix Code** in System Settings → Screen Saver. To run it as a standalone
+app, open `build/Release/Matrix Code.app` or expand and open
+`build/Release/Matrix Code.app.zip`.
 
-Use **MatrixCode → Settings…** in the standalone app to edit settings directly
+Use **Matrix Code → Settings…** in the standalone app to edit settings directly
 over the running Matrix rain, matching the browser's hover/fade HUD instead of
 opening a separate sheet: hovering or moving the pointer over the rain window
 fades in the translucent 320-point control panel, then it fades out again after
@@ -260,11 +279,11 @@ Useful comparison points:
 ## Troubleshooting
 
 - If System Settings has cached an older build, remove
-  `~/Library/Screen Savers/MatrixCode.saver`, quit System Settings, and reinstall.
+  `~/Library/Screen Savers/Matrix Code.saver`, quit System Settings, and reinstall.
 - If the preview stays on an older version, run `./install.sh` again; it clears
   extended attributes, re-signs the local bundle, and replaces the installed copy.
 - Metal is required. The current project targets Apple Silicon Macs, all of
   which provide the required Metal feature set.
 - If a display is black or a monitor seam does not appear continuous, run the
   native test suite and verify the installed bundle is the one just built:
-  `codesign --verify --deep --strict "$HOME/Library/Screen Savers/MatrixCode.saver"`.
+  `codesign --verify --deep --strict "$HOME/Library/Screen Savers/Matrix Code.saver"`.

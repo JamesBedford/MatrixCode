@@ -41,7 +41,7 @@ describe("native build script", () => {
     expect(result.stdout).toContain("XCODE_APP");
     expect(result.stdout).toContain("build/Debug");
     expect(result.stdout).toContain("build/Release");
-    expect(result.stdout).toContain("MatrixCodeScreenSaver/dist");
+    expect(result.stdout).toContain("MatrixCode.dmg");
   });
 
   it("keeps the native wrapper help focused on local builds", () => {
@@ -50,9 +50,26 @@ describe("native build script", () => {
       encoding: "utf8",
     });
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("local, ad-hoc-signed");
+    // The wrapper signs with the Developer ID identity when it is available and
+    // degrades to ad-hoc signing, so the help has to describe both outcomes.
+    expect(result.stdout).toContain("Developer ID");
+    expect(result.stdout).toContain("ad-hoc signing");
     expect(result.stdout).toContain("--debug");
     expect(result.stdout).not.toContain("--skip-notarize");
+  });
+
+  it("delegates to the release script in auto-signing mode", () => {
+    const wrapper = readFileSync(localBuildScript, "utf8");
+    expect(wrapper).toContain("--auto-signing");
+    expect(wrapper).not.toContain("--local-signing");
+  });
+
+  it("refuses to combine auto-signing with an explicit signing mode", () => {
+    for (const conflicting of ["--local-signing", "--skip-notarize"]) {
+      const result = runScript(["--auto-signing", conflicting]);
+      expect(result.status, `${conflicting} should conflict`).not.toBe(0);
+      expect(result.stderr).toContain("--auto-signing cannot be combined");
+    }
   });
 
   it("rejects unknown and conflicting options before building", () => {

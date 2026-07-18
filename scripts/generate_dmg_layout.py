@@ -26,12 +26,16 @@ from ds_store import DSStore
 from mac_alias import Alias
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from generate_dmg_background import ICON_POSITIONS, WINDOW_H, WINDOW_W  # noqa: E402
+from generate_dmg_background import (  # noqa: E402
+    ICON_POSITIONS,
+    WINDOW_BOUNDS_H,
+    WINDOW_W,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCES = ROOT / "macos" / "MatrixCodeScreenSaver" / "Resources"
 DMG_DIR = RESOURCES / "DMG"
-BACKGROUND = DMG_DIR / "background.png"
+BACKGROUND = DMG_DIR / "background.tiff"
 OUT_DS_STORE = DMG_DIR / "DS_Store"
 OUT_VOLUME_ICON = DMG_DIR / "VolumeIcon.icns"
 SOURCE_ICNS = RESOURCES / "MatrixCode.icns"
@@ -92,7 +96,7 @@ def detach(target: Path | str) -> None:
 
 
 def write_layout(volume: Path) -> None:
-    alias = Alias.for_file(str(volume / ".background" / "background.png"))
+    alias = Alias.for_file(str(volume / ".background" / "background.tiff"))
     icvp = {
         "viewOptionsVersion": 1,
         "backgroundType": 2,               # 2 == picture
@@ -113,7 +117,8 @@ def write_layout(volume: Path) -> None:
         "arrangeBy": "none",
     }
     bwsp = {
-        "WindowBounds": f"{{{{200, 200}}, {{{WINDOW_W}, {WINDOW_H}}}}}",
+        # Height covers the window chrome, not just the content area.
+        "WindowBounds": f"{{{{200, 160}}, {{{WINDOW_W}, {WINDOW_BOUNDS_H}}}}}",
         "ShowSidebar": False,
         "ShowToolbar": False,
         "ShowStatusBar": False,
@@ -140,7 +145,7 @@ def main() -> None:
         tmp_path = Path(tmp)
         stage = tmp_path / "stage"
         (stage / ".background").mkdir(parents=True)
-        shutil.copy(BACKGROUND, stage / ".background" / "background.png")
+        shutil.copy(BACKGROUND, stage / ".background" / "background.tiff")
         # Placeholders only — the layout stores positions by name, and the real
         # bundles are supplied by the release build.
         for name in ICON_POSITIONS:
@@ -155,6 +160,15 @@ def main() -> None:
             "-ov", "-format", "UDRW", "-size", "80m", "-quiet", str(dmg))
         mount = attach(dmg)
         try:
+            # If a volume called "Matrix Code" is already mounted, macOS mounts
+            # this one as "Matrix Code 1" and the alias would capture that path,
+            # producing a layout that does not belong to the shipped volume.
+            if mount.name != VOLUME_NAME:
+                raise SystemExit(
+                    f"Mounted as {mount.name!r}, expected {VOLUME_NAME!r}. "
+                    f"Detach the other volume first:\n"
+                    f'    hdiutil detach "/Volumes/{VOLUME_NAME}" -force'
+                )
             write_layout(mount)
             subprocess.run(["sync"], check=False)
             shutil.copy(mount / ".DS_Store", OUT_DS_STORE)
