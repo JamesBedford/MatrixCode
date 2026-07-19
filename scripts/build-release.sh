@@ -19,10 +19,13 @@
 
 set -euo pipefail
 
+readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "${REPO_ROOT}/scripts/lib/signing.sh"
+
 readonly SCHEME="MatrixCode"
 readonly PROJECT_NAME="MatrixCodeScreenSaver.xcodeproj"
-readonly TEAM_ID="7NBMEUUG5K"
-readonly SIGN_IDENTITY="Developer ID Application: James Bedford (${TEAM_ID})"
+readonly TEAM_ID="${MATRIXCODE_TEAM_ID}"
+readonly SIGN_IDENTITY="${MATRIXCODE_SIGN_IDENTITY}"
 readonly NOTARY_PROFILE="notarytool"
 readonly VOLUME_NAME="Matrix Code"
 readonly DMG_NAME="MatrixCode.dmg"
@@ -151,16 +154,18 @@ if [[ "${AUTO_SIGNING}" == true ]]; then
         | grep -qF "${SIGN_IDENTITY}"; then
         SKIP_NOTARIZE=true
         printf '\n\033[1;34m==>\033[0m Signing with %s\n' "${SIGN_IDENTITY}"
+        # Signed but unnotarized products are still refused by Gatekeeper on any
+        # Mac other than this one, which for a screen saver looks like an empty
+        # System Settings preview rather than a signing error.
+        printf '\033[1;33mNot notarized:\033[0m this build runs on this Mac only. Use\n' >&2
+        printf 'scripts/build-release.sh --release for a build to share.\n' >&2
     else
         LOCAL_SIGNING=true
-        printf '\n\033[1;33mWarning:\033[0m Developer ID identity not found in the Keychain:\n' >&2
-        printf '  %s\n' "${SIGN_IDENTITY}" >&2
-        printf 'Falling back to ad-hoc signing. These products are for local use only\n' >&2
-        printf 'and will not pass Gatekeeper on another Mac.\n' >&2
+        matrixcode_report_adhoc_fallback "${SIGN_IDENTITY}" \
+            "Developer ID identity not found in the Keychain."
     fi
 fi
 
-readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly NATIVE_DIR="${REPO_ROOT}/macos/MatrixCodeScreenSaver"
 readonly BUILD_ROOT="${NATIVE_DIR}/build"
 readonly OUTPUT_DIR="${BUILD_ROOT}/${CONFIGURATION}"

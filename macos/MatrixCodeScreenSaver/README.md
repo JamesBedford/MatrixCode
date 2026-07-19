@@ -78,9 +78,11 @@ From this directory:
 `Matrix Code.saver.zip`, `Matrix Code.app`, `Matrix Code.app.zip`, and SHA-256
 checksums for the packaged archives. Release output also includes matching
 dSYMs and executable UUIDs for symbolicating crash reports. Packaging stages,
-ad-hoc signs, and verifies the products before publishing them, so a failed
-build leaves the last successful artifacts untouched. These contributor builds
-are local and are not notarized. The established `build/Matrix Code.*` and
+signs, and verifies the products before publishing them, so a failed build
+leaves the last successful artifacts untouched. Signing uses the Developer ID
+identity; if it is missing from the Keychain the build reports a red error and
+falls back to ad-hoc signing, which produces a bundle that loads on the building
+Mac only. These contributor builds are not notarized. The established `build/Matrix Code.*` and
 `build/MatrixCode.dmg` paths continue to point at the latest Release products.
 
 For a distributable Release, use the repository-root entry point:

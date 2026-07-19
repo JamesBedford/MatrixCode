@@ -2,6 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=${0:A:h}
+REPO_ROOT=${SCRIPT_DIR:h:h}
+. "${REPO_ROOT}/scripts/lib/signing.sh"
+
 "${SCRIPT_DIR}/build.sh" --release
 
 INSTALL_DIR="${HOME}/Library/Screen Savers"
@@ -29,7 +32,8 @@ touch "${INSTALL_DIR}/Matrix Code.saver"
 if codesign --verify --deep --strict "${INSTALL_DIR}/Matrix Code.saver" 2>/dev/null; then
   echo "Preserved the existing signature."
 else
-  echo "Copied saver did not verify; ad-hoc signing it for local use."
+  matrixcode_report_adhoc_fallback "${MATRIXCODE_SIGN_IDENTITY}" \
+    "The copied saver did not verify, so its signature cannot be preserved."
   codesign --force --sign - "${INSTALL_DIR}/Matrix Code.saver"
   codesign --verify --deep --strict "${INSTALL_DIR}/Matrix Code.saver"
 fi
