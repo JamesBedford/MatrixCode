@@ -293,6 +293,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic, strong) MatrixCodeIntroOverlayView *introView;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, strong) NSDate *startDate;
+@property(nonatomic, copy, nullable) dispatch_block_t windowCloseHandler;
 @property(nonatomic) BOOL showsIntro;
 @property(nonatomic) BOOL showsMessage;
 @property(nonatomic) BOOL showsImage;
@@ -440,6 +441,11 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 - (void)windowWillClose:(NSNotification *)notification {
     self.metalView.frameHandler = nil;
     [self.metalView setAnimationActive:NO];
+    dispatch_block_t closeHandler = self.windowCloseHandler;
+    self.windowCloseHandler = nil;
+    // Deferred so the owner's release of this controller happens after the
+    // window finishes closing, not mid-delegate-callback.
+    if (closeHandler) dispatch_async(dispatch_get_main_queue(), closeHandler);
 }
 
 - (void)dealloc {
@@ -2760,12 +2766,21 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     BOOL reduceMotion = self.previewReducedMotionOverride
         ? self.previewReducedMotionOverride.boolValue
         : NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
-    self.previewController = [[MatrixCodeNativePreviewController alloc]
-        initWithStoredValues:values
-                    showIntro:intro
-                  showMessage:message
-                    showImage:image
-                reduceMotion:reduceMotion];
+    MatrixCodeNativePreviewController *previewController =
+        [[MatrixCodeNativePreviewController alloc]
+            initWithStoredValues:values
+                        showIntro:intro
+                      showMessage:message
+                        showImage:image
+                    reduceMotion:reduceMotion];
+    __weak typeof(self) weakSelf = self;
+    __weak MatrixCodeNativePreviewController *weakPreviewController = previewController;
+    previewController.windowCloseHandler = ^{
+        if (weakSelf.previewController == weakPreviewController) {
+            weakSelf.previewController = nil;
+        }
+    };
+    self.previewController = previewController;
     [self.previewController showWindow:nil];
     [self.previewController.window makeKeyAndOrderFront:nil];
 }

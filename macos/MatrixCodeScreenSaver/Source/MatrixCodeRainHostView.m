@@ -1572,12 +1572,13 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
         return;
     }
     [self.backdropClickTimer invalidate];
+    __weak typeof(self) weakSelf = self;
     self.backdropClickTimer =
         [NSTimer scheduledTimerWithTimeInterval:[self backdropClickInterval]
-                                         target:self
-                                       selector:@selector(settleBackdropClickGesture:)
-                                       userInfo:nil
-                                        repeats:NO];
+                                        repeats:NO
+                                          block:^(NSTimer *timer) {
+        [weakSelf settleBackdropClickGesture:timer];
+    }];
 }
 
 - (void)mouseDown:(NSEvent *)event {

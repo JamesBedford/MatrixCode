@@ -270,6 +270,47 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     [previewController close];
 }
 
+- (void)testClosingStandalonePreviewWindowReleasesPreviewController {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller setValue:@NO forKey:@"previewReducedMotionOverride"];
+    __weak NSWindowController *weakPreviewController = nil;
+    @autoreleasepool {
+        [controller showPreviewWithIntro:YES message:NO];
+        NSWindowController *previewController = [controller valueForKey:@"previewController"];
+        XCTAssertNotNil(previewController);
+        weakPreviewController = previewController;
+
+        [previewController close];
+
+        XCTestExpectation *drained = [self expectationWithDescription:@"main queue drained"];
+        dispatch_async(dispatch_get_main_queue(), ^{ [drained fulfill]; });
+        [self waitForExpectations:@[drained] timeout:2];
+        XCTAssertNil([controller valueForKey:@"previewController"]);
+    }
+    XCTAssertNil(weakPreviewController);
+}
+
+- (void)testReplacingStandalonePreviewKeepsNewerPreviewWhenOldWindowCloses {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller setValue:@NO forKey:@"previewReducedMotionOverride"];
+    [controller showPreviewWithIntro:YES message:NO];
+    NSWindowController *firstPreviewController = [controller valueForKey:@"previewController"];
+    [controller showPreviewWithIntro:NO message:YES];
+    NSWindowController *secondPreviewController = [controller valueForKey:@"previewController"];
+    XCTAssertNotEqual(firstPreviewController, secondPreviewController);
+
+    [firstPreviewController close];
+
+    XCTestExpectation *drained = [self expectationWithDescription:@"main queue drained"];
+    dispatch_async(dispatch_get_main_queue(), ^{ [drained fulfill]; });
+    [self waitForExpectations:@[drained] timeout:2];
+    XCTAssertEqual([controller valueForKey:@"previewController"], secondPreviewController);
+
+    [secondPreviewController close];
+}
+
 - (void)testSettingsPanelFadesAsHoverHudInsteadOfPermanentModalSurface {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
