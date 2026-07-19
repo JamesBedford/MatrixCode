@@ -66,6 +66,11 @@ static NSString * const MatrixCodeAppPresentationModeDefaultsKey = @"MatrixCodeA
 }
 
 - (NSDictionary<NSString *, NSString *> *)storedValues {
+    // The Options sheet and screen-saver playback are separate processes writing one defaults
+    // module, and legacyScreenSaver hosts stay alive across activations. Without discarding the
+    // cached snapshot first, playback keeps serving whatever it read when the host started, so
+    // settings saved in Options never take effect until that host is killed.
+    [self.defaults synchronize];
     NSMutableDictionary<NSString *, NSString *> *values = [NSMutableDictionary dictionary];
     for (NSString *key in MatrixCodeStorageKeys()) {
         id value = [self.defaults objectForKey:key];

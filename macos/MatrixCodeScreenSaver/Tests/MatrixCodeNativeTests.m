@@ -40,6 +40,28 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
     XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"MatrixCodeAppPresentationMode"]);
 }
 
+// The Options sheet and playback are separate processes sharing one defaults module, and a
+// legacyScreenSaver host outlives a single activation. A reader that keeps its first snapshot
+// serves stale settings until the host is killed, so reads must observe writes that landed
+// after the reader was created.
+- (void)testStoredValuesObservesWritesMadeAfterTheReaderWasCreated {
+    MatrixCodePreferences *reader = [[MatrixCodePreferences alloc] init];
+    NSString *restore = [reader storedValues][@"mx-user-name"];
+
+    // Written underneath NSUserDefaults so the reader's cached snapshot cannot see it without
+    // re-reading, standing in for the write another process makes while this host is alive.
+    CFStringRef domain = CFSTR("com.matrixcode.screensaver");
+    CFPreferencesSetValue(CFSTR("mx-user-name"), CFSTR("Trinity"), domain,
+                          kCFPreferencesCurrentUser, kCFPreferencesCurrentHost);
+    CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost);
+
+    XCTAssertEqualObjects([reader storedValues][@"mx-user-name"], @"Trinity");
+
+    CFPreferencesSetValue(CFSTR("mx-user-name"), (__bridge CFStringRef)restore, domain,
+                          kCFPreferencesCurrentUser, kCFPreferencesCurrentHost);
+    CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost);
+}
+
 - (NSUserDefaults *)isolatedDefaultsWithSuiteName:(NSString **)suiteName {
     NSString *name = [@"com.matrixcode.tests." stringByAppendingString:NSUUID.UUID.UUIDString];
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:name];
