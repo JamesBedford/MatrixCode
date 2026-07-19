@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { densityRampFactor, loadRampMs, rampEase } from "../src/sim/introRain.ts";
+import { densityRampFactor, loadRampMs, rampEase, shouldPlayIntro } from "../src/sim/introRain.ts";
 
 describe("densityRampFactor", () => {
   it("is 0 before the rain starts", () => {
@@ -30,22 +30,36 @@ describe("densityRampFactor", () => {
   });
 });
 
+describe("shouldPlayIntro", () => {
+  it("plays whenever the intro is enabled and motion is allowed", () => {
+    expect(shouldPlayIntro(true, false)).toBe(true);
+  });
+
+  it("does not play when the intro is disabled", () => {
+    expect(shouldPlayIntro(false, false)).toBe(false);
+  });
+
+  it("does not play under reduced motion, even when enabled", () => {
+    expect(shouldPlayIntro(true, true)).toBe(false);
+  });
+});
+
 describe("loadRampMs", () => {
-  it("is 0 on a first visit, regardless of the configured ramp", () => {
-    expect(loadRampMs(false, 5000, false)).toBe(0);
+  it("is 0 while the intro plays, regardless of the configured ramp", () => {
+    expect(loadRampMs(true, 5000, false)).toBe(0);
   });
 
   it("is 0 under reduced motion", () => {
-    expect(loadRampMs(true, 5000, true)).toBe(0);
+    expect(loadRampMs(false, 5000, true)).toBe(0);
   });
 
   it("is 0 when the configured ramp is zero or negative", () => {
-    expect(loadRampMs(true, 0, false)).toBe(0);
-    expect(loadRampMs(true, -1, false)).toBe(0);
+    expect(loadRampMs(false, 0, false)).toBe(0);
+    expect(loadRampMs(false, -1, false)).toBe(0);
   });
 
-  it("is the configured ramp on a repeat visit with motion allowed", () => {
-    expect(loadRampMs(true, 5000, false)).toBe(5000);
+  it("is the configured ramp when no intro plays and motion is allowed", () => {
+    expect(loadRampMs(false, 5000, false)).toBe(5000);
   });
 });
 

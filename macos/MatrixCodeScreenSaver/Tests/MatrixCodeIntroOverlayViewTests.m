@@ -38,16 +38,59 @@
     XCTAssertFalse(view.playing);
 }
 
-- (void)testSeenFlagSuppressesIntro {
+- (void)testDisabledIntroSuppressesIntro {
     NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
     MatrixCodeTokenResolver *resolver =
         [[MatrixCodeTokenResolver alloc] initWithStoredValues:@{} runStartDate:start];
     MatrixCodeIntroOverlayView *view =
         [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSZeroRect
-                                            storedValues:@{@"mx-intro-seen": @"1"}
+                                            storedValues:@{@"mx-intro": @"{\"enabled\":false}"}
                                            tokenResolver:resolver
                                               completion:^{}];
+    XCTAssertFalse(view.enabled);
     XCTAssertFalse(view.hasIntro);
+}
+
+- (void)testIntroIsEnabledByDefaultAndForNonBooleanValues {
+    NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    MatrixCodeTokenResolver *resolver =
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:@{} runStartDate:start];
+    MatrixCodeIntroOverlayView *absent =
+        [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSZeroRect
+                                            storedValues:@{}
+                                           tokenResolver:resolver
+                                              completion:^{}];
+    XCTAssertTrue(absent.enabled);
+    XCTAssertTrue(absent.hasIntro);
+
+    MatrixCodeIntroOverlayView *malformed =
+        [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSZeroRect
+                                            storedValues:@{@"mx-intro": @"{\"enabled\":\"yes\"}"}
+                                           tokenResolver:resolver
+                                              completion:^{}];
+    XCTAssertTrue(malformed.enabled);
+}
+
+- (void)testCompletedIntroReplaysWhenRearmed {
+    NSDictionary *values = @{
+        @"mx-intro": @"{\"lines\":[{\"text\":\"HI\",\"holdMs\":100,\"pauseMs\":0}],\"charMs\":50,\"startDelayMs\":100,\"fadeOutMs\":200,\"rainDuringIntro\":false,\"postIntroDelayMs\":300}",
+    };
+    NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    MatrixCodeTokenResolver *resolver =
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:values runStartDate:start];
+    MatrixCodeIntroOverlayView *view =
+        [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+                                            storedValues:values
+                                           tokenResolver:resolver
+                                              completion:^{}];
+    [view startAtDate:start];
+    [view updateAtDate:[start dateByAddingTimeInterval:0.51] framesPerSecond:60];
+    XCTAssertFalse(view.playing);
+    XCTAssertFalse(view.hasIntro);
+
+    [view replayAtDate:[start dateByAddingTimeInterval:10]];
+    XCTAssertTrue(view.playing);
+    XCTAssertTrue(view.hasIntro);
 }
 
 - (void)testDefaultIntroWaitsForRainUntilAfterIntro {

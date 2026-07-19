@@ -31,8 +31,9 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
 
 - (void)testStorageWhitelistAcceptsOnlySupportedKeys {
     XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-controls"]);
-    XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-intro-seen"]);
+    XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-intro"]);
     XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-images"]);
+    XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"mx-intro-seen"]);
     XCTAssertTrue([MatrixCodePreferences isAllowedStorageKey:@"mx-ui-state"]);
     XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"unknown"]);
     XCTAssertFalse([MatrixCodePreferences isAllowedStorageKey:@"MatrixCodeNativeSession"]);

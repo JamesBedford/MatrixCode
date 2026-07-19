@@ -33,7 +33,7 @@ Most "Matrix rain" projects (including the classic terminal `cmatrix`) scroll a 
 - **Native macOS screen saver** — a separate AppKit + Metal Apple-Silicon `.saver` bundle with an Options sheet and continuous multi-display rendering
 - **Multi-monitor mode** — the **Multi-monitor** button spans the rain across every connected display as one continuous grid (Chromium only; see [docs/multimonitor-setup.md](docs/multimonitor-setup.md))
 - **Settings panel** — press `H` to toggle; controls for color theme, quality tier, glyph scale, and more
-- **Intro typewriter message** — plays once per visitor; `Escape` or click skips it
+- **Intro typewriter message** — plays on every load while enabled (toggle it in the intro editor); `Escape` or click skips it
 - **Canvas 2D fallback** — displayed automatically if WebGL2 is unavailable
 
 ## Controls

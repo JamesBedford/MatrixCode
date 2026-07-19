@@ -362,7 +362,15 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 - (NSDictionary<NSString *, NSString *> *)previewValuesFromValues:
     (NSDictionary<NSString *, NSString *> *)values {
     NSMutableDictionary *previewValues = [values mutableCopy];
-    if (self.showsIntro) [previewValues removeObjectForKey:@"mx-intro-seen"];
+    if (self.showsIntro) {
+        // Previewing the intro is an explicit request to watch it, so it plays here even while
+        // the saved document has it switched off.
+        NSMutableDictionary *intro =
+            [MatrixCodeJSONObject(previewValues[@"mx-intro"], NSDictionary.class) mutableCopy];
+        if (!intro) intro = [NSMutableDictionary dictionary];
+        intro[@"enabled"] = MatrixCodeSettingBoolObject(YES);
+        previewValues[@"mx-intro"] = MatrixCodeJSONString(intro);
+    }
     if (self.showsImage && !self.reducesMotion) {
         NSMutableDictionary *images =
             [MatrixCodeJSONObject(previewValues[@"mx-images"], NSDictionary.class) mutableCopy];
@@ -766,6 +774,8 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     NSDictionary *storedIntro =
         MatrixCodeJSONObject(self.stagedValues[@"mx-intro"], NSDictionary.class) ?: @{};
     self.intro = [@{
+        @"enabled": MatrixCodeSettingBoolObject(
+            MatrixCodeSettingBool(storedIntro, @"enabled", YES)),
         @"charMs": @(MatrixCodeSettingNumber(storedIntro, @"charMs", 95, 10, 500)),
         @"startDelayMs": @(MatrixCodeSettingNumber(storedIntro, @"startDelayMs", 600, 0, 10000)),
         @"fadeOutMs": @(MatrixCodeSettingNumber(storedIntro, @"fadeOutMs", 900, 0, 10000)),
@@ -1966,6 +1976,12 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     NSStackView *stack;
     NSView *scroll = [self scrollingStack:&stack];
     [stack addArrangedSubview:[self heading:@"Typed Intro"]];
+    NSButton *enabled = [NSButton checkboxWithTitle:@"Play intro on every launch"
+                                             target:self
+                                             action:@selector(introEnabledChanged:)];
+    enabled.identifier = @"intro-enabled";
+    enabled.state = [self.intro[@"enabled"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
+    [stack addArrangedSubview:enabled];
     NSTextField *hint = [NSTextField wrappingLabelWithString:
         @"Tokens: {name}, {greeting}, {uptime}, {fps}, {time:%H:%M}, {countdown}, {countup}"];
     hint.identifier = @"intro-token-hint";
@@ -2000,9 +2016,6 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     NSButton *rain = [NSButton checkboxWithTitle:@"Rain during intro" target:self action:@selector(introRainChanged:)];
     rain.state = [self.intro[@"rainDuringIntro"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
     [stack addArrangedSubview:rain];
-    NSButton *replay = [NSButton buttonWithTitle:@"Show Intro Again on Next Run"
-                                          target:self action:@selector(replayIntroNextRun:)];
-    [stack addArrangedSubview:replay];
     NSButton *preview = [NSButton buttonWithTitle:@"Preview Intro" target:self action:@selector(previewIntro:)];
     [stack addArrangedSubview:preview];
     return scroll;
@@ -2093,9 +2106,9 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     self.postIntroDelayField.enabled = sender.state != NSControlStateValueOn;
     [self draftDidChange];
 }
-- (void)replayIntroNextRun:(id)sender {
-    [self.stagedValues removeObjectForKey:@"mx-intro-seen"];
-    [self.explicitlyClearedStorageKeys addObject:@"mx-intro-seen"];
+- (void)introEnabledChanged:(NSButton *)sender {
+    self.intro[@"enabled"] =
+        MatrixCodeSettingBoolObject(sender.state == NSControlStateValueOn);
     [self draftDidChange];
 }
 

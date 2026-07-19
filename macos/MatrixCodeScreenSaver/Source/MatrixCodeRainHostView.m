@@ -107,6 +107,8 @@
 @property(nonatomic, strong) NSDate *rainStartDate;
 @property(nonatomic, strong) NSTimer *animationTimer;
 @property(nonatomic, strong) NSTimer *rampPreviewTimer;
+@property(nonatomic, strong, nullable) NSTimer *frameStallWatchdogTimer;
+@property(nonatomic, strong, nullable) NSDate *lastFrameAdvanceDate;
 @property(nonatomic) NSTimeInterval rampDuration;
 @property(nonatomic) BOOL reducedMotion;
 @property(nonatomic) BOOL reducedMotionAbandonedRainChoreography;
@@ -115,7 +117,6 @@
 @property(nonatomic) BOOL runTimelineStarted;
 @property(nonatomic) BOOL visibilitySuspended;
 @property(nonatomic) BOOL introScheduled;
-@property(nonatomic) BOOL introMarksSeenOnCompletion;
 @property(nonatomic, copy, nullable) dispatch_block_t introPreviewCompletion;
 @property(nonatomic) BOOL hostActive;
 @property(nonatomic) BOOL screenResolutionRetryScheduled;
@@ -167,6 +168,11 @@ NSString * const MatrixCodeRainHostFPSOverlayVisibleKey =
 
 static const double MatrixCodeDensityKeyStep = 1.2;
 static const NSTimeInterval MatrixCodePresentationChromeHideDelay = 2.8;
+// An unpaused MTKView is expected to deliver frames continuously. If its display link stalls,
+// nothing else advances the timeline, so the watchdog polls at this interval and treats a gap
+// longer than the stall threshold as a dead display link and drives the frame itself.
+static const NSTimeInterval MatrixCodeFrameStallWatchdogInterval = 0.5;
+static const NSTimeInterval MatrixCodeFrameStallThreshold = 1.0;
 static NSString * const MatrixCodeFPSOverlayStorageKey = @"mx-ui-state";
 
 static NSMutableSet<NSString *> *MatrixCodeClaimedScreenIDs;
@@ -307,6 +313,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
     [self.animationTimer invalidate];
     [self.rampPreviewTimer invalidate];
+    [self.frameStallWatchdogTimer invalidate];
     [self.backdropClickTimer invalidate];
     [self.presentationChromeHideTimer invalidate];
     [self.shortcutToastHideTimer invalidate];
@@ -668,10 +675,6 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
                                                                 storedValues:storedValues
                                                                tokenResolver:self.tokenResolver
                                                                   completion:^{
-            if (weakSelf.introMarksSeenOnCompletion) {
-                weakSelf.introMarksSeenOnCompletion = NO;
-                [weakSelf.preferences setImmediateValue:@"1" forKey:@"mx-intro-seen"];
-            }
             if (weakSelf.introScheduled && !weakSelf.introOverlay.rainDuringIntro) {
                 weakSelf.deferredRainStartDate =
                     [NSDate dateWithTimeIntervalSinceNow:weakSelf.introOverlay.postIntroDelay];
@@ -680,7 +683,6 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
             weakSelf.introPreviewCompletion = nil;
             if (previewCompletion) previewCompletion();
         }];
-        self.introMarksSeenOnCompletion = self.introOverlay.hasIntro;
         [self addSubview:self.introOverlay positioned:NSWindowAbove relativeTo:self.metalView];
     }
     self.introScheduled = self.introOverlay.hasIntro &&
@@ -780,9 +782,11 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     [self.metalView setAnimationActive:shouldRun];
     if (shouldRun) {
         [self startInternalAnimationTimerIfNeeded];
+        [self startFrameStallWatchdogIfNeeded];
         return;
     }
     [self stopInternalAnimationTimer];
+    [self stopFrameStallWatchdog];
     if (self.hostActive && self.reducedMotion && !self.visibilitySuspended && self.metalView) {
         [self advanceAnimationAtDate:self.runStartDate ?: NSDate.date
                     framesPerSecond:0];
@@ -980,6 +984,45 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     self.animationTimer = nil;
 }
 
+// YES when the Metal view claims to be running but has not delivered a frame recently. Both
+// ordinary fallbacks stand down while the view is unpaused, so without this check a stalled
+// display link freezes the timeline permanently instead of degrading to a slower frame rate.
+- (BOOL)shouldRecoverStalledFrameAtDate:(NSDate *)date {
+    if (![self animationShouldRun] || !self.metalView || self.metalView.isPaused) return NO;
+    if (!self.lastFrameAdvanceDate || !date) return NO;
+    return [date timeIntervalSinceDate:self.lastFrameAdvanceDate] >= MatrixCodeFrameStallThreshold;
+}
+
+- (void)startFrameStallWatchdogIfNeeded {
+    if (self.frameStallWatchdogTimer || ![self animationShouldRun]) return;
+    self.lastFrameAdvanceDate = NSDate.date;
+    __weak typeof(self) weakSelf = self;
+    self.frameStallWatchdogTimer =
+        [NSTimer timerWithTimeInterval:MatrixCodeFrameStallWatchdogInterval
+                               repeats:YES
+                                 block:^(NSTimer *timer) {
+        [weakSelf recoverStalledFrameIfNeeded];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.frameStallWatchdogTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)stopFrameStallWatchdog {
+    [self.frameStallWatchdogTimer invalidate];
+    self.frameStallWatchdogTimer = nil;
+}
+
+- (void)recoverStalledFrameIfNeeded {
+    NSDate *now = NSDate.date;
+    if (![self shouldRecoverStalledFrameAtDate:now]) return;
+    os_log_error(OS_LOG_DEFAULT,
+                 "MatrixCode frame delivery stalled for %{public}.2fs while unpaused; "
+                 "driving the frame from the watchdog: mode=%{public}ld",
+                 [now timeIntervalSinceDate:self.lastFrameAdvanceDate],
+                 (long)self.mode);
+    [self advanceAnimationAtDate:now framesPerSecond:[self animationFramesPerSecond]];
+    [self.metalView draw];
+}
+
 - (void)prepareRunTimelineForAnimationStartIfNeeded {
     if (self.synchronizedMultiDisplayTimeline || self.runTimelineStarted) return;
     NSDate *startDate = NSDate.date;
@@ -1001,14 +1044,16 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
                                                                   runStartDate:self.runStartDate ?: NSDate.date];
     [self.introOverlay reloadStoredValues:storedValues tokenResolver:self.tokenResolver];
-    self.introScheduled = self.introOverlay.hasIntro &&
+    self.introScheduled = self.introOverlay.enabled &&
         !self.reducedMotionAbandonedRainChoreography;
     if (self.introScheduled && !self.introOverlay.rainDuringIntro) {
         self.rainTimelineRequiresReducedMotionWarmup = YES;
     }
+    // Re-arm rather than resume: every launch and every screen-saver activation replays the
+    // intro from the top while it is enabled.
     if (self.introScheduled && !self.reducedMotion &&
         self.introOverlay && !self.introOverlay.playing) {
-        [self.introOverlay startAtDate:self.runStartDate];
+        [self.introOverlay replayAtDate:self.runStartDate];
     }
     if (![self animationShouldRun]) {
         [self animateOneFrame];
@@ -1022,12 +1067,14 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     self.pauseStartedDate = nil;
     [self.metalView setAnimationActive:NO];
     [self stopInternalAnimationTimer];
+    [self stopFrameStallWatchdog];
     [self.rampPreviewTimer invalidate];
     self.rampPreviewTimer = nil;
 }
 
 - (void)advanceAnimationAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond {
     if (!self.metalView || !self.runStartDate) return;
+    self.lastFrameAdvanceDate = NSDate.date;
     NSDate *now = self.reducedMotion ? (self.rainStartDate ?: self.runStartDate) : (date ?: NSDate.date);
     [self updateFPSOverlayWithFramesPerSecond:framesPerSecond];
     if (!self.reducedMotion) {
@@ -1401,9 +1448,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
                                                                   runStartDate:startDate];
     [self.introOverlay reloadStoredValues:storedValues tokenResolver:self.tokenResolver];
 
-    BOOL shouldReplayIntro = !self.reducedMotion && self.introOverlay &&
-        ![storedValues[@"mx-intro-seen"] isEqualToString:@"1"];
-    self.introMarksSeenOnCompletion = shouldReplayIntro;
+    BOOL shouldReplayIntro = !self.reducedMotion && self.introOverlay.enabled;
     self.reducedMotionAbandonedRainChoreography = self.reducedMotion;
     self.introScheduled = shouldReplayIntro;
     if (shouldReplayIntro) [self.introOverlay replayAtDate:startDate];

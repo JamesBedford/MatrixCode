@@ -59,11 +59,29 @@ describe("sanitizeIntro", () => {
 
 describe("toTypeConfig", () => {
   it("builds a TypeConfig including the default blink period", () => {
-    const cfg = toTypeConfig({ lines: [], charMs: 80, startDelayMs: 100, fadeOutMs: 200, rainDuringIntro: true, postIntroDelayMs: 0 });
+    const cfg = toTypeConfig({ enabled: true, lines: [], charMs: 80, startDelayMs: 100, fadeOutMs: 200, rainDuringIntro: true, postIntroDelayMs: 0 });
     expect(cfg.charMs).toBe(80);
     expect(cfg.startDelayMs).toBe(100);
     expect(cfg.fadeOutMs).toBe(200);
     expect(cfg.blinkMs).toBe(DEFAULT_TYPE_CONFIG.blinkMs);
+  });
+});
+
+describe("sanitizeIntro — enabled", () => {
+  it("defaults to enabled when missing", () => {
+    expect(sanitizeIntro({}).enabled).toBe(true);
+    expect(DEFAULT_INTRO.enabled).toBe(true);
+  });
+
+  it("passes a stored boolean through", () => {
+    expect(sanitizeIntro({ enabled: false }).enabled).toBe(false);
+    expect(sanitizeIntro({ enabled: true }).enabled).toBe(true);
+  });
+
+  it("falls back to the default for non-booleans", () => {
+    expect(sanitizeIntro({ enabled: "off" }).enabled).toBe(true);
+    expect(sanitizeIntro({ enabled: 0 }).enabled).toBe(true);
+    expect(sanitizeIntro({ enabled: null }).enabled).toBe(true);
   });
 });
 
@@ -103,19 +121,21 @@ describe("IntroStore", () => {
 
   it("persists across instances (round-trip)", () => {
     const a = new IntroStore();
-    a.set({ lines: [{ text: "hi {name}", holdMs: 1000, pauseMs: 500 }], charMs: 50, startDelayMs: 0, fadeOutMs: 0, rainDuringIntro: false, postIntroDelayMs: 1500 });
+    a.set({ enabled: false, lines: [{ text: "hi {name}", holdMs: 1000, pauseMs: 500 }], charMs: 50, startDelayMs: 0, fadeOutMs: 0, rainDuringIntro: false, postIntroDelayMs: 1500 });
     const b = new IntroStore();
     expect(b.get().lines).toEqual([{ text: "hi {name}", holdMs: 1000, pauseMs: 500 }]);
     expect(b.get().charMs).toBe(50);
+    expect(b.get().enabled).toBe(false);
     expect(b.get().rainDuringIntro).toBe(false);
     expect(b.get().postIntroDelayMs).toBe(1500);
   });
 
   it("reset clears storage and returns defaults", () => {
     const s = new IntroStore();
-    s.set({ lines: [{ text: "x", holdMs: 1, pauseMs: 1 }], charMs: 50, startDelayMs: 1, fadeOutMs: 1, rainDuringIntro: false, postIntroDelayMs: 1 });
+    s.set({ enabled: false, lines: [{ text: "x", holdMs: 1, pauseMs: 1 }], charMs: 50, startDelayMs: 1, fadeOutMs: 1, rainDuringIntro: false, postIntroDelayMs: 1 });
     const after = s.reset();
     expect(after.lines.length).toBe(DEFAULT_INTRO.lines.length);
+    expect(after.enabled).toBe(true);
     expect(new IntroStore().get().lines.length).toBe(DEFAULT_INTRO.lines.length);
   });
 

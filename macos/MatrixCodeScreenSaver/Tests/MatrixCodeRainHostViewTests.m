@@ -11,6 +11,8 @@
 @interface MatrixCodeRainHostView (Testing)
 - (void)advanceAnimationAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond;
 - (void)applyReducedMotionPreference:(BOOL)reducedMotion;
+- (BOOL)shouldRecoverStalledFrameAtDate:(NSDate *)date;
+- (void)recoverStalledFrameIfNeeded;
 - (void)prepareRunTimelineForAnimationStartIfNeeded;
 - (void)previewValuesDidChange:(NSNotification *)notification;
 - (void)replayIntro;
@@ -527,11 +529,138 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     XCTAssertEqualObjects([overlay valueForKey:@"visibleText"], visibleBeforeReduction);
 }
 
+- (void)testStalledUnpausedMetalViewStillAdvancesTheTimeline {
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+                                                 mode:MatrixCodeRainHostModeScreenSaverPlayback
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    MatrixCodeRampMetalProbe *probe = [[MatrixCodeRampMetalProbe alloc] init];
+    probe.preferredFramesPerSecond = 60;
+    // An unpaused view is what the ordinary fallbacks read as "the display link is driving this".
+    probe.paused = NO;
+    NSDate *runStartDate = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    [hostView setValue:probe forKey:@"metalView"];
+    [hostView setValue:@YES forKey:@"hostActive"];
+    [hostView setValue:runStartDate forKey:@"runStartDate"];
+    [hostView setValue:runStartDate forKey:@"rainStartDate"];
+
+    // A frame delivered just now is healthy: the watchdog must not double-drive the timeline.
+    [hostView setValue:NSDate.date forKey:@"lastFrameAdvanceDate"];
+    XCTAssertFalse([hostView shouldRecoverStalledFrameAtDate:NSDate.date]);
+    [hostView recoverStalledFrameIfNeeded];
+    XCTAssertEqual(probe.drawCount, 0u);
+
+    // A long gap while unpaused means the display link died; nothing else can recover it.
+    NSDate *stalledSince = [NSDate dateWithTimeIntervalSinceNow:-5];
+    [hostView setValue:stalledSince forKey:@"lastFrameAdvanceDate"];
+    XCTAssertTrue([hostView shouldRecoverStalledFrameAtDate:NSDate.date]);
+    [hostView recoverStalledFrameIfNeeded];
+    XCTAssertEqual(probe.drawCount, 1u);
+    XCTAssertNotEqualObjects([hostView valueForKey:@"lastFrameAdvanceDate"], stalledSince);
+
+    // A paused view is the one case the existing 1 Hz fallback already covers.
+    probe.paused = YES;
+    [hostView setValue:stalledSince forKey:@"lastFrameAdvanceDate"];
+    XCTAssertFalse([hostView shouldRecoverStalledFrameAtDate:NSDate.date]);
+
+    // A stopped host must not keep driving frames.
+    probe.paused = NO;
+    [hostView setValue:@NO forKey:@"hostActive"];
+    XCTAssertFalse([hostView shouldRecoverStalledFrameAtDate:NSDate.date]);
+}
+
+- (void)testScreenSaverModesHostTheIntroOverlay {
+    MatrixCodeRainHostMode savedModes[] = {
+        MatrixCodeRainHostModeScreenSaverPlayback,
+        MatrixCodeRainHostModeScreenSaverPreview,
+    };
+    for (NSUInteger index = 0; index < sizeof(savedModes) / sizeof(savedModes[0]); index++) {
+        MatrixCodeRainHostView *hostView =
+            [[MatrixCodeRainHostView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+                                                     mode:savedModes[index]];
+        XCTAssertFalse([[hostView valueForKey:@"suppressesIntroOverlay"] boolValue]);
+    }
+}
+
+- (void)testEnabledIntroReplaysOnEveryAnimationStart {
+    NSDictionary *values = @{
+        @"mx-controls": MatrixCodeJSONString(@{@"rampUpMs": @0}),
+        @"mx-intro": @"{\"lines\":[{\"text\":\"WAKE UP\",\"holdMs\":1000,\"pauseMs\":0}],\"charMs\":100,\"startDelayMs\":0,\"fadeOutMs\":0,\"rainDuringIntro\":true}",
+    };
+    [self.preferences commitValues:values];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+                                                 mode:MatrixCodeRainHostModeScreenSaverPlayback
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    MatrixCodeRampMetalProbe *probe = [[MatrixCodeRampMetalProbe alloc] init];
+    probe.preferredFramesPerSecond = 60;
+    NSDate *runStartDate = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    MatrixCodeTokenResolver *resolver =
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:values runStartDate:runStartDate];
+    MatrixCodeIntroOverlayView *overlay =
+        [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSZeroRect
+                                            storedValues:values
+                                           tokenResolver:resolver
+                                              completion:^{}];
+    [hostView setValue:probe forKey:@"metalView"];
+    [hostView setValue:overlay forKey:@"introOverlay"];
+    [hostView setValue:runStartDate forKey:@"runStartDate"];
+    [hostView setValue:runStartDate forKey:@"rainStartDate"];
+    [hostView setValue:@YES forKey:@"runTimelineStarted"];
+
+    [hostView startAnimation];
+    XCTAssertTrue(overlay.playing);
+    XCTAssertTrue([[hostView valueForKey:@"introScheduled"] boolValue]);
+
+    // Running the intro to completion must not consume it: the next activation replays it.
+    [overlay skip];
+    XCTAssertFalse(overlay.playing);
+    [hostView stopAnimation];
+
+    [hostView startAnimation];
+    XCTAssertTrue(overlay.playing);
+    XCTAssertTrue([[hostView valueForKey:@"introScheduled"] boolValue]);
+}
+
+- (void)testDisabledIntroNeverStarts {
+    NSDictionary *values = @{
+        @"mx-controls": MatrixCodeJSONString(@{@"rampUpMs": @0}),
+        @"mx-intro": @"{\"lines\":[{\"text\":\"WAKE UP\",\"holdMs\":1000,\"pauseMs\":0}],\"enabled\":false}",
+    };
+    [self.preferences commitValues:values];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+                                                 mode:MatrixCodeRainHostModeScreenSaverPlayback
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    MatrixCodeRampMetalProbe *probe = [[MatrixCodeRampMetalProbe alloc] init];
+    probe.preferredFramesPerSecond = 60;
+    NSDate *runStartDate = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    MatrixCodeTokenResolver *resolver =
+        [[MatrixCodeTokenResolver alloc] initWithStoredValues:values runStartDate:runStartDate];
+    MatrixCodeIntroOverlayView *overlay =
+        [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSZeroRect
+                                            storedValues:values
+                                           tokenResolver:resolver
+                                              completion:^{}];
+    [hostView setValue:probe forKey:@"metalView"];
+    [hostView setValue:overlay forKey:@"introOverlay"];
+    [hostView setValue:runStartDate forKey:@"runStartDate"];
+    [hostView setValue:runStartDate forKey:@"rainStartDate"];
+    [hostView setValue:@YES forKey:@"runTimelineStarted"];
+
+    [hostView startAnimation];
+
+    XCTAssertFalse(overlay.playing);
+    XCTAssertFalse([[hostView valueForKey:@"introScheduled"] boolValue]);
+}
+
 - (void)testLiveIntroReplayRestartsCurrentHostAndAfterModeRainTimeline {
     NSDictionary *values = @{
         @"mx-controls": MatrixCodeJSONString(@{@"rampUpMs": @2000}),
-        @"mx-intro": @"{\"lines\":[{\"text\":\"AGAIN\",\"holdMs\":1000,\"pauseMs\":0}],\"charMs\":100,\"startDelayMs\":0,\"fadeOutMs\":0,\"rainDuringIntro\":false,\"postIntroDelayMs\":500}",
-        @"mx-intro-seen": @"1",
+        @"mx-intro": @"{\"lines\":[{\"text\":\"AGAIN\",\"holdMs\":1000,\"pauseMs\":0}],\"charMs\":100,\"startDelayMs\":0,\"fadeOutMs\":0,\"rainDuringIntro\":false,\"postIntroDelayMs\":500,\"enabled\":false}",
     };
     [self.preferences commitValues:values];
     MatrixCodeRainHostView *hostView =
@@ -565,7 +694,6 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     XCTAssertEqualWithAccuracy(probe.densityScale, 0, 0.0001);
     XCTAssertEqualWithAccuracy(probe.rainElapsed, 0, 0.0001);
     XCTAssertEqual(probe.drawCount, 1u);
-    XCTAssertFalse([[hostView valueForKey:@"introMarksSeenOnCompletion"] boolValue]);
 
     [overlay skip];
     [hostView setValue:@YES forKey:@"reducedMotion"];
@@ -574,7 +702,7 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     XCTAssertEqual(probe.drawCount, 1u);
 }
 
-- (void)testDraftPreviewAndReplayPreservePendingFirstVisitSeenFlag {
+- (void)testDraftPreviewStartsTheIntroWithoutConsumingIt {
     NSDictionary *values = @{
         @"mx-controls": MatrixCodeJSONString(@{@"rampUpMs": @0}),
         @"mx-intro": @"{\"lines\":[{\"text\":\"PREVIEW\",\"holdMs\":1000,\"pauseMs\":0}],\"rainDuringIntro\":true}",
@@ -601,15 +729,15 @@ suppressesIntroOverlay:YES];
     [hostView setValue:@YES forKey:@"hostActive"];
     [hostView setValue:startDate forKey:@"runStartDate"];
     [hostView setValue:startDate forKey:@"rainStartDate"];
-    [hostView setValue:@YES forKey:@"introMarksSeenOnCompletion"];
 
     [hostView previewIntroWithStoredValues:values completion:^{}];
-
-    XCTAssertTrue([[hostView valueForKey:@"introMarksSeenOnCompletion"] boolValue]);
     XCTAssertTrue(overlay.playing);
+    XCTAssertTrue(overlay.enabled);
 
+    // Previewing must leave the saved document playable, so a later replay still runs.
+    [overlay skip];
     [hostView replayIntro];
-    XCTAssertTrue([[hostView valueForKey:@"introMarksSeenOnCompletion"] boolValue]);
+    XCTAssertTrue(overlay.playing);
 }
 
 - (void)testVisibilitySuspensionTransitionsMetalAnimationOffAndBackOn {
@@ -773,7 +901,6 @@ suppressesIntroOverlay:YES];
 - (void)testControlsResetRestartsDeterministicRainAndDefaultRampTimeline {
     [self.preferences commitValues:@{
         @"mx-controls": MatrixCodeJSONString(@{}),
-        @"mx-intro-seen": @"1",
     }];
     MatrixCodeRainHostView *hostView =
         [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
@@ -795,10 +922,10 @@ suppressesIntroOverlay:YES];
     XCTAssertFalse([[hostView valueForKey:@"introScheduled"] boolValue]);
 }
 
-- (void)testControlsResetCancelsManualReplayForSeenViewer {
+- (void)testControlsResetCancelsManualReplayWhenIntroIsDisabled {
     NSDictionary *values = @{
         @"mx-controls": MatrixCodeJSONString(@{}),
-        @"mx-intro-seen": @"1",
+        @"mx-intro": @"{\"enabled\":false}",
     };
     [self.preferences commitValues:values];
     MatrixCodeRainHostView *hostView = [[MatrixCodeRainHostView alloc]

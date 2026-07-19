@@ -62,6 +62,8 @@ export class IntroEditor extends ModalEditor {
     this.dialog.replaceChildren();
 
     this.dialog.appendChild(this.heading("h2", "Edit intro"));
+    this.dialog.appendChild(this.toggleField("Enable intro", this.draft.enabled, (v) => (this.draft.enabled = v)));
+
     this.dialog.appendChild(this.heading("h3", "Lines"));
 
     const hint = document.createElement("p");

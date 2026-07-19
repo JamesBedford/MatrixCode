@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface MatrixCodeIntroOverlayView : NSView
 
+@property(nonatomic, readonly) BOOL enabled;
 @property(nonatomic, readonly) BOOL hasIntro;
 @property(nonatomic, readonly) BOOL playing;
 @property(nonatomic, readonly) BOOL rainDuringIntro;

@@ -5,11 +5,12 @@ import {
   DEFAULT_HOLD_MS,
   DEFAULT_PAUSE_MS,
 } from "../sim/messageOverlay.ts";
-import { num } from "./sanitize.ts";
+import { bool, num } from "./sanitize.ts";
 import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 
 /** User-editable intro: the lines, the global timing settings, and the rain-start choreography. */
 export interface IntroScript {
+  enabled: boolean; // true = the intro plays on every load
   lines: MessageLine[];
   charMs: number;
   startDelayMs: number;
@@ -23,6 +24,7 @@ const MAX_LINES = 12;
 const MAX_TEXT_LEN = 120;
 
 export const DEFAULT_INTRO: IntroScript = {
+  enabled: true,
   lines: DEFAULT_LINES.map((l) => ({ ...l })),
   charMs: DEFAULT_TYPE_CONFIG.charMs,
   startDelayMs: DEFAULT_TYPE_CONFIG.startDelayMs,
@@ -56,11 +58,12 @@ export function sanitizeIntro(raw: unknown): IntroScript {
     .map(sanitizeLine)
     .filter((l): l is MessageLine => l !== null);
   return {
+    enabled: bool(r.enabled, DEFAULT_INTRO.enabled),
     lines: lines.length > 0 ? lines : DEFAULT_INTRO.lines.map((l) => ({ ...l })),
     charMs: num(r.charMs, 10, 500, DEFAULT_INTRO.charMs),
     startDelayMs: num(r.startDelayMs, 0, 10000, DEFAULT_INTRO.startDelayMs),
     fadeOutMs: num(r.fadeOutMs, 0, 10000, DEFAULT_INTRO.fadeOutMs),
-    rainDuringIntro: typeof r.rainDuringIntro === "boolean" ? r.rainDuringIntro : DEFAULT_INTRO.rainDuringIntro,
+    rainDuringIntro: bool(r.rainDuringIntro, DEFAULT_INTRO.rainDuringIntro),
     postIntroDelayMs: num(r.postIntroDelayMs, 0, 10000, DEFAULT_INTRO.postIntroDelayMs),
   };
 }

@@ -116,7 +116,7 @@ describe("native host payload", () => {
     storage.setItem("mx-controls", "edited");
     bootstrapNativeHost(storage);
     expect(storage.getItem("mx-controls")).toBe("edited");
-    expect(NATIVE_STORAGE_KEYS).toHaveLength(7);
+    expect(NATIVE_STORAGE_KEYS).toHaveLength(6);
   });
 
   it("derives a tested virtual-grid slice from native screen geometry", () => {
@@ -154,8 +154,8 @@ describe("native host payload", () => {
     installGlobals({ mode: "screensaver", bootstrapId: "run-2", storage: {} });
     window.webkit = { messageHandlers: { matrixCodeStorage: { postMessage } } };
 
-    nativeStorageDidChange("mx-intro-seen", "1");
-    expect(postMessage).toHaveBeenCalledWith({ key: "mx-intro-seen", value: "1" });
+    nativeStorageDidChange("mx-user-name", "Neo");
+    expect(postMessage).toHaveBeenCalledWith({ key: "mx-user-name", value: "Neo" });
 
     bootstrapNativeHost();
     window.__matrixCodeSetActive?.(false);

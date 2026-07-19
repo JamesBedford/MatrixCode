@@ -21,7 +21,11 @@ The native saver is expected to match the browser app's user-visible behavior:
 - rain controls for ramp-up, trail decay, speed, glyph change, glyph size, glow,
   lead glow, vignette, theme, quality, mirroring, scanlines, and overlap lanes;
 - native intro typewriter overlay with click/Escape skip, optional rain during
-  intro, post-intro delay, and the same token resolver as the web app;
+  intro, post-intro delay, and the same token resolver as the web app. The intro
+  is gated by the `enabled` flag in the `mx-intro` document (default on, exposed
+  as "Play intro on every launch" in the Options sheet). While enabled it replays
+  on every app launch and every screen-saver activation rather than once per
+  install, so there is no "seen" latch;
 - scheduled in-rain messages that resolve tokens and materialize through the
   rain cells instead of drawing a separate text overlay;
 - viewer name, greeting, time formatting, countdown/countup, named moments, and

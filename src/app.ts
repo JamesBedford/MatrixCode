@@ -5,7 +5,7 @@ import { MessageScheduler } from "./sim/messageScheduler.ts";
 import { createRng } from "./util/rng.ts";
 import { MessageOverlay, resolveUserName } from "./sim/messageOverlay.ts";
 import { resolveTokens } from "./sim/tokens.ts";
-import { densityRampFactor, loadRampMs, rampEase } from "./sim/introRain.ts";
+import { densityRampFactor, loadRampMs, rampEase, shouldPlayIntro } from "./sim/introRain.ts";
 import { MAX_FRAME_CATCHUP_SECONDS, simulationStepPlan } from "./sim/frameSteps.ts";
 import { advanceMultiClick, settledMultiClickAction } from "./sim/multiClick.ts";
 import { computeLanes, tierCap, seedForLayer, MAX_LANES, type Lane } from "./sim/overlapLanes.ts";
@@ -46,11 +46,7 @@ import {
   openControlsChannel,
   prefetchScreens,
 } from "./multimonitor/multiMonitorFullscreen.ts";
-import {
-  isNativeHosted,
-  nativeMultiMonitorConfig,
-  nativeStorageDidChange,
-} from "./platform/nativeHost.ts";
+import { isNativeHosted, nativeMultiMonitorConfig } from "./platform/nativeHost.ts";
 
 export interface MatrixRainHandle {
   destroy: () => void;
@@ -59,7 +55,6 @@ export interface MatrixRainHandle {
 }
 
 const ATLAS_CELL_PX = 64;
-const INTRO_KEY = "mx-intro-seen";
 const WARMUP_SECONDS = 2.5;
 // Base rain sim seed; overlap layers derive distinct seeds from it via seedForLayer.
 const BASE_SEED = 0x1a2b3c;
@@ -417,7 +412,7 @@ export async function mountMatrixRain(
   };
 
   // Play the intro and choreograph the rain (during/after + post-intro delay + density ramp).
-  // Used by first-visit autoplay, Replay, and Preview.
+  // Used by load-time autoplay, Replay, and Preview.
   const startIntroSequence = (script: IntroScript): boolean => {
     if (!message || reduceMq.matches) return false;
     message.setScript(script.lines, toTypeConfig(script));
@@ -441,9 +436,8 @@ export async function mountMatrixRain(
     return true;
   };
 
-  // Preview/save run through the overlay; markSeenPending gates the first-visit flag.
+  // Preview/save run through the overlay.
   let introPreviewActive = false;
-  let markSeenPending = false;
 
   const previewIntro = (draft: IntroScript): void => {
     introPreviewActive = startIntroSequence(sanitizeIntro(draft));
@@ -478,7 +472,7 @@ export async function mountMatrixRain(
     messageScheduler?.configure(messagesStore.get());
   };
 
-  // A single onDone handler serves the after-mode rain start, preview restore, and first-visit flag.
+  // A single onDone handler serves the after-mode rain start and the preview restore.
   message?.onDone(() => {
     if (rainPendingAfterIntro) {
       rainPendingAfterIntro = false;
@@ -487,15 +481,6 @@ export async function mountMatrixRain(
     if (introPreviewActive) {
       introPreviewActive = false;
       editor?.endPreview();
-    }
-    if (markSeenPending) {
-      markSeenPending = false;
-      try {
-        localStorage.setItem(INTRO_KEY, "1");
-        nativeStorageDidChange(INTRO_KEY, "1");
-      } catch {
-        /* ignore */
-      }
     }
   });
 
@@ -1196,24 +1181,16 @@ export async function mountMatrixRain(
     if (!running) renderStatic();
   });
 
-  // ---------- Intro on first visit ----------
+  // ---------- Intro on load ----------
   const maybePlayIntro = (): void => {
-    if (!message || !introStore || reduceMq.matches) return;
-    let seen = false;
-    try {
-      seen = localStorage.getItem(INTRO_KEY) === "1";
-    } catch {
-      /* ignore */
-    }
-    if (seen) {
-      // Repeat visit (no intro): start the rain from empty and ramp to density using the main
-      // controls' Ramp-up. loadRampMs returns 0 (keep the warmed full start) unless a ramp is set.
-      const ms = loadRampMs(true, controls.get().rampUpMs, reduceMq.matches);
-      if (ms > 0) beginRampFromEmpty(ms);
-      return;
-    }
-    markSeenPending = true;
-    startIntroSequence(introStore.get());
+    if (!message || !introStore) return;
+    const script = introStore.get();
+    const playing = shouldPlayIntro(script.enabled, reduceMq.matches);
+    if (playing) startIntroSequence(script);
+    // Without an intro, start the rain from empty and ramp to density using the main controls'
+    // Ramp-up. loadRampMs returns 0 (keep the warmed full start) unless a ramp is set.
+    const ms = loadRampMs(playing, controls.get().rampUpMs, reduceMq.matches);
+    if (ms > 0) beginRampFromEmpty(ms);
   };
 
   if (panelConfig) {

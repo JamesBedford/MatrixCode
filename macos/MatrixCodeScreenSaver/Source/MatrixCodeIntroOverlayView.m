@@ -13,11 +13,19 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     return fmin(maximum, fmax(minimum, [value doubleValue]));
 }
 
+static BOOL MatrixCodeBoolean(NSDictionary *dictionary, NSString *key, BOOL fallback) {
+    id value = dictionary[key];
+    if (![value isKindOfClass:NSNumber.class] ||
+        CFGetTypeID((__bridge CFTypeRef)value) != CFBooleanGetTypeID()) return fallback;
+    return [value boolValue];
+}
+
 @interface MatrixCodeIntroOverlayView ()
 @property(nonatomic, copy) NSArray<NSDictionary *> *lines;
 @property(nonatomic) NSTimeInterval characterDuration;
 @property(nonatomic) NSTimeInterval startDelay;
 @property(nonatomic) NSTimeInterval fadeDuration;
+@property(nonatomic, readwrite) BOOL enabled;
 @property(nonatomic, readwrite) BOOL hasIntro;
 @property(nonatomic, readwrite) BOOL playing;
 @property(nonatomic, readwrite) BOOL rainDuringIntro;
@@ -48,9 +56,9 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     self.wantsLayer = YES;
     self.layer.backgroundColor = NSColor.clearColor.CGColor;
     _completion = [completion copy];
-    _hasIntro = ![storedValues[@"mx-intro-seen"] isEqualToString:@"1"];
 
     [self reloadStoredValues:storedValues tokenResolver:tokenResolver];
+    _hasIntro = self.enabled;
     self.hidden = YES;
     return self;
 }
@@ -90,10 +98,8 @@ static double MatrixCodeClampedNumber(NSDictionary *dictionary, NSString *key,
     self.characterDuration = MatrixCodeClampedNumber(intro, @"charMs", 95, 10, 500) / 1000.0;
     self.startDelay = MatrixCodeClampedNumber(intro, @"startDelayMs", 600, 0, 10000) / 1000.0;
     self.fadeDuration = MatrixCodeClampedNumber(intro, @"fadeOutMs", 900, 0, 10000) / 1000.0;
-    id rainDuringIntro = intro[@"rainDuringIntro"];
-    self.rainDuringIntro = [rainDuringIntro isKindOfClass:NSNumber.class] &&
-        CFGetTypeID((__bridge CFTypeRef)rainDuringIntro) == CFBooleanGetTypeID()
-        ? [rainDuringIntro boolValue] : NO;
+    self.enabled = MatrixCodeBoolean(intro, @"enabled", YES);
+    self.rainDuringIntro = MatrixCodeBoolean(intro, @"rainDuringIntro", NO);
     self.postIntroDelay = MatrixCodeClampedNumber(intro, @"postIntroDelayMs", 0, 0, 10000) / 1000.0;
     self.totalDuration = self.startDelay + self.fadeDuration;
     for (NSUInteger index = 0; index < self.lines.count; index++) {

@@ -178,14 +178,14 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertNil([controller valueForKey:@"settingsAnimationTimer"]);
 }
 
-- (void)testSettingsCommitPreservesIntroSeenWrittenAfterControllerOpened {
+- (void)testSettingsCommitPreservesValueWrittenAfterControllerOpened {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    [self.preferences setImmediateValue:@"1" forKey:@"mx-intro-seen"];
+    [self.preferences setImmediateValue:@"Neo" forKey:@"mx-user-name"];
 
     [controller nudgeDensityByFactor:1.2];
 
-    XCTAssertEqualObjects([self.preferences storedValues][@"mx-intro-seen"], @"1");
+    XCTAssertEqualObjects([self.preferences storedValues][@"mx-user-name"], @"Neo");
 }
 
 - (void)testStandalonePreviewUsesMetalDisplayLinkWithoutDuplicateTimer {
@@ -417,7 +417,6 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertNil([controller valueForKey:@"previewController"]);
     NSDictionary *intro = MatrixCodeJSONDictionary(previewValues[@"mx-intro"]);
     XCTAssertEqualObjects([intro[@"lines"] firstObject][@"text"], @"UNSAVED INTRO");
-    XCTAssertNil([self.preferences storedValues][@"mx-intro-seen"]);
 
     previewCompletion();
     XCTAssertFalse(backdrop.hidden);

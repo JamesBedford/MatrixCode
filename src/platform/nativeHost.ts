@@ -10,7 +10,6 @@ export const NATIVE_STORAGE_KEYS = [
   "mx-countdown",
   "mx-ui-state",
   "mx-user-name",
-  "mx-intro-seen",
 ] as const;
 
 export type NativeStorageKey = (typeof NATIVE_STORAGE_KEYS)[number];
