@@ -32,4 +32,11 @@ describe("buildFaviconSvg", () => {
     // Different presets yield different markup.
     expect(amber).not.toBe(buildFaviconSvg(getPreset("blue")));
   });
+
+  it("uses the richer gold stops", () => {
+    const gold = buildFaviconSvg(getPreset("gold"));
+    expect(gold).toContain("#0c0800");
+    expect(gold).toContain("#ffd700");
+    expect(gold).toContain("#fff4c2");
+  });
 });

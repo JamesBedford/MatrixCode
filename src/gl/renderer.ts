@@ -13,6 +13,7 @@ import compositeFrag from "./shaders/composite.frag.glsl?raw";
 
 const BLOOM_LEVELS: Record<QualityTier, number> = { low: 1, med: 2, high: 3 };
 const BLUR_SPREAD = 1.8;
+const GOLD_SPARKLE_STRENGTH = 0.18;
 
 interface BloomLevel {
   main: twgl.FramebufferInfo;
@@ -163,6 +164,7 @@ export class Renderer {
       uBody: preset.body,
       uBright: preset.bright,
       uHead: preset.head,
+      uGoldSparkle: preset.name === "gold" ? GOLD_SPARKLE_STRENGTH : 0,
       uLeadBrightness: params.leadBrightness,
       uColOffset: colOffset,
       uViewport: [width, height],

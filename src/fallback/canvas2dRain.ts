@@ -11,6 +11,10 @@ export interface Canvas2dRainHandle {
   stop: () => void;
 }
 
+export function shouldSparkleGoldHead(preset: PresetName, random: () => number): boolean {
+  return preset === "gold" && random() < 0.05;
+}
+
 function rgb(c: readonly [number, number, number], a = 1): string {
   return `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
 }
@@ -30,6 +34,7 @@ export function startCanvas2dRain(
   for (const d of "0123456789") chars.push(d);
 
   const rng = createRng(7);
+  const sparkleRng = createRng(17);
   const fontSize = 18 * glyphScale;
   let cols = 0;
   let drops: number[] = [];
@@ -83,7 +88,14 @@ export function startCanvas2dRain(
         ctx.scale(-1, 1); // mirror, as in the film
         ctx.fillStyle = rgb(colors.head, 1);
         ctx.shadowColor = rgb(colors.bright, 1);
-        ctx.shadowBlur = 8;
+        const sparkling = shouldSparkleGoldHead(preset, sparkleRng);
+        if (sparkling) {
+          ctx.globalAlpha = 0.4;
+          ctx.shadowBlur = 18;
+          ctx.fillText(ch, 0, 0);
+          ctx.globalAlpha = 1;
+        }
+        ctx.shadowBlur = sparkling ? 12 : 8;
         ctx.fillText(ch, 0, 0);
         ctx.restore();
       }

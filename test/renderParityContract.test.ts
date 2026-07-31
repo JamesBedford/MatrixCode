@@ -11,8 +11,10 @@ const read = (relativePath: string): string =>
 const webRenderer = read("src/gl/renderer.ts");
 const webApp = read("src/app.ts");
 const webAtlas = read("src/gl/glyphAtlas.ts");
+const webGlyph = read("src/gl/shaders/glyph.frag.glsl");
 const webBlur = read("src/gl/shaders/blur.frag.glsl");
 const webComposite = read("src/gl/shaders/composite.frag.glsl");
+const nativeConstants = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeConstants.m");
 const nativeRenderer = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeMetalView.m");
 const nativeShaders = read("macos/MatrixCodeScreenSaver/Resources/MatrixCodeShaders.msl");
 const nativeAdaptive = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeAdaptiveResolution.m");
@@ -26,6 +28,10 @@ function numericConstant(source: string, name: string): number {
 
 function hex(rgb: readonly number[]): number {
   return rgb.reduce((value, channel) => (value << 8) | Math.round(channel * 255), 0);
+}
+
+function normalized(source: string): string {
+  return source.replace(/\s+/g, " ");
 }
 
 function objcConfigNumber(source: string, name: string): number {
@@ -71,7 +77,7 @@ describe("macOS/Web render parity source contract", () => {
 
   it("keeps every five-stop color preset identical", () => {
     for (const name of PRESET_NAMES) {
-      const match = nativeRenderer.match(
+      const match = nativeConstants.match(
         new RegExp(`@\"${name}\"\\s*:\\s*@\\[([^\\]]+)\\]`),
       );
       expect(match?.[1], `native ${name} palette`).toBeDefined();
@@ -82,6 +88,58 @@ describe("macOS/Web render parity source contract", () => {
         .map(hex);
       expect(nativeColors, `${name} palette`).toEqual(webColors);
     }
+  });
+
+  it("pins the richer gold palette and matching mutation sparkle", () => {
+    const gold = getPreset("gold");
+    expect([gold.background, gold.tail, gold.body, gold.bright, gold.head].map(hex)).toEqual([
+      0x0c0800,
+      0x4a3000,
+      0xb8860b,
+      0xffd700,
+      0xfff4c2,
+    ]);
+
+    expect(numericConstant(webRenderer, "GOLD_SPARKLE_STRENGTH")).toBe(
+      numericConstant(nativeRenderer, "MatrixCodeGoldSparkleStrength"),
+    );
+    expect(numericConstant(webGlyph, "goldSparkleBloom")).toBe(
+      numericConstant(nativeShaders, "goldSparkleBloom"),
+    );
+    expect(normalized(webRenderer)).toContain(
+      'preset.name === "gold" ? GOLD_SPARKLE_STRENGTH : 0',
+    );
+    expect(normalized(nativeRenderer)).toContain(
+      '[preset isEqualToString:@"gold"] ? MatrixCodeGoldSparkleStrength : 0',
+    );
+    const normalizedWebGlyph = normalized(webGlyph);
+    const normalizedNativeShaders = normalized(nativeShaders);
+    expect(normalizedWebGlyph).toContain(
+      "float sparklePulse = max(isHead ? 0.45 : 0.0, 4.0 * phase * (1.0 - phase));",
+    );
+    expect(normalizedNativeShaders).toContain(
+      "float sparklePulse = max(in.isHead > 0.5 ? 0.45 : 0.0, 4.0 * in.crossfade * (1.0 - in.crossfade));",
+    );
+    expect(normalizedWebGlyph).toContain(
+      "float goldSparkle = uGoldSparkle * sparklePulse * smoothstep(0.45, 0.95, bright);",
+    );
+    expect(normalizedWebGlyph).toContain("col = mix(col, uHead, goldSparkle);");
+    expect(normalizedWebGlyph).toContain("baseI * (1.0 + headExtra + goldSparkle)");
+    expect(normalizedWebGlyph).toContain(
+      "baseI * (headExtra + goldSparkle * goldSparkleBloom)",
+    );
+    expect(normalizedNativeShaders).toContain(
+      "float goldSparkle = uniforms.goldSparkle * sparklePulse * smoothstep(0.45, 0.95, brightness);",
+    );
+    expect(normalizedNativeShaders).toContain(
+      "color = mix(color, uniforms.headColor, goldSparkle);",
+    );
+    expect(normalizedNativeShaders).toContain(
+      "baseIntensity * (1.0 + headExtra + goldSparkle)",
+    );
+    expect(normalizedNativeShaders).toContain(
+      "baseIntensity * (headExtra + goldSparkle * goldSparkleBloom)",
+    );
   });
 
   it("requires the complete native equivalent render graph", () => {

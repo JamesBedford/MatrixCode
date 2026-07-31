@@ -34,6 +34,11 @@
     [self assertColor:theme.dimColor red:110 green:0 blue:168];
     [self assertColor:theme.accentColor red:178 green:59 blue:255];
 
+    theme.presetName = @"gold";
+    [self assertColor:theme.backgroundColor red:12 green:8 blue:0];
+    [self assertColor:theme.dimColor red:184 green:134 blue:11];
+    [self assertColor:theme.accentColor red:255 green:215 blue:0];
+
     theme.presetName = @"not-a-preset";
     XCTAssertEqualObjects(theme.presetName, @"classic");
 }

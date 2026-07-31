@@ -22,7 +22,7 @@ struct MatrixCodeUniforms {
     float3 brightColor;
     float padding2;
     float3 headColor;
-    float padding3;
+    float goldSparkle;
     float glow;
     float vignette;
     float scanlines;
@@ -90,8 +90,8 @@ vertex MatrixCodeFullscreenOut matrixFullscreenVertex(uint vertexID [[vertex_id]
     return out;
 }
 
-// Mirrors src/gl/shaders/glyph.frag.glsl. The HDR scene alpha is a head-only
-// bloom mask; ambient body and tail glyphs never seed bloom directly.
+// Mirrors src/gl/shaders/glyph.frag.glsl. The HDR scene alpha carries heads
+// and the gold theme's brief mutation glints into bloom.
 fragment float4 matrixSceneFragment(
     MatrixCodeVertexOut in [[stage_in]],
     texture2d<float> atlas [[texture(0)]],
@@ -120,13 +120,20 @@ fragment float4 matrixSceneFragment(
     color = mix(color, uniforms.headColor,
                 (in.whiteHead > 0.5 ? 1.0 : 0.0) *
                 smoothstep(0.8, 1.0, brightness));
+    float sparklePulse = max(in.isHead > 0.5 ? 0.45 : 0.0,
+                             4.0 * in.crossfade * (1.0 - in.crossfade));
+    float goldSparkle = uniforms.goldSparkle * sparklePulse *
+        smoothstep(0.45, 0.95, brightness);
+    color = mix(color, uniforms.headColor, goldSparkle);
 
     float baseIntensity = brightness * ink;
     float headExtra = in.isHead > 0.5
         ? 0.6 + (in.whiteHead > 0.5 ? uniforms.leadBrightness : 0.0)
         : 0.0;
-    float displayIntensity = baseIntensity * (1.0 + headExtra);
-    return float4(color * displayIntensity, baseIntensity * headExtra);
+    float displayIntensity = baseIntensity * (1.0 + headExtra + goldSparkle);
+    constexpr float goldSparkleBloom = 0.35;
+    return float4(color * displayIntensity,
+                  baseIntensity * (headExtra + goldSparkle * goldSparkleBloom));
 }
 
 // Mirrors src/gl/shaders/brightpass.frag.glsl, including its Karis weight.

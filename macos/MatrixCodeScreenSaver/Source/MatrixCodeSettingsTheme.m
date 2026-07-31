@@ -2,6 +2,8 @@
 
 #import <QuartzCore/QuartzCore.h>
 
+#import "MatrixCodeConstants.h"
+
 NSNotificationName const MatrixCodeSettingsThemeDidChangeNotification =
     @"MatrixCodeSettingsThemeDidChangeNotification";
 
@@ -26,25 +28,6 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
                               green:((hex >> 8) & 0xff) / 255.0
                                blue:(hex & 0xff) / 255.0
                               alpha:alpha];
-}
-
-static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeSettingsPalettes(void) {
-    static NSDictionary<NSString *, NSArray<NSNumber *> *> *palettes;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        // background, body/dim, bright/accent -- identical to colorPresets.ts.
-        palettes = @{
-            @"classic": @[@0x0d0208, @0x008f11, @0x00ff41],
-            @"amber":   @[@0x0a0600, @0xa85b00, @0xffb000],
-            @"gold":    @[@0x0d0b00, @0xa89000, @0xffe21f],
-            @"red":     @[@0x0d0202, @0xa80008, @0xff2a2a],
-            @"pink":    @[@0x0d0207, @0xa80060, @0xff3da0],
-            @"purple":  @[@0x08020d, @0x6e00a8, @0xb23bff],
-            @"blue":    @[@0x02060d, @0x0066a8, @0x27d6ff],
-            @"white":   @[@0x060606, @0x8c8c8c, @0xededed],
-        };
-    });
-    return palettes;
 }
 
 @interface MatrixCodeSettingsTheme ()
@@ -79,7 +62,8 @@ static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeSettingsPalett
 }
 
 - (void)setPresetName:(NSString *)presetName {
-    NSString *validated = MatrixCodeSettingsPalettes()[presetName] ? presetName : @"classic";
+    NSString *validated = [MatrixCodeColorPresetNames() containsObject:presetName]
+        ? presetName : @"classic";
     if ([_presetName isEqualToString:validated]) return;
     _presetName = [validated copy];
     [self updateColors];
@@ -89,11 +73,13 @@ static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeSettingsPalett
 }
 
 - (void)updateColors {
-    NSArray<NSNumber *> *palette = MatrixCodeSettingsPalettes()[self.presetName]
-        ?: MatrixCodeSettingsPalettes()[@"classic"];
-    self.backgroundColor = MatrixCodeSRGB(palette[0].unsignedIntegerValue, 1.0);
-    self.dimColor = MatrixCodeSRGB(palette[1].unsignedIntegerValue, 1.0);
-    self.accentColor = MatrixCodeSRGB(palette[2].unsignedIntegerValue, 1.0);
+    NSArray<NSNumber *> *palette = MatrixCodeColorPaletteForPreset(self.presetName);
+    self.backgroundColor = MatrixCodeSRGB(
+        palette[MatrixCodeColorStopBackground].unsignedIntegerValue, 1.0);
+    self.dimColor = MatrixCodeSRGB(
+        palette[MatrixCodeColorStopBody].unsignedIntegerValue, 1.0);
+    self.accentColor = MatrixCodeSRGB(
+        palette[MatrixCodeColorStopBright].unsignedIntegerValue, 1.0);
     self.panelColor = MatrixCodeSRGB(0x040a06, 0.82);
     self.borderColor = [self.accentColor colorWithAlphaComponent:0.35];
 

@@ -5,6 +5,33 @@
 NSString * const MatrixCodeModuleIdentifier = @"com.matrixcode.screensaver";
 NSString * const MatrixCodeSessionDefaultsKey = @"MatrixCodeNativeSession";
 
+static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeColorPalettes(void) {
+    static NSDictionary<NSString *, NSArray<NSNumber *> *> *palettes;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        palettes = @{
+            @"classic": @[@0x0D0208, @0x003B00, @0x008F11, @0x00FF41, @0xDEFFE4],
+            @"amber": @[@0x0A0600, @0x3B1E00, @0xA85B00, @0xFFB000, @0xFFF1C8],
+            @"blue": @[@0x02060D, @0x00263B, @0x0066A8, @0x27D6FF, @0xE4FAFF],
+            @"gold": @[@0x0C0800, @0x4A3000, @0xB8860B, @0xFFD700, @0xFFF4C2],
+            @"red": @[@0x0D0202, @0x3B0000, @0xA80008, @0xFF2A2A, @0xFFE0E0],
+            @"pink": @[@0x0D0207, @0x3B0022, @0xA80060, @0xFF3DA0, @0xFFE2F1],
+            @"purple": @[@0x08020D, @0x2A003B, @0x6E00A8, @0xB23BFF, @0xF2E2FF],
+            @"white": @[@0x060606, @0x2A2A2A, @0x8C8C8C, @0xEDEDED, @0xFFFFFF],
+        };
+    });
+    return palettes;
+}
+
+NSArray<NSString *> *MatrixCodeColorPresetNames(void) {
+    return MatrixCodeColorPalettes().allKeys;
+}
+
+NSArray<NSNumber *> *MatrixCodeColorPaletteForPreset(NSString *presetName) {
+    NSDictionary<NSString *, NSArray<NSNumber *> *> *palettes = MatrixCodeColorPalettes();
+    return palettes[presetName] ?: palettes[@"classic"];
+}
+
 NSArray<NSString *> *MatrixCodeStorageKeys(void) {
     static NSArray<NSString *> *keys;
     static dispatch_once_t onceToken;
@@ -95,7 +122,7 @@ NSDictionary<NSString *, id> *MatrixCodeSanitizeControlsDocument(id rawControls)
     NSDictionary<NSString *, NSArray<NSString *> *> *choices = @{
         @"glyphMode": @[@"matrix", @"katakana", @"binary", @"digits", @"latin", @"symbols"],
         @"glyphFont": @[@"matrix", @"gothic", @"mono", @"terminal", @"rounded", @"mincho"],
-        @"preset": @[@"classic", @"amber", @"gold", @"red", @"pink", @"purple", @"blue", @"white"],
+        @"preset": MatrixCodeColorPresetNames(),
         @"quality": @[@"low", @"med", @"high"],
     };
     [choices enumerateKeysAndObjectsUsingBlock:^(NSString *key,

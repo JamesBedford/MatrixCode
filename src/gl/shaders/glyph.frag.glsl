@@ -4,7 +4,7 @@ precision highp float;
 // Glyph pass: map each pixel to a grid cell, read the cell's packed state, sample
 // the glyph atlas (old + new, crossfaded), and output the green ramp.
 //   frag.rgb = on-screen color * display intensity (may exceed 1 in HDR mode)
-//   frag.a   = bloom mask — non-zero only for heads, so only heads bloom.
+//   frag.a   = bloom mask for heads and the gold theme's brief mutation glints.
 
 in vec2 vUv;
 out vec4 frag;
@@ -17,11 +17,14 @@ uniform vec3 uTail;
 uniform vec3 uBody;
 uniform vec3 uBright;
 uniform vec3 uHead;
+uniform float uGoldSparkle;
 uniform float uLeadBrightness; // extra HDR for white-hot heads
 uniform float uColOffset;      // horizontal shift in cells; base layer = 0.0, overlap layers land between columns
 uniform vec2 uViewport;        // viewport size in CSS pixels
 uniform vec2 uCell;            // shared cell size in CSS pixels
 uniform vec2 uGridOrigin;      // local position of cell (0,0), possibly negative at a monitor seam
+
+const float goldSparkleBloom = 0.35;
 
 // Gradients of the atlas UV taken from the *continuous* cell coordinate, so the
 // fract() seam between cells doesn't blow up the implicit LOD (which would force
@@ -65,11 +68,14 @@ void main() {
   vec3 col = mix(uTail, uBody, smoothstep(0.0, 0.5, bright));
   col = mix(col, uBright, smoothstep(0.55, 0.95, bright));
   col = mix(col, uHead, (whiteHead ? 1.0 : 0.0) * smoothstep(0.8, 1.0, bright));
+  float sparklePulse = max(isHead ? 0.45 : 0.0, 4.0 * phase * (1.0 - phase));
+  float goldSparkle = uGoldSparkle * sparklePulse * smoothstep(0.45, 0.95, bright);
+  col = mix(col, uHead, goldSparkle);
 
   float baseI = bright * ink;
   // Every head pops; white heads get the extra lead-brightness push (and bloom).
   float headExtra = isHead ? (0.6 + (whiteHead ? uLeadBrightness : 0.0)) : 0.0;
-  float displayI = baseI * (1.0 + headExtra);
+  float displayI = baseI * (1.0 + headExtra + goldSparkle);
 
-  frag = vec4(col * displayI, baseI * headExtra);
+  frag = vec4(col * displayI, baseI * (headExtra + goldSparkle * goldSparkleBloom));
 }

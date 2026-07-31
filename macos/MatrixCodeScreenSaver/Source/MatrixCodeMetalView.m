@@ -36,7 +36,7 @@ typedef struct {
     vector_float3 brightColor;
     float padding2;
     vector_float3 headColor;
-    float padding3;
+    float goldSparkle;
     float glow;
     float vignette;
     float scanlines;
@@ -68,6 +68,7 @@ _Static_assert(offsetof(MatrixCodeUniforms, tailColor) == 16, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, bodyColor) == 48, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, brightColor) == 80, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, headColor) == 112, "layout drift");
+_Static_assert(offsetof(MatrixCodeUniforms, goldSparkle) == 128, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, glow) == 132, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, vignette) == 136, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, scanlines) == 140, "layout drift");
@@ -81,6 +82,7 @@ typedef struct {
 } MatrixCodeBlurUniforms;
 
 static const float MatrixCodeBloomSpread = 1.8f;
+static const float MatrixCodeGoldSparkleStrength = 0.18f;
 static const size_t MatrixCodeAtlasCellPixels = 64;
 static const uint32_t MatrixCodeNormalRainSeed = 0x1a2b3cU;
 static const uint32_t MatrixCodeRainLaneSeedMultiplier = 0x9e3779b9U;
@@ -1841,17 +1843,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 
 - (void)updatePalette {
     NSString *preset = [self.controls[@"preset"] isKindOfClass:NSString.class] ? self.controls[@"preset"] : @"classic";
-    NSDictionary *palettes = @{
-        @"classic": @[@0x0D0208, @0x003B00, @0x008F11, @0x00FF41, @0xDEFFE4],
-        @"amber": @[@0x0A0600, @0x3B1E00, @0xA85B00, @0xFFB000, @0xFFF1C8],
-        @"blue": @[@0x02060D, @0x00263B, @0x0066A8, @0x27D6FF, @0xE4FAFF],
-        @"gold": @[@0x0D0B00, @0x3B3300, @0xA89000, @0xFFE21F, @0xFFFBD6],
-        @"red": @[@0x0D0202, @0x3B0000, @0xA80008, @0xFF2A2A, @0xFFE0E0],
-        @"pink": @[@0x0D0207, @0x3B0022, @0xA80060, @0xFF3DA0, @0xFFE2F1],
-        @"purple": @[@0x08020D, @0x2A003B, @0x6E00A8, @0xB23BFF, @0xF2E2FF],
-        @"white": @[@0x060606, @0x2A2A2A, @0x8C8C8C, @0xEDEDED, @0xFFFFFF],
-    };
-    NSArray<NSNumber *> *palette = palettes[preset] ?: palettes[@"classic"];
+    NSArray<NSNumber *> *palette = MatrixCodeColorPaletteForPreset(preset);
     MTLClearColor background = {
         ((palette[0].unsignedIntValue >> 16) & 0xff) / 255.0,
         ((palette[0].unsignedIntValue >> 8) & 0xff) / 255.0,
@@ -1860,11 +1852,18 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     };
     self.clearColor = background;
     MatrixCodeUniforms uniforms = self.uniforms;
-    uniforms.backgroundColor = MatrixCodeRGB(palette[0].unsignedIntValue);
-    uniforms.tailColor = MatrixCodeRGB(palette[1].unsignedIntValue);
-    uniforms.bodyColor = MatrixCodeRGB(palette[2].unsignedIntValue);
-    uniforms.brightColor = MatrixCodeRGB(palette[3].unsignedIntValue);
-    uniforms.headColor = MatrixCodeRGB(palette[4].unsignedIntValue);
+    uniforms.backgroundColor =
+        MatrixCodeRGB(palette[MatrixCodeColorStopBackground].unsignedIntValue);
+    uniforms.tailColor =
+        MatrixCodeRGB(palette[MatrixCodeColorStopTail].unsignedIntValue);
+    uniforms.bodyColor =
+        MatrixCodeRGB(palette[MatrixCodeColorStopBody].unsignedIntValue);
+    uniforms.brightColor =
+        MatrixCodeRGB(palette[MatrixCodeColorStopBright].unsignedIntValue);
+    uniforms.headColor =
+        MatrixCodeRGB(palette[MatrixCodeColorStopHead].unsignedIntValue);
+    uniforms.goldSparkle =
+        [preset isEqualToString:@"gold"] ? MatrixCodeGoldSparkleStrength : 0;
     uniforms.glow = MatrixCodeNumber(self.controls, @"glow", 0.9, 0, 2.5);
     uniforms.vignette = MatrixCodeVignette(self.controls);
     uniforms.scanlines = MatrixCodeBool(self.controls, @"scanlines", NO) ? 1 : 0;

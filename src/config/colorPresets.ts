@@ -33,11 +33,11 @@ const BLUE: ColorPreset = {
 
 const GOLD: ColorPreset = {
   name: "gold",
-  background: hexToRgb("#0D0B00"),
-  tail: hexToRgb("#3B3300"),
-  body: hexToRgb("#A89000"),
-  bright: hexToRgb("#FFE21F"),
-  head: hexToRgb("#FFFBD6"),
+  background: hexToRgb("#0C0800"),
+  tail: hexToRgb("#4A3000"),
+  body: hexToRgb("#B8860B"),
+  bright: hexToRgb("#FFD700"),
+  head: hexToRgb("#FFF4C2"),
 };
 
 const RED: ColorPreset = {
