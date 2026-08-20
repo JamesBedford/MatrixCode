@@ -643,6 +643,38 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertEqualObjects(variationReadout.stringValue, @"35%");
 }
 
+- (void)testRainSlidersHaveUsablePointerTargets {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller.window setContentSize:NSMakeSize(700, 560)];
+    NSView *content = controller.window.contentView;
+    [content layoutSubtreeIfNeeded];
+
+    NSArray<NSString *> *keys = @[
+        @"density", @"rampUpMs", @"trailLength", @"trailVariation", @"speed", @"glyphScale",
+        @"glow", @"leadBrightness", @"vignette",
+    ];
+    for (NSString *key in keys) {
+        NSSlider *slider = (NSSlider *)MatrixCodeDescendantWithIdentifier(content, key);
+        XCTAssertTrue([slider isKindOfClass:NSSlider.class], @"Missing %@ slider", key);
+        XCTAssertTrue(slider.isEnabled, @"%@ slider was disabled", key);
+        XCTAssertEqualObjects(slider.target, controller, @"%@ slider target changed", key);
+        XCTAssertEqual(slider.action, @selector(controlChanged:), @"%@ slider action changed", key);
+        XCTAssertTrue(slider.isContinuous, @"%@ slider stopped updating continuously", key);
+        XCTAssertGreaterThan(slider.intrinsicContentSize.height, 0, @"%@ has no intrinsic height", key);
+        XCTAssertGreaterThanOrEqual(NSHeight(slider.bounds),
+                                    slider.intrinsicContentSize.height - 0.5,
+                                    @"%@ slider was compressed", key);
+
+        [slider scrollRectToVisible:slider.bounds];
+        [content layoutSubtreeIfNeeded];
+        NSRect sliderFrame = [slider convertRect:slider.bounds toView:content];
+        NSView *hit = [content hitTest:NSMakePoint(NSMidX(sliderFrame), NSMidY(sliderFrame))];
+        XCTAssertTrue(hit == slider || [hit isDescendantOf:slider],
+                      @"%@ slider midpoint hit %@", key, hit);
+    }
+}
+
 - (void)testRainSlidersQuantizeToWebStepValues {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];

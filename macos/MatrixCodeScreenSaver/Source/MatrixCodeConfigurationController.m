@@ -1245,8 +1245,17 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     scroll.autohidesScrollers = YES;
     [MatrixCodeSettingsTheme.sharedTheme styleScrollView:scroll];
     MatrixCodeFlippedDocumentView *document = [[MatrixCodeFlippedDocumentView alloc]
-        initWithFrame:NSMakeRect(0, 0, MatrixCodeSettingsPanelWidth, 760)];
+        initWithFrame:NSMakeRect(0, 0, MatrixCodeSettingsPanelWidth, 1)];
     [document addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:document.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:document.topAnchor],
+    ]];
+    [document layoutSubtreeIfNeeded];
+    [document setFrameSize:NSMakeSize(MatrixCodeSettingsPanelWidth,
+                                      fmax(1, ceil(stack.fittingSize.height)))];
+    [stack.bottomAnchor constraintEqualToAnchor:document.bottomAnchor].active = YES;
     scroll.documentView = document;
     [surface addSubview:scroll];
     [NSLayoutConstraint activateConstraints:@[
@@ -1254,10 +1263,6 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         [scroll.trailingAnchor constraintEqualToAnchor:surface.trailingAnchor],
         [scroll.topAnchor constraintEqualToAnchor:surface.topAnchor],
         [scroll.bottomAnchor constraintEqualToAnchor:surface.bottomAnchor],
-        [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor],
-        [stack.trailingAnchor constraintEqualToAnchor:document.trailingAnchor],
-        [stack.topAnchor constraintEqualToAnchor:document.topAnchor],
-        [stack.bottomAnchor constraintLessThanOrEqualToAnchor:document.bottomAnchor],
     ]];
     return surface;
 }
