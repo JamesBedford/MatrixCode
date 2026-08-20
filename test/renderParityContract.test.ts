@@ -16,7 +16,7 @@ const webBlur = read("src/gl/shaders/blur.frag.glsl");
 const webComposite = read("src/gl/shaders/composite.frag.glsl");
 const nativeConstants = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeConstants.m");
 const nativeRenderer = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeMetalView.m");
-const nativeShaders = read("macos/MatrixCodeScreenSaver/Resources/MatrixCodeShaders.msl");
+const nativeShaders = read("macos/MatrixCodeScreenSaver/Resources/MatrixCodeShaders.metal");
 const nativeAdaptive = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeAdaptiveResolution.m");
 const nativeApp = read("macos/MatrixCodeScreenSaver/AppSource/MatrixCodeAppDelegate.m");
 

@@ -46,13 +46,13 @@ typedef struct {
     vector_float2 atlasCellSize;
 } MatrixCodeUniforms;
 
-// MatrixCodeShaders.msl declares these structs a second time and is compiled
-// from source at runtime, so a field added or removed on one side only would
-// silently reinterpret every subsequent field rather than fail to build. Sizes
-// alone do not pin the layout — trailing scalars land in padding that a float3's
-// 16-byte alignment already reserves — so each offset is asserted individually.
+// MatrixCodeShaders.metal declares these structs a second time for the precompiled
+// Metal library. A field added or removed on one side only would silently
+// reinterpret every subsequent field rather than fail to build. Sizes alone do
+// not pin the layout — trailing scalars land in padding that a float3's 16-byte
+// alignment already reserves — so each offset is asserted individually.
 _Static_assert(sizeof(MatrixCodeGlyphInstance) == 40,
-               "MatrixCodeGlyphInstance must match MatrixCodeShaders.msl");
+               "MatrixCodeGlyphInstance must match MatrixCodeShaders.metal");
 _Static_assert(offsetof(MatrixCodeGlyphInstance, origin) == 0, "layout drift");
 _Static_assert(offsetof(MatrixCodeGlyphInstance, atlasOrigin) == 8, "layout drift");
 _Static_assert(offsetof(MatrixCodeGlyphInstance, oldAtlasOrigin) == 16, "layout drift");
@@ -62,7 +62,7 @@ _Static_assert(offsetof(MatrixCodeGlyphInstance, isHead) == 32, "layout drift");
 _Static_assert(offsetof(MatrixCodeGlyphInstance, whiteHead) == 36, "layout drift");
 
 _Static_assert(sizeof(MatrixCodeUniforms) == 192,
-               "MatrixCodeUniforms must match MatrixCodeShaders.msl");
+               "MatrixCodeUniforms must match MatrixCodeShaders.metal");
 _Static_assert(offsetof(MatrixCodeUniforms, viewport) == 0, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, tailColor) == 16, "layout drift");
 _Static_assert(offsetof(MatrixCodeUniforms, bodyColor) == 48, "layout drift");
@@ -969,6 +969,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                       session:(NSDictionary<NSString *,id> *)session
                  storedValues:(NSDictionary<NSString *,NSString *> *)storedValues {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    if (!device) {
+        NSLog(@"MatrixCode: no Metal device is available");
+        return nil;
+    }
     self = [super initWithFrame:frame device:device];
     if (!self) return nil;
 
@@ -997,10 +1001,18 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.tokenRunStartSeconds = self.epochSeconds;
 
     self.commandQueue = [device newCommandQueue];
+    if (!self.commandQueue) {
+        NSLog(@"MatrixCode: Metal command queue creation failed");
+        return nil;
+    }
     [self updateDrawableSizeForCurrentRenderScale];
     [self resolveDesktopGeometry];
     [self reloadStoredValues:storedValues];
-    if (![self buildPipeline] || ![self buildAtlas]) return nil;
+    if (![self buildPipeline]) return nil;
+    if (![self buildAtlas]) {
+        NSLog(@"MatrixCode: glyph atlas creation failed");
+        return nil;
+    }
     return self;
 }
 
@@ -1358,15 +1370,9 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 - (BOOL)buildPipeline {
     NSError *error = nil;
     NSBundle *bundle = [NSBundle bundleForClass:self.class];
-    NSURL *shaderURL = [bundle URLForResource:@"MatrixCodeShaders" withExtension:@"msl"];
-    NSString *shaderSource = shaderURL
-        ? [NSString stringWithContentsOfURL:shaderURL encoding:NSUTF8StringEncoding error:&error]
-        : nil;
-    id<MTLLibrary> library = shaderSource
-        ? [self.device newLibraryWithSource:shaderSource options:nil error:&error]
-        : nil;
+    id<MTLLibrary> library = [self.device newDefaultLibraryWithBundle:bundle error:&error];
     if (!library) {
-        NSLog(@"MatrixCode: bundled Metal shader could not be compiled: %@", error);
+        NSLog(@"MatrixCode: bundled Metal shader library could not be loaded: %@", error);
         return NO;
     }
     self.pipeline = MatrixCodeCreateRenderPipeline(

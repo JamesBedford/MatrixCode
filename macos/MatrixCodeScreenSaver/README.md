@@ -131,8 +131,9 @@ xcrun notarytool store-credentials "notarytool" \
 ```
 
 The project is generated from `project.yml` with XcodeGen. Source files live in
-`Source/`, Metal shaders live in `Resources/MatrixCodeShaders.msl`, and native
-regression tests live in `Tests/`.
+`Source/`, Metal shader source lives in `Resources/MatrixCodeShaders.metal` and is
+compiled into the bundled `default.metallib`, and native regression tests live
+in `Tests/`.
 
 ## Install
 

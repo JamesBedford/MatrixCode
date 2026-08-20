@@ -306,8 +306,8 @@ validate_product() {
     local product="$1"
     local executable="${product}/Contents/MacOS/Matrix Code"
     [[ -f "${executable}" ]] || fail "$(basename "${product}") is missing its executable."
-    [[ -f "${product}/Contents/Resources/MatrixCodeShaders.msl" ]] \
-        || fail "$(basename "${product}") is missing MatrixCodeShaders.msl."
+    [[ -f "${product}/Contents/Resources/default.metallib" ]] \
+        || fail "$(basename "${product}") is missing its precompiled Metal shader library."
     codesign --verify --deep --strict "${product}" \
         || fail "Signature verification failed for $(basename "${product}")."
     if [[ "${LOCAL_SIGNING}" == false ]]; then

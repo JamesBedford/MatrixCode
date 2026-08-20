@@ -65,6 +65,9 @@ static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
 }
 
 - (void)testNativeRendererCompilesAndCreatesMetalSurface {
+    NSBundle *bundle = [NSBundle bundleForClass:MatrixCodeMetalView.class];
+    XCTAssertNotNil([bundle URLForResource:@"default" withExtension:@"metallib"]);
+
     NSDictionary *session = @{
         @"seed": @12345,
         @"epoch": @1700000000000,

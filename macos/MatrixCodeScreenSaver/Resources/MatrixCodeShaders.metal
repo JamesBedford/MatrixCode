@@ -1,6 +1,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// Xcode compiles this source into the bundle's default.metallib.
 // Per-cell data only; the cell size and atlas cell extent are identical for
 // every instance in a frame, so they live in MatrixCodeUniforms.
 struct MatrixCodeGlyphInstance {

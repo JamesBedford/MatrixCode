@@ -81,6 +81,12 @@ describe("native build script", () => {
     expect(source).toContain('codesign --verify --deep --strict "${published_product}"');
   });
 
+  it("requires the precompiled Metal library in packaged products", () => {
+    const source = readFileSync(script, "utf8");
+    expect(source).toContain('Contents/Resources/default.metallib');
+    expect(source).not.toContain('Contents/Resources/MatrixCodeShaders.msl');
+  });
+
   it("refuses to combine auto-signing with an explicit signing mode", () => {
     for (const conflicting of ["--local-signing", "--skip-notarize"]) {
       const result = runScript(["--auto-signing", conflicting]);

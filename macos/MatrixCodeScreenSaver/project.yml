@@ -24,8 +24,7 @@ targets:
       - path: Resources/Assets.xcassets
       - path: Resources/MatrixCode.icns
         buildPhase: resources
-      - path: Resources/MatrixCodeShaders.msl
-        buildPhase: resources
+      - path: Resources/MatrixCodeShaders.metal
     info:
       path: Resources/Info.plist
       properties:
@@ -64,8 +63,7 @@ targets:
       - path: Source
       - path: AppSource
       - path: Resources/Assets.xcassets
-      - path: Resources/MatrixCodeShaders.msl
-        buildPhase: resources
+      - path: Resources/MatrixCodeShaders.metal
     info:
       path: Resources/AppInfo.plist
       properties:
@@ -114,8 +112,7 @@ targets:
       - path: Source/MatrixCodeSession.m
       - path: Source/MatrixCodeSettingsTheme.m
       - path: Source/MatrixCodeTokenResolver.m
-      - path: Resources/MatrixCodeShaders.msl
-        buildPhase: resources
+      - path: Resources/MatrixCodeShaders.metal
     dependencies:
       - sdk: AppKit.framework
       - sdk: CoreVideo.framework
