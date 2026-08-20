@@ -56,6 +56,17 @@ from the identical seeded artwork, alongside a hand-written
 the installed web app shows the same cinematic icon. That PWA manifest is a
 web-only surface with no native equivalent (macOS has its own icon system).
 
+## System Settings thumbnail
+
+The screen-saver bundle includes `Resources/thumbnail.png` (90×58) and
+`Resources/thumbnail@2x.png` (180×116). macOS uses these conventionally named
+files for the static tile in System Settings; without them it falls back to a
+generic screen-saver image. They are raw bundle resources rather than asset
+catalog entries because System Settings looks them up by filename. The saver
+target disables high-resolution image combining so Xcode preserves both PNGs
+instead of replacing them with a TIFF. This is a native macOS integration
+surface with no browser equivalent.
+
 ## Requirements
 
 - macOS 13 or later on Apple Silicon

@@ -184,6 +184,7 @@ for command in xcodegen codesign ditto dwarfdump find hdiutil lipo lockf otool s
     command -v "${command}" >/dev/null 2>&1 || fail "Required command not found: ${command}"
 done
 [[ -x /usr/libexec/PlistBuddy ]] || fail "Required command not found: /usr/libexec/PlistBuddy"
+[[ -x /usr/bin/sips ]] || fail "Required command not found: /usr/bin/sips"
 # SetFile is only needed at DMG staging time, near the end of the build. Check it
 # here so a missing one costs two seconds rather than a whole build and notarize.
 readonly SETFILE="${DEVELOPER_DIR}/usr/bin/SetFile"
@@ -302,6 +303,25 @@ for product in "${PACKAGE_STAGE}/Matrix Code.app" "${PACKAGE_STAGE}/Matrix Code.
     fi
 done
 
+validate_saver_thumbnail() {
+    local product="$1"
+    local filename="$2"
+    local expected_width="$3"
+    local expected_height="$4"
+    local thumbnail="${product}/Contents/Resources/${filename}"
+    [[ -f "${thumbnail}" ]] \
+        || fail "$(basename "${product}") is missing ${filename}."
+
+    local properties
+    properties="$(/usr/bin/sips -g format -g pixelWidth -g pixelHeight "${thumbnail}")"
+    grep -Eq "^[[:space:]]*format: png$" <<<"${properties}" \
+        || fail "${filename} is not a PNG."
+    grep -Eq "^[[:space:]]*pixelWidth: ${expected_width}$" <<<"${properties}" \
+        || fail "${filename} must be ${expected_width} pixels wide."
+    grep -Eq "^[[:space:]]*pixelHeight: ${expected_height}$" <<<"${properties}" \
+        || fail "${filename} must be ${expected_height} pixels high."
+}
+
 validate_product() {
     local product="$1"
     local executable="${product}/Contents/MacOS/Matrix Code"
@@ -332,6 +352,11 @@ validate_product() {
     web_asset="$(find "${product}" -type f \( -name '*.html' -o -name '*.js' -o -name '*.ts' \) -print -quit)"
     [[ -z "${web_asset}" ]] \
         || fail "$(basename "${product}") unexpectedly contains web asset ${web_asset}."
+
+    if [[ "${product}" == *.saver ]]; then
+        validate_saver_thumbnail "${product}" "thumbnail.png" 90 58
+        validate_saver_thumbnail "${product}" "thumbnail@2x.png" 180 116
+    fi
 }
 
 info "Verifying native products"

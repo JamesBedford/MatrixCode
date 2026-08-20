@@ -35,6 +35,7 @@
 		4DEE9683D557EA766322305C /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3CE22739F1AF715A44184DF /* MetalKit.framework */; };
 		4F9C97109029EB284BB364DF /* MatrixCodeTokenResolver.m in Sources */ = {isa = PBXBuildFile; fileRef = 865F9239EC01EAFD1DD11142 /* MatrixCodeTokenResolver.m */; };
 		5054A5B6921AFCF3D4826A7F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C090124F0DF8A7DCBEDEC974 /* Metal.framework */; };
+		513BAE56C753A6D757350CE3 /* thumbnail.png in Resources */ = {isa = PBXBuildFile; fileRef = 407516F109E5FF1B618EC454 /* thumbnail.png */; };
 		54D3AF9DADA3E6B9DA82CEEF /* MatrixCodeSettingsTheme.m in Sources */ = {isa = PBXBuildFile; fileRef = ED10EAE0B1701BE1D79BF358 /* MatrixCodeSettingsTheme.m */; };
 		55DBC28D5B355EF8919E9737 /* MatrixCodeRainHostView.m in Sources */ = {isa = PBXBuildFile; fileRef = E72D76D033D97F47275497B9 /* MatrixCodeRainHostView.m */; };
 		55EE237769EF02370296E6F4 /* MatrixCode.icns in Resources */ = {isa = PBXBuildFile; fileRef = 2FF117CB5349A98517AC2867 /* MatrixCode.icns */; };
@@ -45,6 +46,7 @@
 		5FFFE943851F0FFDD1473D8E /* MatrixCodeRainSimulation.m in Sources */ = {isa = PBXBuildFile; fileRef = D14A7263D025AB6CFD47884F /* MatrixCodeRainSimulation.m */; };
 		61088DEB9C4ACA50BA120F31 /* MatrixCodeMetalView.m in Sources */ = {isa = PBXBuildFile; fileRef = E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */; };
 		61356E8FF9C7738A991AAB1A /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C6C53D542422E97EDABF0E9A /* QuartzCore.framework */; };
+		61D8DCE97063FD523EE1452F /* thumbnail@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 04089DA400AEE028D8D95D40 /* thumbnail@2x.png */; };
 		65AE696DAA82A41E2D1C3703 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C6C53D542422E97EDABF0E9A /* QuartzCore.framework */; };
 		65E011B6645B21B030E6BE31 /* ScreenSaver.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D95B4AD4E624D11550055918 /* ScreenSaver.framework */; };
 		6AA6226B3931CE63E040A4D1 /* MatrixCodeRainHostViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = C0324A580D7D065983EF7C15 /* MatrixCodeRainHostViewTests.m */; };
@@ -91,6 +93,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		04089DA400AEE028D8D95D40 /* thumbnail@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "thumbnail@2x.png"; sourceTree = "<group>"; };
 		0D51BC0EFE837288DF1C2724 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		152BF7BAFD165A8BAD2640C4 /* MatrixCodeAdaptiveResolution.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeAdaptiveResolution.m; sourceTree = "<group>"; };
 		1BE41C2AB066ADD07F2BAE0D /* MatrixCodeSettingsVisualTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeSettingsVisualTests.m; sourceTree = "<group>"; };
@@ -99,6 +102,7 @@
 		2B788FE514B759793BC78C35 /* MatrixCodeRainSimulation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeRainSimulation.h; sourceTree = "<group>"; };
 		2EA50F20D5F9B425761B7ED5 /* MatrixCodeSettingsThemeTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeSettingsThemeTests.m; sourceTree = "<group>"; };
 		2FF117CB5349A98517AC2867 /* MatrixCode.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = MatrixCode.icns; sourceTree = "<group>"; };
+		407516F109E5FF1B618EC454 /* thumbnail.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = thumbnail.png; sourceTree = "<group>"; };
 		40F4E3B0AB09579448618C85 /* MatrixCodeSettingsTheme.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeSettingsTheme.h; sourceTree = "<group>"; };
 		5863B0D5B7B75F26B525393A /* MatrixCodeAppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeAppDelegate.m; sourceTree = "<group>"; };
 		5BB5B18098F4D00B776BBEBB /* MatrixCodeAdaptiveResolution.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeAdaptiveResolution.h; sourceTree = "<group>"; };
@@ -285,6 +289,8 @@
 				925232946444D95E6DCC5A79 /* Assets.xcassets */,
 				2FF117CB5349A98517AC2867 /* MatrixCode.icns */,
 				A2980E6A43A87519B8211E12 /* MatrixCodeShaders.metal */,
+				407516F109E5FF1B618EC454 /* thumbnail.png */,
+				04089DA400AEE028D8D95D40 /* thumbnail@2x.png */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -418,6 +424,8 @@
 			files = (
 				7E3F9785E4401939533D71A2 /* Assets.xcassets in Resources */,
 				55EE237769EF02370296E6F4 /* MatrixCode.icns in Resources */,
+				513BAE56C753A6D757350CE3 /* thumbnail.png in Resources */,
+				61D8DCE97063FD523EE1452F /* thumbnail@2x.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -510,7 +518,7 @@
 		0DF3ABAFD543A41EABB12608 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				COMBINE_HIDPI_IMAGES = YES;
+				COMBINE_HIDPI_IMAGES = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks";
 				MACH_O_TYPE = mh_bundle;
@@ -540,7 +548,7 @@
 		5AEFF93EA0D1386634EC24B9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				COMBINE_HIDPI_IMAGES = YES;
+				COMBINE_HIDPI_IMAGES = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks";
 				MACH_O_TYPE = mh_bundle;

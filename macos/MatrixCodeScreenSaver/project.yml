@@ -24,6 +24,10 @@ targets:
       - path: Resources/Assets.xcassets
       - path: Resources/MatrixCode.icns
         buildPhase: resources
+      - path: Resources/thumbnail.png
+        buildPhase: resources
+      - path: Resources/thumbnail@2x.png
+        buildPhase: resources
       - path: Resources/MatrixCodeShaders.metal
     info:
       path: Resources/Info.plist
@@ -54,6 +58,7 @@ targets:
         PRODUCT_NAME: "Matrix Code"
         WRAPPER_EXTENSION: saver
         MACH_O_TYPE: mh_bundle
+        COMBINE_HIDPI_IMAGES: NO
         SKIP_INSTALL: NO
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @loader_path/../Frameworks"
   MatrixCodeApp:
