@@ -72,6 +72,15 @@ describe("native build script", () => {
     expect(source).toContain('hdiutil convert "${DMG_READWRITE}" -format "${DMG_FORMAT}"');
   });
 
+  it("cleans File Provider metadata from published signed bundles", () => {
+    const source = readFileSync(script, "utf8");
+    const publish = source.indexOf('mv "${PUBLISH_DIR}" "${OUTPUT_DIR}"');
+    const cleanup = source.indexOf('xattr -cr "${published_product}"');
+    expect(publish).toBeGreaterThan(-1);
+    expect(cleanup).toBeGreaterThan(publish);
+    expect(source).toContain('codesign --verify --deep --strict "${published_product}"');
+  });
+
   it("refuses to combine auto-signing with an explicit signing mode", () => {
     for (const conflicting of ["--local-signing", "--skip-notarize"]) {
       const result = runScript(["--auto-signing", conflicting]);

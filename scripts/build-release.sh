@@ -514,6 +514,17 @@ else
     fail "Could not publish build artifacts to ${OUTPUT_DIR}."
 fi
 
+# File Provider volumes, including Dropbox, can attach Finder metadata while the
+# finished bundle is moved into the published build directory. That metadata is
+# not part of the code signature and makes macOS reject an otherwise valid app
+# or screen saver. Clear it only after the final move, then verify the exact
+# artifacts a user will install.
+for published_product in "${OUTPUT_DIR}/Matrix Code.app" "${OUTPUT_DIR}/Matrix Code.saver"; do
+    xattr -cr "${published_product}"
+    codesign --verify --deep --strict "${published_product}" \
+        || fail "Published signature verification failed for $(basename "${published_product}")."
+done
+
 if [[ "${CONFIGURATION}" == "Release" ]]; then
     for legacy_product in \
         "Matrix Code.app" "Matrix Code.app.zip" \
