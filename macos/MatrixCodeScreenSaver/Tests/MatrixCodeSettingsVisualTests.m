@@ -5,6 +5,7 @@
 #import "MatrixCodeSettingsTheme.h"
 
 @interface MatrixCodeConfigurationController (VisualTesting)
+- (void)loadSettingsBackdropIfNeeded;
 - (void)presentEditorKind:(NSString *)kind;
 - (void)rebuildConfigurationInterface;
 @end
@@ -110,6 +111,7 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
     NSMutableDictionary *controls = [controller valueForKey:@"controls"];
     controls[@"preset"] = @"classic";
     [controller rebuildConfigurationInterface];
+    [controller loadSettingsBackdropIfNeeded];
     controller.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     [controller.window setContentSize:size];
     [controller.window.contentView layoutSubtreeIfNeeded];
@@ -193,6 +195,8 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
     NSTextField *densityReadout = (NSTextField *)MatrixCodeVisualDescendant(panel, @"density-value");
     NSSlider *densitySlider = (NSSlider *)MatrixCodeVisualDescendant(panel, @"density");
     NSPopUpButton *preset = (NSPopUpButton *)MatrixCodeVisualDescendant(panel, @"preset");
+    NSButton *customColor =
+        (NSButton *)MatrixCodeVisualDescendant(panel, @"custom-color");
     NSView *actions = MatrixCodeVisualDescendant(panel, @"settings-panel-actions");
     NSButton *characters = (NSButton *)MatrixCodeVisualDescendant(panel, @"characters");
     NSButton *reset = (NSButton *)MatrixCodeVisualDescendant(panel, @"reset-controls");
@@ -202,6 +206,7 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
     XCTAssertTrue([densityReadout isKindOfClass:NSTextField.class]);
     XCTAssertTrue([densitySlider isKindOfClass:NSSlider.class]);
     XCTAssertTrue([preset isKindOfClass:NSPopUpButton.class]);
+    XCTAssertTrue([customColor isKindOfClass:NSButton.class]);
     XCTAssertNotNil(actions);
     XCTAssertTrue([characters isKindOfClass:NSButton.class]);
     XCTAssertTrue([reset isKindOfClass:NSButton.class]);
@@ -211,6 +216,7 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
     NSRect readoutFrame = MatrixCodeFrameInView(densityReadout, densityRow);
     NSRect sliderFrame = MatrixCodeFrameInView(densitySlider, densityRow);
     NSRect presetFrame = MatrixCodeFrameInView(preset, panel);
+    NSRect customColorFrame = MatrixCodeFrameInView(customColor, panel);
     NSRect actionsFrame = MatrixCodeFrameInView(actions, panel);
     NSRect charactersFrame = MatrixCodeFrameInView(characters, actions);
     NSRect resetFrame = MatrixCodeFrameInView(reset, actions);
@@ -222,7 +228,8 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
     XCTAssertLessThanOrEqual(NSMaxX(readoutFrame), 288);
     XCTAssertGreaterThan(NSMinX(readoutFrame), NSMaxX(labelFrame) + 32);
     XCTAssertEqualWithAccuracy(NSWidth(sliderFrame), 284, 0.5);
-    XCTAssertEqualWithAccuracy(NSMaxX(presetFrame), 302, 1.0);
+    XCTAssertLessThan(NSMaxX(presetFrame), NSMinX(customColorFrame));
+    XCTAssertEqualWithAccuracy(NSMaxX(customColorFrame), 302, 1.0);
     XCTAssertEqualWithAccuracy(NSMinX(actionsFrame), 18, 0.5);
     XCTAssertEqualWithAccuracy(NSWidth(actionsFrame), 284, 0.5);
     XCTAssertEqualWithAccuracy(NSWidth(charactersFrame), 284, 0.5);

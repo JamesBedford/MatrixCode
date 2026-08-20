@@ -14,6 +14,7 @@ typedef void (^MatrixCodeMessagePreviewHandler)(
 );
 
 @interface MatrixCodeConfigurationController : NSWindowController
++ (NSWindow *)sharedScreenSaverConfigurationWindow;
 - (instancetype)initWithCloseHandler:(dispatch_block_t)closeHandler;
 - (instancetype)initEmbeddedInView:(NSView *)hostView closeHandler:(dispatch_block_t)closeHandler;
 - (instancetype)initEmbeddedInView:(NSView *)hostView

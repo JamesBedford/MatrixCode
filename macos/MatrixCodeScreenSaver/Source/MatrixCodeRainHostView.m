@@ -1460,14 +1460,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
 }
 
 - (NSWindow *)configureWindow {
-    if (!self.configurationController) {
-        __weak typeof(self) weakSelf = self;
-        self.configurationController =
-            [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{
-                weakSelf.configurationController = nil;
-            }];
-    }
-    return self.configurationController.window;
+    return [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
 }
 
 - (void)showSettingsOverlay {

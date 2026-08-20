@@ -159,6 +159,11 @@ System Settings for the screen saver, where ScreenSaver.framework requires
 Apple's configure-sheet container. Only the standalone app's ambient HUD
 idle-fades; the Options sheet keeps its panel on screen until it is explicitly
 dismissed, so configuring the screen saver never makes the controls vanish.
+ScreenSaver.framework can request that sheet more than once or from separate
+saver-view instances, so the native host reuses one configuration window for
+the lifetime of its process. The controls are presented before the live Metal
+rain backdrop is initialized; the backdrop starts after the sheet's first
+window update so GPU setup cannot hold up the Options response.
 
 The settings UI mirrors the browser's Matrix-terminal surface with
 preset-coloured native controls and centered Characters, Intro, Messages,

@@ -314,6 +314,27 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     return label.stringValue;
 }
 
+- (void)testSeparateScreenSaverHostsShareOneConfigurationWindow {
+    MatrixCodeRainHostView *previewHost =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+                                                 mode:MatrixCodeRainHostModeScreenSaverPreview];
+    MatrixCodeRainHostView *playbackHost =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+                                                 mode:MatrixCodeRainHostModeScreenSaverPlayback];
+    MatrixCodeRainHostView *secondPreviewHost =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+                                                 mode:MatrixCodeRainHostModeScreenSaverPreview];
+
+    NSWindow *firstWindow = [previewHost configureWindow];
+    NSWindow *secondWindow = [playbackHost configureWindow];
+    NSWindow *thirdWindow = [secondPreviewHost configureWindow];
+
+    XCTAssertEqual(firstWindow, secondWindow);
+    XCTAssertEqual(secondWindow, thirdWindow);
+    XCTAssertEqual(firstWindow.windowController, secondWindow.windowController);
+    [firstWindow.windowController cancelOperation:nil];
+}
+
 - (void)testEscapeKeyExitsStandaloneFullScreen {
     MatrixCodeEscapeTestWindow *window =
         [[MatrixCodeEscapeTestWindow alloc] initWithContentRect:NSMakeRect(0, 0, 640, 480)

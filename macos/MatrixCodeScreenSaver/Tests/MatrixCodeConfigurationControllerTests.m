@@ -8,8 +8,10 @@
 #import "MatrixCodeRainSimulation.h"
 
 @interface MatrixCodeConfigurationController (Testing)
+- (void)cancel:(id)sender;
 - (void)controlChanged:(id)sender;
 - (void)imageNumberChanged:(NSTextField *)sender;
+- (void)loadSettingsBackdropIfNeeded;
 - (void)messageChoiceChanged:(NSPopUpButton *)sender;
 - (void)moveIntroLine:(NSButton *)sender;
 - (void)moveImage:(NSButton *)sender;
@@ -20,6 +22,7 @@
 - (void)previewIntro:(id)sender;
 - (void)previewMessage:(id)sender;
 - (void)resetControls:(id)sender;
+- (void)scheduleSettingsBackdropLoad;
 - (NSDictionary<NSString *, NSString *> *)serializedValues;
 - (void)setSettingsPanelVisible:(BOOL)visible immediate:(BOOL)immediate;
 - (void)showPreviewWithIntro:(BOOL)intro message:(BOOL)message;
@@ -87,12 +90,12 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     [super tearDown];
 }
 
-- (void)testNativeConfigurationSheetBuildsWebStylePanelOverRain {
+- (void)testNativeConfigurationSheetBuildsPanelBeforeDeferredRainBackdrop {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
     XCTAssertNotNil(controller.window);
-    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
-                                                       @"settings-rain-backdrop"));
+    XCTAssertNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                    @"settings-rain-backdrop"));
     XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
                                                        @"settings-hover-overlay"));
     NSView *panel = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
@@ -117,6 +120,10 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertNil(MatrixCodeDescendantWithIdentifier(panel, @"settings-hint"));
     XCTAssertNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
                                                     @"ambient-title"));
+
+    [controller loadSettingsBackdropIfNeeded];
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-rain-backdrop"));
 }
 
 - (void)testSettingsCloseButtonDismissesConfigurationSheet {
@@ -135,7 +142,143 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     XCTAssertGreaterThan([controls[@"density"] doubleValue], 2.0);
 
     [close performClick:nil];
+    XCTestExpectation *dismissed = [self expectationWithDescription:@"configuration dismissed"];
+    dispatch_async(dispatch_get_main_queue(), ^{ [dismissed fulfill]; });
+    [self waitForExpectations:@[dismissed] timeout:2];
     XCTAssertTrue(closed);
+}
+
+- (void)testScreenSaverConfigurationWindowIsReusedThroughRealSheetDismissal {
+    NSWindow *firstWindow =
+        [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
+    NSWindow *secondWindow =
+        [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
+    XCTAssertEqual(firstWindow, secondWindow);
+    MatrixCodeConfigurationController *controller =
+        (MatrixCodeConfigurationController *)firstWindow.windowController;
+    XCTAssertTrue([controller isKindOfClass:MatrixCodeConfigurationController.class]);
+
+    NSWindow *parent = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 800, 600)
+                  styleMask:NSWindowStyleMaskTitled
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [parent orderFront:nil];
+    XCTestExpectation *completion = [self expectationWithDescription:@"sheet completion"];
+    XCTestExpectation *didEnd = [self expectationForNotification:NSWindowDidEndSheetNotification
+                                                            object:parent
+                                                           handler:nil];
+    [parent beginSheet:firstWindow completionHandler:^(NSModalResponse returnCode) {
+        (void)returnCode;
+        [completion fulfill];
+    }];
+    XCTAssertEqual(firstWindow.sheetParent, parent);
+
+    [controller cancel:nil];
+    NSWindow *windowWhileDismissing =
+        [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
+    XCTAssertEqual(windowWhileDismissing, firstWindow);
+
+    [self waitForExpectations:@[completion, didEnd] timeout:2];
+
+    NSWindow *reopenedWindow =
+        [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
+    XCTAssertEqual(reopenedWindow, firstWindow);
+    XCTAssertEqual(reopenedWindow.windowController, controller);
+    XCTAssertFalse([[controller valueForKey:@"configurationDismissalStarted"] boolValue]);
+
+    [controller cancel:nil];
+    [parent orderOut:nil];
+}
+
+- (void)testConfigurationDismissalRunsCloseHandlerOnlyOnce {
+    __block NSUInteger closeCount = 0;
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{ closeCount++; }];
+
+    [controller cancel:nil];
+    [controller cancel:nil];
+
+    XCTestExpectation *dismissed = [self expectationWithDescription:@"configuration dismissed once"];
+    dispatch_async(dispatch_get_main_queue(), ^{ [dismissed fulfill]; });
+    [self waitForExpectations:@[dismissed] timeout:2];
+    XCTAssertEqual(closeCount, 1u);
+}
+
+- (void)testDeferredBackdropWaitsForVisibleWindowAndCoalescesRequests {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    XCTAssertNil([controller valueForKey:@"settingsMetalView"]);
+    XCTAssertFalse([[controller valueForKey:@"settingsBackdropLoadAttempted"] boolValue]);
+
+    [controller.window orderFront:nil];
+    [controller scheduleSettingsBackdropLoad];
+    [controller scheduleSettingsBackdropLoad];
+    XCTAssertNil([controller valueForKey:@"settingsMetalView"]);
+
+    XCTestExpectation *loaded = [self expectationWithDescription:@"deferred backdrop loaded"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ [loaded fulfill]; });
+    [self waitForExpectations:@[loaded] timeout:2];
+    MatrixCodeMetalView *metalView = [controller valueForKey:@"settingsMetalView"];
+    XCTAssertTrue([metalView isKindOfClass:MatrixCodeMetalView.class]);
+    XCTAssertTrue([[controller valueForKey:@"settingsBackdropLoadAttempted"] boolValue]);
+
+    [controller scheduleSettingsBackdropLoad];
+    XCTAssertEqual([controller valueForKey:@"settingsMetalView"], metalView);
+    [controller.window orderOut:nil];
+    [controller cancel:nil];
+}
+
+- (void)testDismissalCancelsPendingBackdropLoad {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller.window orderFront:nil];
+    [controller scheduleSettingsBackdropLoad];
+    [controller.window orderOut:nil];
+    [controller cancel:nil];
+
+    XCTestExpectation *drained = [self expectationWithDescription:@"backdrop delay drained"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ [drained fulfill]; });
+    [self waitForExpectations:@[drained] timeout:2];
+    XCTAssertNil([controller valueForKey:@"settingsMetalView"]);
+}
+
+- (void)testExternalSheetEndStopsBackdropAndNotifiesOwner {
+    __block NSUInteger closeCount = 0;
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{ closeCount++; }];
+    NSWindow *parent = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 800, 600)
+                  styleMask:NSWindowStyleMaskTitled
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [parent orderFront:nil];
+    [parent beginSheet:controller.window completionHandler:nil];
+    [controller loadSettingsBackdropIfNeeded];
+    XCTAssertNotNil([controller valueForKey:@"settingsMetalView"]);
+    [controller openEditorKind:@"countdowns"];
+    XCTAssertNotNil([controller valueForKey:@"countdownPreviewTimer"]);
+    [controller showPreviewWithIntro:NO message:YES];
+    XCTAssertNotNil([controller valueForKey:@"previewController"]);
+
+    XCTestExpectation *didEnd = [self expectationForNotification:NSWindowDidEndSheetNotification
+                                                            object:parent
+                                                           handler:nil];
+    [parent endSheet:controller.window returnCode:NSModalResponseCancel];
+    [self waitForExpectations:@[didEnd] timeout:2];
+
+    XCTAssertTrue([[controller valueForKey:@"configurationDismissalStarted"] boolValue]);
+    XCTAssertNil([controller valueForKey:@"settingsMetalView"]);
+    XCTAssertNil([controller valueForKey:@"countdownPreviewTimer"]);
+    XCTAssertNil([controller valueForKey:@"editorBackdrop"]);
+    XCTAssertNil([controller valueForKey:@"previewController"]);
+    XCTestExpectation *notified = [self expectationWithDescription:@"owner notified"];
+    dispatch_async(dispatch_get_main_queue(), ^{ [notified fulfill]; });
+    [self waitForExpectations:@[notified] timeout:2];
+    XCTAssertEqual(closeCount, 1u);
+    [parent orderOut:nil];
 }
 
 - (void)testSettingsCloseButtonStaysLegibleOverBlackRain {
@@ -172,6 +315,7 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
 - (void)testSettingsBackdropUsesMetalDisplayLinkWithoutDuplicateTimer {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller loadSettingsBackdropIfNeeded];
     MatrixCodeMetalView *background = [controller valueForKey:@"settingsMetalView"];
     XCTAssertTrue([background isKindOfClass:MatrixCodeMetalView.class]);
     XCTAssertFalse(background.isPaused);
@@ -314,6 +458,7 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
 - (void)testSettingsPanelFadesAsHoverHudInsteadOfPermanentModalSurface {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller loadSettingsBackdropIfNeeded];
     NSView *overlay = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
                                                         @"settings-hover-overlay");
     NSView *panel = MatrixCodeDescendantWithIdentifier(controller.window.contentView,
@@ -717,6 +862,7 @@ restrictedToMultiMonitorControls:YES];
 - (void)testRampSliderDebouncesAndReplaysSettingsRainFromEmpty {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller loadSettingsBackdropIfNeeded];
     NSSlider *ramp = (NSSlider *)MatrixCodeDescendantWithIdentifier(
         controller.window.contentView, @"rampUpMs");
     MatrixCodeMetalView *metalView = [controller valueForKey:@"settingsMetalView"];
@@ -1070,6 +1216,7 @@ restrictedToMultiMonitorControls:YES];
 - (void)testGlyphModeSelectionImmediatelyRefreshesRenderedBackgroundRainGlyphs {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller loadSettingsBackdropIfNeeded];
     MatrixCodeMetalView *background = [controller valueForKey:@"settingsMetalView"];
     XCTAssertTrue([background isKindOfClass:MatrixCodeMetalView.class]);
     id originalAtlas = [background valueForKey:@"atlas"];

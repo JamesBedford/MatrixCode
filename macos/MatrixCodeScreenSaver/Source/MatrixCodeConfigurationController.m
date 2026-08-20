@@ -16,11 +16,14 @@ NSNotificationName const MatrixCodePreviewValuesDidChangeNotification =
     @"MatrixCodePreviewValuesDidChangeNotification";
 NSString * const MatrixCodePreviewValuesKey = @"values";
 
+static MatrixCodeConfigurationController *MatrixCodeSharedScreenSaverConfigurationController;
+
 /** Matches the web viewer-name field's maxLength, so mx-user-name round-trips unchanged. */
 static const NSUInteger MatrixCodeUserNameMaximumLength = 80;
 
 static const NSTimeInterval MatrixCodeSettingsFadeDuration = 0.24;
 static const NSTimeInterval MatrixCodeSettingsHideDelay = 2.8;
+static const NSTimeInterval MatrixCodeSettingsBackdropLoadDelay = 0.35;
 static const CGFloat MatrixCodeSettingsPanelWidth = 320.0;
 static const CGFloat MatrixCodeSettingsPanelContentWidth = 284.0;
 static const CGFloat MatrixCodeSettingsPanelInset = 16.0;
@@ -463,7 +466,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 @end
 
-@interface MatrixCodeConfigurationController () <NSTextFieldDelegate>
+@interface MatrixCodeConfigurationController () <NSTextFieldDelegate, NSWindowDelegate>
 @property(nonatomic, strong) MatrixCodePreferences *preferences;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *stagedValues;
 @property(nonatomic, strong) NSMutableDictionary *controls;
@@ -515,9 +518,32 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic, weak) NSView *embeddedHostView;
 @property(nonatomic) BOOL embeddedPresentation;
 @property(nonatomic) BOOL restrictedToMultiMonitorControls;
+@property(nonatomic) BOOL settingsBackdropLoadScheduled;
+@property(nonatomic) BOOL settingsBackdropLoadAttempted;
+@property(nonatomic) NSUInteger settingsBackdropLoadGeneration;
+@property(nonatomic) BOOL configurationDismissalStarted;
+@property(nonatomic) BOOL screenSaverSheetWasPresented;
+@property(nonatomic) BOOL screenSaverPresentationEnded;
+@property(nonatomic, weak, nullable) NSWindow *screenSaverSheetParent;
+- (void)discardEditorPresentation;
+- (void)loadSettingsBackdropIfNeeded;
+- (void)prepareForScreenSaverConfigurationPresentation;
+- (void)scheduleSettingsBackdropLoad;
 @end
 
 @implementation MatrixCodeConfigurationController
+
++ (NSWindow *)sharedScreenSaverConfigurationWindow {
+    NSAssert(NSThread.isMainThread, @"Screen saver configuration must be created on the main thread");
+    if (!MatrixCodeSharedScreenSaverConfigurationController) {
+        MatrixCodeSharedScreenSaverConfigurationController =
+            [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    } else {
+        [MatrixCodeSharedScreenSaverConfigurationController
+            prepareForScreenSaverConfigurationPresentation];
+    }
+    return MatrixCodeSharedScreenSaverConfigurationController.window;
+}
 
 - (instancetype)initWithCloseHandler:(dispatch_block_t)closeHandler {
     NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 920, 700)
@@ -528,6 +554,15 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     window.acceptsMouseMovedEvents = YES;
     self = [super initWithWindow:window];
     if (!self) return nil;
+    window.delegate = self;
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                           selector:@selector(screenSaverParentDidEndSheet:)
+                                               name:NSWindowDidEndSheetNotification
+                                             object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                           selector:@selector(screenSaverParentWillBeginSheet:)
+                                               name:NSWindowWillBeginSheetNotification
+                                             object:nil];
     _preferences = [[MatrixCodePreferences alloc] init];
     _stagedValues = [[_preferences storedValues] mutableCopy];
     _originalValues = [_stagedValues copy];
@@ -536,6 +571,23 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [self loadModels];
     [self buildInterface];
     return self;
+}
+
+- (void)prepareForScreenSaverConfigurationPresentation {
+    if (!self.configurationDismissalStarted) return;
+    BOOL unattachedPresentationEnded = !self.screenSaverSheetWasPresented &&
+        !self.window.sheetParent && !self.window.isVisible;
+    if (!self.screenSaverPresentationEnded && !unattachedPresentationEnded) return;
+
+    self.configurationDismissalStarted = NO;
+    self.screenSaverSheetWasPresented = NO;
+    self.screenSaverPresentationEnded = NO;
+    self.screenSaverSheetParent = nil;
+    self.stagedValues = [[self.preferences storedValues] mutableCopy];
+    self.originalValues = [self.stagedValues copy];
+    [self.explicitlyClearedStorageKeys removeAllObjects];
+    [self loadModels];
+    [self rebuildConfigurationInterface];
 }
 
 - (instancetype)initEmbeddedInView:(NSView *)hostView closeHandler:(dispatch_block_t)closeHandler {
@@ -939,6 +991,9 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [theme applyControls:self.controls];
     [self.settingsAnimationTimer invalidate];
     self.settingsAnimationTimer = nil;
+    self.settingsBackdropLoadGeneration++;
+    self.settingsBackdropLoadScheduled = NO;
+    self.settingsBackdropLoadAttempted = NO;
     [self stopSettingsRampPreview];
     self.settingsMetalView.frameHandler = nil;
     [self.settingsMetalView setAnimationActive:NO];
@@ -946,20 +1001,6 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     if (!self.embeddedPresentation) {
         content.wantsLayer = YES;
         content.layer.backgroundColor = theme.backgroundColor.CGColor;
-        self.settingsMetalView = [[MatrixCodeMetalView alloc] initWithFrame:content.bounds
-                                                                    session:[MatrixCodeSession singleDisplaySession]
-                                                               storedValues:[self serializedValues]];
-        self.settingsMetalView.translatesAutoresizingMaskIntoConstraints = NO;
-        self.settingsMetalView.identifier = @"settings-rain-backdrop";
-        __weak typeof(self) weakSelfForRamp = self;
-        self.settingsMetalView.frameHandler = ^(MatrixCodeMetalView *view,
-                                                NSDate *date,
-                                                double framesPerSecond) {
-            (void)framesPerSecond;
-            [weakSelfForRamp updateSettingsRampPreviewForView:view atDate:date];
-        };
-        [self.settingsMetalView setAnimationActive:YES];
-        [content addSubview:self.settingsMetalView];
     }
 
     MatrixCodeSettingsHoverView *overlay = [[MatrixCodeSettingsHoverView alloc] initWithFrame:NSZeroRect];
@@ -1002,11 +1043,79 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         ]];
         self.settingsCloseButton = close;
     }
-    if (self.settingsMetalView) {
-        MatrixCodePinViewToSuperviewEdges(self.settingsMetalView, content, NSEdgeInsetsMake(0, 0, 0, 0));
-    }
     [self setSettingsPanelVisible:YES immediate:YES];
     [self refreshEmbeddedPresentationLayout];
+    if (!self.embeddedPresentation && self.window.isVisible) {
+        [self scheduleSettingsBackdropLoad];
+    }
+}
+
+- (void)recordScreenSaverSheetPresentation {
+    NSWindow *sheetParent = self.window.sheetParent;
+    if (!sheetParent) return;
+    self.screenSaverSheetWasPresented = YES;
+    self.screenSaverPresentationEnded = NO;
+    self.screenSaverSheetParent = sheetParent;
+}
+
+- (void)windowDidBecomeKey:(NSNotification *)notification {
+    if (notification.object == self.window) [self recordScreenSaverSheetPresentation];
+}
+
+- (void)windowDidUpdate:(NSNotification *)notification {
+    if (notification.object != self.window) return;
+    [self recordScreenSaverSheetPresentation];
+    [self scheduleSettingsBackdropLoad];
+}
+
+- (void)scheduleSettingsBackdropLoad {
+    if (self.embeddedPresentation || self.settingsMetalView ||
+        self.settingsBackdropLoadScheduled || self.settingsBackdropLoadAttempted ||
+        self.configurationDismissalStarted) {
+        return;
+    }
+    self.settingsBackdropLoadScheduled = YES;
+    NSUInteger generation = ++self.settingsBackdropLoadGeneration;
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                 (int64_t)(MatrixCodeSettingsBackdropLoadDelay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        MatrixCodeConfigurationController *strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (strongSelf.settingsBackdropLoadGeneration != generation) return;
+        strongSelf.settingsBackdropLoadScheduled = NO;
+        if (!strongSelf.window.isVisible || strongSelf.configurationDismissalStarted) return;
+        [strongSelf loadSettingsBackdropIfNeeded];
+    });
+}
+
+- (void)loadSettingsBackdropIfNeeded {
+    if (self.embeddedPresentation || self.settingsMetalView ||
+        self.settingsBackdropLoadAttempted || self.configurationDismissalStarted) {
+        return;
+    }
+    [self recordScreenSaverSheetPresentation];
+    self.settingsBackdropLoadAttempted = YES;
+    NSView *content = self.window.contentView;
+    if (!content || !self.settingsOverlayView) return;
+    MatrixCodeMetalView *metalView =
+        [[MatrixCodeMetalView alloc] initWithFrame:content.bounds
+                                          session:[MatrixCodeSession singleDisplaySession]
+                                     storedValues:[self serializedValues]];
+    if (!metalView) return;
+    metalView.translatesAutoresizingMaskIntoConstraints = NO;
+    metalView.identifier = @"settings-rain-backdrop";
+    __weak typeof(self) weakSelf = self;
+    metalView.frameHandler = ^(MatrixCodeMetalView *view,
+                               NSDate *date,
+                               double framesPerSecond) {
+        (void)framesPerSecond;
+        [weakSelf updateSettingsRampPreviewForView:view atDate:date];
+    };
+    self.settingsMetalView = metalView;
+    [content addSubview:metalView positioned:NSWindowBelow relativeTo:self.settingsOverlayView];
+    MatrixCodePinViewToSuperviewEdges(metalView, content, NSEdgeInsetsMake(0, 0, 0, 0));
+    [metalView setAnimationActive:YES];
 }
 
 - (NSFont *)settingsFontOfSize:(CGFloat)size weight:(NSFontWeight)weight {
@@ -1581,10 +1690,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 - (void)rebuildConfigurationInterface {
     [self.settingsHideTimer invalidate];
     self.settingsHideTimer = nil;
-    [self.editorBackdrop removeFromSuperview];
-    self.editorBackdrop = nil;
-    self.editorCard = nil;
-    [self stopCharactersPreview];
+    [self discardEditorPresentation];
     [self.settingsOverlayView removeFromSuperview];
     self.settingsOverlayView = nil;
     self.settingsPanel = nil;
@@ -1592,6 +1698,18 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         for (NSView *view in self.window.contentView.subviews.copy) [view removeFromSuperview];
     }
     [self buildInterface];
+}
+
+- (void)discardEditorPresentation {
+    [self.messagePreviewRestoreTimer invalidate];
+    self.messagePreviewRestoreTimer = nil;
+    [self stopCharactersPreview];
+    [self stopCountdownPreview];
+    [self.editorBackdrop removeFromSuperview];
+    self.editorBackdrop = nil;
+    self.editorCard = nil;
+    self.editorKind = nil;
+    self.editorSnapshot = nil;
 }
 
 - (NSTextField *)heading:(NSString *)text {
@@ -2939,14 +3057,9 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     self.replayIntroHandler();
 }
 
-- (void)accept:(id)sender {
-    if (self.editorBackdrop) {
-        [self closeEditorSave:sender];
-        return;
-    }
-    NSDictionary *values = [self serializedValues];
-    values = [self commitSerializedValues:values];
-    [self publishPreviewValues:values];
+- (void)stopConfigurationPresentation {
+    self.settingsBackdropLoadGeneration++;
+    self.settingsBackdropLoadScheduled = NO;
     [self.settingsHideTimer invalidate];
     self.settingsHideTimer = nil;
     [self.settingsAnimationTimer invalidate];
@@ -2954,13 +3067,76 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [self stopSettingsRampPreview];
     self.settingsMetalView.frameHandler = nil;
     [self.settingsMetalView setAnimationActive:NO];
+    [self.settingsMetalView removeFromSuperview];
+    self.settingsMetalView = nil;
+    [self discardEditorPresentation];
+    MatrixCodeNativePreviewController *previewController = self.previewController;
+    self.previewController = nil;
+    previewController.windowCloseHandler = nil;
+    [previewController close];
+}
+
+- (void)notifyOwnerAfterDismissal {
+    dispatch_block_t closeHandler = self.closeHandler;
+    self.closeHandler = nil;
+    if (!closeHandler) return;
+    if (self.embeddedPresentation) closeHandler();
+    else dispatch_async(dispatch_get_main_queue(), closeHandler);
+}
+
+- (void)screenSaverParentWillBeginSheet:(NSNotification *)notification {
+    NSWindow *parent = [notification.object isKindOfClass:NSWindow.class]
+        ? notification.object : nil;
+    if (!parent || (parent.attachedSheet != self.window && self.window.sheetParent != parent)) {
+        return;
+    }
+    self.screenSaverSheetWasPresented = YES;
+    self.screenSaverPresentationEnded = NO;
+    self.screenSaverSheetParent = parent;
+}
+
+- (void)screenSaverParentDidEndSheet:(NSNotification *)notification {
+    if (!self.screenSaverSheetWasPresented ||
+        notification.object != self.screenSaverSheetParent) {
+        return;
+    }
+    self.screenSaverPresentationEnded = YES;
+    self.screenSaverSheetParent = nil;
+    if (!self.configurationDismissalStarted) {
+        self.configurationDismissalStarted = YES;
+        [self stopConfigurationPresentation];
+    }
+    [self notifyOwnerAfterDismissal];
+}
+
+- (void)endConfigurationSheetWithResponse:(NSModalResponse)response {
+    [self recordScreenSaverSheetPresentation];
+    BOOL waitsForSheetEnd = self.screenSaverSheetParent != nil;
+    [NSApp endSheet:self.window returnCode:response];
+    if (!waitsForSheetEnd) {
+        self.screenSaverPresentationEnded = YES;
+        [self notifyOwnerAfterDismissal];
+    }
+}
+
+- (void)accept:(id)sender {
+    if (self.editorBackdrop) {
+        [self closeEditorSave:sender];
+        return;
+    }
+    if (self.configurationDismissalStarted) return;
+    self.configurationDismissalStarted = YES;
+    NSDictionary *values = [self serializedValues];
+    values = [self commitSerializedValues:values];
+    [self publishPreviewValues:values];
+    [self stopConfigurationPresentation];
     if (self.embeddedPresentation) {
         [self.settingsOverlayView removeFromSuperview];
         self.settingsOverlayView = nil;
+        [self notifyOwnerAfterDismissal];
     } else {
-        [NSApp endSheet:self.window returnCode:NSModalResponseOK];
+        [self endConfigurationSheetWithResponse:NSModalResponseOK];
     }
-    self.closeHandler();
 }
 
 - (void)cancel:(id)sender {
@@ -2968,25 +3144,22 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         [self closeCurrentEditorFromDismissAction:sender];
         return;
     }
+    if (self.configurationDismissalStarted) return;
+    self.configurationDismissalStarted = YES;
     NSDictionary *values = [self serializedValues];
     [self publishPreviewValues:values];
-    [self.settingsHideTimer invalidate];
-    self.settingsHideTimer = nil;
-    [self.settingsAnimationTimer invalidate];
-    self.settingsAnimationTimer = nil;
-    [self stopSettingsRampPreview];
-    self.settingsMetalView.frameHandler = nil;
-    [self.settingsMetalView setAnimationActive:NO];
+    [self stopConfigurationPresentation];
     if (self.embeddedPresentation) {
         [self.settingsOverlayView removeFromSuperview];
         self.settingsOverlayView = nil;
+        [self notifyOwnerAfterDismissal];
     } else {
-        [NSApp endSheet:self.window returnCode:NSModalResponseCancel];
+        [self endConfigurationSheetWithResponse:NSModalResponseCancel];
     }
-    self.closeHandler();
 }
 
 - (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
     [_settingsHideTimer invalidate];
     [_settingsAnimationTimer invalidate];
     [_settingsRampPreviewTimer invalidate];
