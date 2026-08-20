@@ -198,6 +198,7 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
     XCTAssertEqualObjects(controls[@"glyphMode"], @"matrix");
     XCTAssertEqualObjects(controls[@"glyphFont"], @"matrix");
     XCTAssertEqualObjects(controls[@"preset"], @"classic");
+    XCTAssertEqualObjects(controls[@"customColor"], @"#00FF41");
     XCTAssertEqualObjects(controls[@"mirror"], @YES);
     XCTAssertEqualObjects(controls[@"scanlines"], @NO);
     XCTAssertEqualWithAccuracy([controls[@"vignette"] doubleValue], 0.42, 0.0001);
@@ -208,6 +209,7 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
         @"glyphMode": @"katakana",
         @"glyphFont": @"mincho",
         @"preset": @"blue",
+        @"customColor": @"#ab12ef",
         @"mirror": @NO,
         @"scanlines": @YES,
         @"vignette": @NO,
@@ -217,6 +219,7 @@ extern NSWindowCollectionBehavior MatrixCodeMultiMonitorWindowCollectionBehavior
     XCTAssertEqualObjects(validControls[@"glyphMode"], @"katakana");
     XCTAssertEqualObjects(validControls[@"glyphFont"], @"mincho");
     XCTAssertEqualObjects(validControls[@"preset"], @"blue");
+    XCTAssertEqualObjects(validControls[@"customColor"], @"#AB12EF");
     XCTAssertEqualObjects(validControls[@"mirror"], @NO);
     XCTAssertEqualObjects(validControls[@"scanlines"], @YES);
     XCTAssertEqualWithAccuracy([validControls[@"vignette"] doubleValue], 0, 0.0001);

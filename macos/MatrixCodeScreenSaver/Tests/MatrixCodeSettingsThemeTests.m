@@ -39,6 +39,11 @@
     [self assertColor:theme.dimColor red:184 green:134 blue:11];
     [self assertColor:theme.accentColor red:255 green:215 blue:0];
 
+    [theme applyControls:@{ @"preset": @"custom", @"customColor": @"#ff6600" }];
+    [self assertColor:theme.backgroundColor red:13 green:5 blue:0];
+    [self assertColor:theme.dimColor red:168 green:67 blue:0];
+    [self assertColor:theme.accentColor red:255 green:102 blue:0];
+
     theme.presetName = @"not-a-preset";
     XCTAssertEqualObjects(theme.presetName, @"classic");
 }

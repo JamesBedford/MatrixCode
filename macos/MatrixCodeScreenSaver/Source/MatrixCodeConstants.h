@@ -17,6 +17,8 @@ FOUNDATION_EXPORT NSArray<NSString *> *MatrixCodeStorageKeys(void);
 FOUNDATION_EXPORT NSArray<NSString *> *MatrixCodeColorPresetNames(void);
 FOUNDATION_EXPORT NSArray<NSNumber *> *MatrixCodeColorPaletteForPreset(
     NSString *presetName);
+FOUNDATION_EXPORT NSArray<NSNumber *> *MatrixCodeColorPaletteForControls(
+    NSDictionary<NSString *, id> *controls);
 FOUNDATION_EXPORT NSDictionary<NSString *, id> *MatrixCodeSanitizeControlsDocument(
     id _Nullable rawControls);
 FOUNDATION_EXPORT double MatrixCodeQuantizedControlValue(NSString *key, double value);

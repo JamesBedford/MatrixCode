@@ -98,7 +98,7 @@ function paramsOf(c: Controls): RenderParams {
     scanlines: c.scanlines,
     vignette: c.vignette,
     quality: c.quality,
-    preset: getPreset(c.preset),
+    preset: getPreset(c.preset, c.customColor),
   };
 }
 
@@ -145,8 +145,8 @@ export async function mountMatrixRain(
 ): Promise<MatrixRainHandle> {
   const controls = new ControlsStore();
   if (options) controls.set(options);
-  applyChromeAccent(getPreset(controls.get().preset));
-  applyFavicon(getPreset(controls.get().preset));
+  applyChromeAccent(getPreset(controls.get().preset, controls.get().customColor));
+  applyFavicon(getPreset(controls.get().preset, controls.get().customColor));
 
   const canvas = document.createElement("canvas");
   container.appendChild(canvas);
@@ -160,7 +160,7 @@ export async function mountMatrixRain(
 
   // ---------- Fallback: no WebGL2 ----------
   if (!gl) {
-    const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale);
+    const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale, controls.get().customColor);
     const sizeCanvas = (): void => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round((container.clientWidth || window.innerWidth) * dpr);
@@ -342,7 +342,7 @@ export async function mountMatrixRain(
     await buildGpu();
   } catch (err) {
     console.error("Matrix GPU init failed, using fallback:", err);
-    const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale);
+    const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale, controls.get().customColor);
     showNotice(container, "Compatibility mode");
     return {
       controls,
@@ -1145,8 +1145,8 @@ export async function mountMatrixRain(
     if (multiMonitorState && controlsChan && !applyingRemoteControls) {
       controlsChan.broadcastControls(state);
     }
-    if (changed.has("preset")) {
-      const preset = getPreset(controls.get().preset);
+    if (changed.has("preset") || changed.has("customColor")) {
+      const preset = getPreset(controls.get().preset, controls.get().customColor);
       applyChromeAccent(preset);
       applyFavicon(preset);
     }

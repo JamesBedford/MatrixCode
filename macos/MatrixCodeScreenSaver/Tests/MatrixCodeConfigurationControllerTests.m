@@ -1083,8 +1083,9 @@ restrictedToMultiMonitorControls:YES];
     NSPopUpButton *quality = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(rain, @"quality");
 
     XCTAssertEqualObjects([preset.itemArray valueForKey:@"title"],
-                          (@[@"Green (Classic)", @"Amber", @"Gold", @"Red",
-                             @"Pink", @"Purple", @"Blue", @"White"]));
+                          (@[@"Green (Classic)", @"Amber", @"Gold", @"Orange", @"Red",
+                             @"Pink", @"Purple", @"Blue", @"White", @"Custom"]));
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(rain, @"custom-color"));
     XCTAssertEqualObjects([quality.itemArray valueForKey:@"title"],
                           (@[@"Low", @"Medium", @"High"]));
 

@@ -23,12 +23,13 @@ export function startCanvas2dRain(
   canvas: HTMLCanvasElement,
   preset: PresetName = "classic",
   glyphScale = 1,
+  customColor?: string,
 ): Canvas2dRainHandle {
   const ctx0 = canvas.getContext("2d");
   if (!ctx0) return { start: () => {}, stop: () => {} };
   const ctx = ctx0; // non-null, captured by the animation closures
 
-  const colors = getPreset(preset);
+  const colors = getPreset(preset, customColor);
   const chars: string[] = [];
   for (let cp = 0xff66; cp <= 0xff9d; cp++) chars.push(String.fromCodePoint(cp));
   for (const d of "0123456789") chars.push(d);

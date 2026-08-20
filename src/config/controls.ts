@@ -1,6 +1,6 @@
 import type { Controls, GlyphMode, QualityTier } from "../types.ts";
 import { clamp } from "../util/math.ts";
-import { PRESET_NAMES } from "./colorPresets.ts";
+import { DEFAULT_CUSTOM_COLOR, isPresetName, sanitizeCustomColor } from "./colorPresets.ts";
 import { GLYPH_FONTS } from "./glyphFonts.ts";
 import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 
@@ -17,6 +17,7 @@ export const DEFAULT_CONTROLS: Controls = {
   glow: 0.9,
   leadBrightness: 1.6,
   preset: "classic",
+  customColor: DEFAULT_CUSTOM_COLOR,
   mirror: true,
   scanlines: false,
   vignette: 0,
@@ -56,6 +57,7 @@ const URL_PARAMS = {
   glow: "glow",
   leadBrightness: "lead",
   preset: "preset",
+  customColor: "color",
   mirror: "mirror",
   scanlines: "scanlines",
   vignette: "vignette",
@@ -92,7 +94,9 @@ export function sanitizeControls(raw: unknown): Partial<Controls> {
   if (input.glyphFont && GLYPH_FONTS.includes(input.glyphFont)) out.glyphFont = input.glyphFont;
   if (finiteNum(input.glow)) out.glow = clamp(input.glow, CONTROL_RANGES.glow.min, CONTROL_RANGES.glow.max);
   if (finiteNum(input.leadBrightness)) out.leadBrightness = clamp(input.leadBrightness, CONTROL_RANGES.leadBrightness.min, CONTROL_RANGES.leadBrightness.max);
-  if (input.preset && PRESET_NAMES.includes(input.preset)) out.preset = input.preset;
+  if (isPresetName(input.preset)) out.preset = input.preset;
+  const customColor = sanitizeCustomColor(input.customColor);
+  if (customColor) out.customColor = customColor;
   if (typeof input.mirror === "boolean") out.mirror = input.mirror;
   if (typeof input.scanlines === "boolean") out.scanlines = input.scanlines;
   const vignette = legacyVignette(input.vignette);

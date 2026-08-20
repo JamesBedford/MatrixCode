@@ -185,6 +185,22 @@ html.mx-native-config .mx-panel {
   padding: 5px 8px;
   cursor: pointer;
 }
+.mx-color-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mx-row .mx-btn--compact {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.mx-row .mx-color-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
 .mx-row .mx-name-input {
   width: 9rem;
 }

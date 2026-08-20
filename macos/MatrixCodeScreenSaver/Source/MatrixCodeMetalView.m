@@ -1843,7 +1843,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 
 - (void)updatePalette {
     NSString *preset = [self.controls[@"preset"] isKindOfClass:NSString.class] ? self.controls[@"preset"] : @"classic";
-    NSArray<NSNumber *> *palette = MatrixCodeColorPaletteForPreset(preset);
+    NSArray<NSNumber *> *palette = MatrixCodeColorPaletteForControls(self.controls);
     MTLClearColor background = {
         ((palette[0].unsignedIntValue >> 16) & 0xff) / 255.0,
         ((palette[0].unsignedIntValue >> 8) & 0xff) / 255.0,

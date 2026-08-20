@@ -1,6 +1,8 @@
 import type { ColorPreset, PresetName } from "../types.ts";
 import { hexToRgb } from "../util/math.ts";
 
+export const DEFAULT_CUSTOM_COLOR = "#00FF41";
+
 // Canonical Matrix palette (SchemeColor "Matrix Code Green"):
 //   background #0D0208, tail #003B00, body #008F11, bright #00FF41, head white-green.
 const CLASSIC: ColorPreset = {
@@ -20,6 +22,15 @@ const AMBER: ColorPreset = {
   body: hexToRgb("#A85B00"),
   bright: hexToRgb("#FFB000"),
   head: hexToRgb("#FFF1C8"),
+};
+
+const ORANGE: ColorPreset = {
+  name: "orange",
+  background: hexToRgb("#0D0400"),
+  tail: hexToRgb("#3B1200"),
+  body: hexToRgb("#A84400"),
+  bright: hexToRgb("#FF6A00"),
+  head: hexToRgb("#FFE8D6"),
 };
 
 const BLUE: ColorPreset = {
@@ -77,9 +88,12 @@ const WHITE: ColorPreset = {
   head: hexToRgb("#FFFFFF"),
 };
 
-const PRESETS: Record<PresetName, ColorPreset> = {
+type StaticPresetName = Exclude<PresetName, "custom">;
+
+const PRESETS: Record<StaticPresetName, ColorPreset> = {
   classic: CLASSIC,
   amber: AMBER,
+  orange: ORANGE,
   gold: GOLD,
   red: RED,
   pink: PINK,
@@ -88,8 +102,46 @@ const PRESETS: Record<PresetName, ColorPreset> = {
   white: WHITE,
 };
 
-export function getPreset(name: PresetName): ColorPreset {
-  return PRESETS[name] ?? CLASSIC;
+/** The named palettes that have a fixed, cross-platform five-stop definition. */
+export const PRESET_NAMES = Object.keys(PRESETS) as StaticPresetName[];
+
+/** Whether a value is a persisted palette selection, including the dynamic Custom palette. */
+export function isPresetName(value: unknown): value is PresetName {
+  return value === "custom" || (typeof value === "string" && PRESET_NAMES.includes(value as StaticPresetName));
 }
 
-export const PRESET_NAMES: PresetName[] = Object.keys(PRESETS) as PresetName[];
+/** Normalize a colour-picker value to the persisted #RRGGBB representation. */
+export function sanitizeCustomColor(value: unknown): string | undefined {
+  if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) return undefined;
+  return value.toUpperCase();
+}
+
+function scale(color: readonly [number, number, number], amount: number): [number, number, number] {
+  return [color[0] * amount, color[1] * amount, color[2] * amount];
+}
+
+function lighten(color: readonly [number, number, number], amount: number): [number, number, number] {
+  return [
+    color[0] + (1 - color[0]) * amount,
+    color[1] + (1 - color[1]) * amount,
+    color[2] + (1 - color[2]) * amount,
+  ];
+}
+
+/** Derive the rain's full brightness ramp from the user-selected display colour. */
+export function customPreset(customColor: string = DEFAULT_CUSTOM_COLOR): ColorPreset {
+  const bright = hexToRgb(sanitizeCustomColor(customColor) ?? DEFAULT_CUSTOM_COLOR);
+  return {
+    name: "custom",
+    background: scale(bright, 0.05),
+    tail: scale(bright, 0.23),
+    body: scale(bright, 0.66),
+    bright,
+    head: lighten(bright, 0.88),
+  };
+}
+
+export function getPreset(name: PresetName, customColor?: string): ColorPreset {
+  if (name === "custom") return customPreset(customColor);
+  return PRESETS[name] ?? CLASSIC;
+}

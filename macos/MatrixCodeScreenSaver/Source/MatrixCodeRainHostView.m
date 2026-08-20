@@ -641,8 +641,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
                                                                   runStartDate:self.runStartDate];
     NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
         [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]]);
-    MatrixCodeSettingsTheme.sharedTheme.presetName =
-        [controls[@"preset"] isKindOfClass:NSString.class] ? controls[@"preset"] : @"classic";
+    [MatrixCodeSettingsTheme.sharedTheme applyControls:controls];
     BOOL multiMonitorSession = [session[@"screens"] isKindOfClass:NSArray.class] &&
         [session[@"screens"] count] > 1;
     self.synchronizedMultiDisplayTimeline = multiMonitorSession;
@@ -752,8 +751,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     [self.metalView reloadStoredValues:values];
     NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
         [self.class dictionaryFromJSONString:values[@"mx-controls"]]);
-    MatrixCodeSettingsTheme.sharedTheme.presetName =
-        [controls[@"preset"] isKindOfClass:NSString.class] ? controls[@"preset"] : @"classic";
+    [MatrixCodeSettingsTheme.sharedTheme applyControls:controls];
     self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:values
                                                                   runStartDate:self.runStartDate ?: NSDate.date];
     [self.introOverlay reloadStoredValues:values tokenResolver:self.tokenResolver];

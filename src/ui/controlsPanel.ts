@@ -47,6 +47,7 @@ export class ControlsPanel {
   private destroyed = false;
   // Updates a slider's thumb + readout when its control changes from elsewhere (e.g. keyboard shortcuts).
   private rangeSyncers = new Map<keyof Controls, (c: Controls) => void>();
+  private colorSyncer?: (c: Controls) => void;
   private unsubscribe?: () => void;
 
   constructor(
@@ -112,16 +113,7 @@ export class ControlsPanel {
       "Edge darkening amount (0 = off, 100% = strongest).",
     );
 
-    this.select<PresetName>("Color", c.preset, [
-      ["classic", "Green (Classic)"],
-      ["amber", "Amber"],
-      ["gold", "Gold"],
-      ["red", "Red"],
-      ["pink", "Pink"],
-      ["purple", "Purple"],
-      ["blue", "Blue"],
-      ["white", "White"],
-    ], (v) => controls.set({ preset: v }));
+    this.color(c);
 
     this.select<QualityTier>("Quality", c.quality, [
       ["low", "Low"],
@@ -193,6 +185,7 @@ export class ControlsPanel {
     window.addEventListener("pointerdown", this.onActivity, { passive: true });
     this.unsubscribe = controls.subscribe((state, changed) => {
       for (const key of changed) this.rangeSyncers.get(key)?.(state);
+      if (changed.has("preset") || changed.has("customColor")) this.colorSyncer?.(state);
     });
     this.show();
   }
@@ -295,6 +288,68 @@ export class ControlsPanel {
     }
     sel.addEventListener("change", () => onChange(sel.value as T));
     row.appendChild(sel);
+  }
+
+  /** Add the preset list plus a native browser colour picker for the Custom option. */
+  private color(value: Controls): void {
+    const row = this.row("Color");
+    row.classList.add("mx-row--inline");
+    const controls = document.createElement("div");
+    controls.className = "mx-color-controls";
+    const select = document.createElement("select");
+    const options: [PresetName, string][] = [
+      ["classic", "Green (Classic)"],
+      ["amber", "Amber"],
+      ["orange", "Orange"],
+      ["gold", "Gold"],
+      ["red", "Red"],
+      ["pink", "Pink"],
+      ["purple", "Purple"],
+      ["blue", "Blue"],
+      ["white", "White"],
+      ["custom", "Custom"],
+    ];
+    for (const [preset, label] of options) {
+      const option = document.createElement("option");
+      option.value = preset;
+      option.textContent = label;
+      select.appendChild(option);
+    }
+
+    const picker = document.createElement("input");
+    picker.className = "mx-color-input";
+    picker.type = "color";
+    picker.setAttribute("aria-label", "Custom Matrix rain colour");
+
+    const openPicker = (): void => {
+      this.controls.set({ preset: "custom" });
+      try {
+        picker.showPicker();
+      } catch {
+        picker.click();
+      }
+    };
+
+    const custom = this.button("Custom…", openPicker);
+    custom.classList.add("mx-btn--compact");
+    custom.title = "Choose a custom Matrix rain colour";
+    select.addEventListener("change", () => {
+      const preset = select.value as PresetName;
+      if (preset === "custom") openPicker();
+      else this.controls.set({ preset });
+    });
+    picker.addEventListener("input", () => {
+      this.controls.set({ preset: "custom", customColor: picker.value });
+    });
+
+    const render = (state: Controls): void => {
+      select.value = state.preset;
+      picker.value = state.customColor;
+    };
+    render(value);
+    this.colorSyncer = render;
+    controls.append(select, custom, picker);
+    row.appendChild(controls);
   }
 
   private toggle(label: string, value: boolean, onChange: (v: boolean) => void): void {

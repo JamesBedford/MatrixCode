@@ -11,12 +11,16 @@ FOUNDATION_EXPORT NSNotificationName const MatrixCodeSettingsThemeDidChangeNotif
 @property (class, nonatomic, readonly) MatrixCodeSettingsTheme *sharedTheme;
 
 @property (nonatomic, copy) NSString *presetName;
+@property (nonatomic, copy) NSString *customColorHex;
 @property (nonatomic, readonly) NSColor *accentColor;
 @property (nonatomic, readonly) NSColor *dimColor;
 @property (nonatomic, readonly) NSColor *backgroundColor;
 @property (nonatomic, readonly) NSColor *panelColor;
 @property (nonatomic, readonly) NSColor *borderColor;
 @property (nonatomic, readonly) NSColor *labelColor;
+
+/// Updates the chrome palette from the same sanitized controls document used by the rain renderer.
+- (void)applyControls:(NSDictionary<NSString *, id> *)controls;
 
 - (NSFont *)monospacedFontOfSize:(CGFloat)size weight:(NSFontWeight)weight;
 

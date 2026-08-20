@@ -493,6 +493,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 @property(nonatomic, strong) NSTextField *countdownPreviewLabel;
 @property(nonatomic, strong) NSTimer *countdownPreviewTimer;
 @property(nonatomic, strong) NSButton *mirrorButton;
+@property(nonatomic, strong) NSPopUpButton *presetPopup;
 @property(nonatomic, strong) NSView *editorBackdrop;
 @property(nonatomic, strong) NSView *editorCard;
 @property(nonatomic, copy) NSString *editorKind;
@@ -935,8 +936,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     if (!content) return;
     content.window.acceptsMouseMovedEvents = YES;
     MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
-    theme.presetName = [self.controls[@"preset"] isKindOfClass:NSString.class]
-        ? self.controls[@"preset"] : @"classic";
+    [theme applyControls:self.controls];
     [self.settingsAnimationTimer invalidate];
     self.settingsAnimationTimer = nil;
     [self stopSettingsRampPreview];
@@ -1031,6 +1031,15 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     button.identifier = identifier;
     [self styleButton:button];
     return button;
+}
+
+- (void)selectPresetPopupValue:(NSString *)value {
+    for (NSMenuItem *item in self.presetPopup.itemArray) {
+        if ([item.representedObject isEqual:value]) {
+            [self.presetPopup selectItem:item];
+            return;
+        }
+    }
 }
 
 - (NSView *)panelFlexibleSpacer {
@@ -1175,10 +1184,20 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
     NSPopUpButton *preset = [self panelPopup:@"preset" items:@[
         @[@"Green (Classic)", @"classic"], @[@"Amber", @"amber"], @[@"Gold", @"gold"],
-        @[@"Red", @"red"], @[@"Pink", @"pink"], @[@"Purple", @"purple"],
-        @[@"Blue", @"blue"], @[@"White", @"white"],
+        @[@"Orange", @"orange"], @[@"Red", @"red"], @[@"Pink", @"pink"],
+        @[@"Purple", @"purple"], @[@"Blue", @"blue"], @[@"White", @"white"],
+        @[@"Custom", @"custom"],
     ]];
-    [stack addArrangedSubview:[self panelInlineRow:@"Color" control:preset]];
+    self.presetPopup = preset;
+    NSButton *customColor = [self settingsButton:@"Custom…"
+                                          action:@selector(chooseCustomColor:)
+                                      identifier:@"custom-color"];
+    customColor.toolTip = @"Choose a custom Matrix rain colour";
+    NSStackView *colorControls = [NSStackView stackViewWithViews:@[preset, customColor]];
+    colorControls.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    colorControls.alignment = NSLayoutAttributeCenterY;
+    colorControls.spacing = 6;
+    [stack addArrangedSubview:[self panelInlineRow:@"Color" control:colorControls]];
     NSPopUpButton *quality = [self panelPopup:@"quality" items:@[
         @[@"Low", @"low"], @[@"Medium", @"med"], @[@"High", @"high"],
     ]];
@@ -1868,7 +1887,11 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         NSString *selected = [value isKindOfClass:NSString.class] ? value : [sender titleOfSelectedItem];
         self.controls[key] = selected;
         if ([key isEqualToString:@"preset"]) {
-            MatrixCodeSettingsTheme.sharedTheme.presetName = selected;
+            if ([selected isEqualToString:@"custom"]) {
+                [self chooseCustomColor:sender];
+                return;
+            }
+            [MatrixCodeSettingsTheme.sharedTheme applyControls:self.controls];
             if (!self.embeddedPresentation) {
                 self.window.contentView.layer.backgroundColor =
                     MatrixCodeSettingsTheme.sharedTheme.backgroundColor.CGColor;
@@ -1891,6 +1914,46 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     if ([key isEqualToString:@"rampUpMs"]) {
         [self scheduleSettingsRampPreviewForMilliseconds:[self.controls[key] doubleValue]];
     }
+}
+
+- (void)chooseCustomColor:(id)sender {
+    (void)sender;
+    self.controls[@"preset"] = @"custom";
+    [self selectPresetPopupValue:@"custom"];
+    NSColorPanel *panel = NSColorPanel.sharedColorPanel;
+    NSString *hex = [self.controls[@"customColor"] isKindOfClass:NSString.class]
+        ? self.controls[@"customColor"] : @"#00FF41";
+    unsigned int value = 0;
+    [[NSScanner scannerWithString:[hex hasPrefix:@"#"] ? [hex substringFromIndex:1] : hex]
+        scanHexInt:&value];
+    panel.color = [NSColor colorWithSRGBRed:((value >> 16) & 0xff) / 255.0
+                                       green:((value >> 8) & 0xff) / 255.0
+                                        blue:(value & 0xff) / 255.0
+                                       alpha:1.0];
+    panel.showsAlpha = NO;
+    panel.target = self;
+    panel.action = @selector(customColorChanged:);
+    [panel orderFront:nil];
+    [MatrixCodeSettingsTheme.sharedTheme applyControls:self.controls];
+    [self draftDidChange];
+}
+
+- (void)customColorChanged:(NSColorPanel *)sender {
+    NSColor *color = [sender.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    if (!color) return;
+    NSUInteger red = (NSUInteger)lround(color.redComponent * 255);
+    NSUInteger green = (NSUInteger)lround(color.greenComponent * 255);
+    NSUInteger blue = (NSUInteger)lround(color.blueComponent * 255);
+    self.controls[@"preset"] = @"custom";
+    self.controls[@"customColor"] = [NSString stringWithFormat:@"#%02lX%02lX%02lX",
+                                       (unsigned long)red, (unsigned long)green, (unsigned long)blue];
+    [self selectPresetPopupValue:@"custom"];
+    [MatrixCodeSettingsTheme.sharedTheme applyControls:self.controls];
+    if (!self.embeddedPresentation) {
+        self.window.contentView.layer.backgroundColor =
+            MatrixCodeSettingsTheme.sharedTheme.backgroundColor.CGColor;
+    }
+    [self draftDidChange];
 }
 
 - (void)nameChanged:(NSTextField *)sender {

@@ -12,6 +12,7 @@ static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeColorPalettes(
         palettes = @{
             @"classic": @[@0x0D0208, @0x003B00, @0x008F11, @0x00FF41, @0xDEFFE4],
             @"amber": @[@0x0A0600, @0x3B1E00, @0xA85B00, @0xFFB000, @0xFFF1C8],
+            @"orange": @[@0x0D0400, @0x3B1200, @0xA84400, @0xFF6A00, @0xFFE8D6],
             @"blue": @[@0x02060D, @0x00263B, @0x0066A8, @0x27D6FF, @0xE4FAFF],
             @"gold": @[@0x0C0800, @0x4A3000, @0xB8860B, @0xFFD700, @0xFFF4C2],
             @"red": @[@0x0D0202, @0x3B0000, @0xA80008, @0xFF2A2A, @0xFFE0E0],
@@ -24,12 +25,56 @@ static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeColorPalettes(
 }
 
 NSArray<NSString *> *MatrixCodeColorPresetNames(void) {
-    return MatrixCodeColorPalettes().allKeys;
+    return @[@"classic", @"amber", @"orange", @"gold", @"red", @"pink", @"purple",
+             @"blue", @"white", @"custom"];
+}
+
+static NSString *MatrixCodeNormalizedCustomColor(id value) {
+    if (![value isKindOfClass:NSString.class] || [(NSString *)value length] != 7 ||
+        ![(NSString *)value hasPrefix:@"#"]) {
+        return nil;
+    }
+    NSScanner *scanner = [NSScanner scannerWithString:[(NSString *)value substringFromIndex:1]];
+    unsigned int hex = 0;
+    if (![scanner scanHexInt:&hex] || !scanner.isAtEnd) return nil;
+    return [NSString stringWithFormat:@"#%06X", hex];
+}
+
+static NSUInteger MatrixCodeScaledColor(NSUInteger color, double factor) {
+    NSUInteger red = (NSUInteger)lround(((color >> 16) & 0xff) * factor);
+    NSUInteger green = (NSUInteger)lround(((color >> 8) & 0xff) * factor);
+    NSUInteger blue = (NSUInteger)lround((color & 0xff) * factor);
+    return (red << 16) | (green << 8) | blue;
+}
+
+static NSUInteger MatrixCodeLightenedColor(NSUInteger color, double amount) {
+    NSUInteger red = (NSUInteger)lround(((color >> 16) & 0xff) * (1 - amount) + 255 * amount);
+    NSUInteger green = (NSUInteger)lround(((color >> 8) & 0xff) * (1 - amount) + 255 * amount);
+    NSUInteger blue = (NSUInteger)lround((color & 0xff) * (1 - amount) + 255 * amount);
+    return (red << 16) | (green << 8) | blue;
+}
+
+NSArray<NSNumber *> *MatrixCodeColorPaletteForControls(NSDictionary<NSString *, id> *controls) {
+    NSString *preset = [controls[@"preset"] isKindOfClass:NSString.class]
+        ? controls[@"preset"] : @"classic";
+    NSDictionary<NSString *, NSArray<NSNumber *> *> *palettes = MatrixCodeColorPalettes();
+    if (![preset isEqualToString:@"custom"]) return palettes[preset] ?: palettes[@"classic"];
+
+    NSString *customColor = MatrixCodeNormalizedCustomColor(controls[@"customColor"])
+        ?: @"#00FF41";
+    unsigned int bright = 0;
+    [[NSScanner scannerWithString:[customColor substringFromIndex:1]] scanHexInt:&bright];
+    return @[
+        @(MatrixCodeScaledColor(bright, 0.05)),
+        @(MatrixCodeScaledColor(bright, 0.23)),
+        @(MatrixCodeScaledColor(bright, 0.66)),
+        @(bright),
+        @(MatrixCodeLightenedColor(bright, 0.88)),
+    ];
 }
 
 NSArray<NSNumber *> *MatrixCodeColorPaletteForPreset(NSString *presetName) {
-    NSDictionary<NSString *, NSArray<NSNumber *> *> *palettes = MatrixCodeColorPalettes();
-    return palettes[presetName] ?: palettes[@"classic"];
+    return MatrixCodeColorPaletteForControls(@{ @"preset": presetName ?: @"classic" });
 }
 
 NSArray<NSString *> *MatrixCodeStorageKeys(void) {
@@ -82,6 +127,7 @@ NSDictionary<NSString *, id> *MatrixCodeSanitizeControlsDocument(id rawControls)
         @"glow": @0.9,
         @"leadBrightness": @1.6,
         @"preset": @"classic",
+        @"customColor": @"#00FF41",
         @"mirror": @YES,
         @"scanlines": @NO,
         @"vignette": @0,
@@ -134,6 +180,9 @@ NSDictionary<NSString *, id> *MatrixCodeSanitizeControlsDocument(id rawControls)
             controls[key] = value;
         }
     }];
+
+    NSString *customColor = MatrixCodeNormalizedCustomColor(stored[@"customColor"]);
+    if (customColor) controls[@"customColor"] = customColor;
 
     for (NSString *key in @[@"mirror", @"scanlines", @"allowOverlap"]) {
         id value = stored[key];

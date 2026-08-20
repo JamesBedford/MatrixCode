@@ -40,6 +40,7 @@ describe("controls sanitizer cross-platform contract", () => {
       glow: 0.9,
       leadBrightness: 3,
       preset: "classic",
+      customColor: "#00FF41",
       mirror: true,
       scanlines: false,
       vignette: 0.42,

@@ -56,16 +56,33 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
     if (self) {
         _styledViews = [NSMapTable weakToStrongObjectsMapTable];
         _presetName = @"classic";
+        _customColorHex = @"#00FF41";
         [self updateColors];
     }
     return self;
 }
 
 - (void)setPresetName:(NSString *)presetName {
-    NSString *validated = [MatrixCodeColorPresetNames() containsObject:presetName]
-        ? presetName : @"classic";
-    if ([_presetName isEqualToString:validated]) return;
-    _presetName = [validated copy];
+    [self applyControls:@{
+        @"preset": presetName ?: @"classic",
+        @"customColor": self.customColorHex ?: @"#00FF41",
+    }];
+}
+
+- (void)setCustomColorHex:(NSString *)customColorHex {
+    [self applyControls:@{
+        @"preset": self.presetName ?: @"classic",
+        @"customColor": customColorHex ?: @"#00FF41",
+    }];
+}
+
+- (void)applyControls:(NSDictionary<NSString *, id> *)controls {
+    NSDictionary<NSString *, id> *sanitized = MatrixCodeSanitizeControlsDocument(controls);
+    NSString *preset = sanitized[@"preset"];
+    NSString *customColor = sanitized[@"customColor"];
+    if ([_presetName isEqualToString:preset] && [_customColorHex isEqualToString:customColor]) return;
+    _presetName = [preset copy];
+    _customColorHex = [customColor copy];
     [self updateColors];
     [self restyleRegisteredViews];
     [NSNotificationCenter.defaultCenter
@@ -73,7 +90,10 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
 }
 
 - (void)updateColors {
-    NSArray<NSNumber *> *palette = MatrixCodeColorPaletteForPreset(self.presetName);
+    NSArray<NSNumber *> *palette = MatrixCodeColorPaletteForControls(@{
+        @"preset": self.presetName,
+        @"customColor": self.customColorHex,
+    });
     self.backgroundColor = MatrixCodeSRGB(
         palette[MatrixCodeColorStopBackground].unsignedIntegerValue, 1.0);
     self.dimColor = MatrixCodeSRGB(

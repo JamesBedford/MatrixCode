@@ -69,8 +69,7 @@ static BOOL MatrixCodeBoolean(NSDictionary *dictionary, NSString *key, BOOL fall
 
     NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
         [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]]);
-    NSString *preset = controls[@"preset"];
-    MatrixCodeSettingsTheme.sharedTheme.presetName = preset;
+    [MatrixCodeSettingsTheme.sharedTheme applyControls:controls];
     self.accentColor = MatrixCodeSettingsTheme.sharedTheme.accentColor;
 
     NSDictionary *intro = [self.class dictionaryFromJSONString:storedValues[@"mx-intro"]];

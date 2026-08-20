@@ -22,7 +22,9 @@ export type PresetName =
   | "pink"
   | "purple"
   | "blue"
-  | "white";
+  | "white"
+  | "orange"
+  | "custom";
 export type QualityTier = "low" | "med" | "high";
 export type GlyphMode = "matrix" | "katakana" | "binary" | "digits" | "latin" | "symbols";
 export type GlyphFont = "matrix" | "gothic" | "mono" | "terminal" | "rounded" | "mincho";
@@ -55,6 +57,8 @@ export interface Controls {
   leadBrightness: number;
   /** Color theme. */
   preset: PresetName;
+  /** Hex colour used when the Custom theme is active. */
+  customColor: string;
   /** Bake horizontal mirror into the glyph atlas (the authentic look). */
   mirror: boolean;
   /** Faint CRT scanlines overlay. */

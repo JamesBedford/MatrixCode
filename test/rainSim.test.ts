@@ -26,6 +26,7 @@ const CONTROLS: Controls = {
   glow: 1,
   leadBrightness: 1.6,
   preset: "classic",
+  customColor: "#00FF41",
   mirror: true,
   scanlines: false,
   vignette: 0,
