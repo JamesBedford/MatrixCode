@@ -25,7 +25,7 @@ export default defineConfig({
   plugins: [viteSingleFile(), renameOutput()],
   server: {
     port: DEV_PORT,
-    host: true,
+    host: "127.0.0.1",
     strictPort: false,
   },
   build: {

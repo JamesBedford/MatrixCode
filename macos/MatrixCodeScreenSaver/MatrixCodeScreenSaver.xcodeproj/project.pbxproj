@@ -523,7 +523,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks";
 				MACH_O_TYPE = mh_bundle;
 				PRODUCT_BUNDLE_IDENTIFIER = com.matrixcode.screensaver;
-				PRODUCT_NAME = MatrixCode;
+				PRODUCT_NAME = "Matrix Code";
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
 				WRAPPER_EXTENSION = saver;
@@ -539,7 +539,7 @@
 				INFOPLIST_FILE = Resources/AppInfo.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.matrixcode.app;
-				PRODUCT_NAME = MatrixCode;
+				PRODUCT_NAME = "Matrix Code";
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
 			};
@@ -553,7 +553,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks";
 				MACH_O_TYPE = mh_bundle;
 				PRODUCT_BUNDLE_IDENTIFIER = com.matrixcode.screensaver;
-				PRODUCT_NAME = MatrixCode;
+				PRODUCT_NAME = "Matrix Code";
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
 				WRAPPER_EXTENSION = saver;
@@ -605,7 +605,7 @@
 				INFOPLIST_FILE = Resources/AppInfo.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.matrixcode.app;
-				PRODUCT_NAME = MatrixCode;
+				PRODUCT_NAME = "Matrix Code";
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
 			};
