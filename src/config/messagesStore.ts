@@ -59,14 +59,16 @@ export function sanitizeMessages(raw: unknown): MessagesDoc {
 /** localStorage-backed store for the user's in-rain messages and their scheduling. */
 export class MessagesStore {
   private doc: MessagesDoc;
+  private readonly storage: Storage | null;
 
-  constructor() {
-    this.doc = this.load();
+  constructor(storage: Storage | null = defaultStorage(), initial?: MessagesDoc) {
+    this.storage = storage;
+    this.doc = initial === undefined ? this.load() : sanitizeMessages(initial);
   }
 
   private load(): MessagesDoc {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = this.storage?.getItem(STORAGE_KEY);
       if (!raw) return cloneMessages(DEFAULT_MESSAGES);
       return sanitizeMessages(JSON.parse(raw) as unknown);
     } catch {
@@ -82,8 +84,8 @@ export class MessagesStore {
     this.doc = sanitizeMessages(doc);
     try {
       const value = JSON.stringify(this.doc);
-      localStorage.setItem(STORAGE_KEY, value);
-      nativeStorageDidChange(STORAGE_KEY, value);
+      this.storage?.setItem(STORAGE_KEY, value);
+      if (this.storage) nativeStorageDidChange(STORAGE_KEY, value);
     } catch {
       /* storage may be unavailable (private mode) — ignore */
     }
@@ -92,11 +94,19 @@ export class MessagesStore {
   reset(): MessagesDoc {
     this.doc = cloneMessages(DEFAULT_MESSAGES);
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      nativeStorageDidChange(STORAGE_KEY, null);
+      this.storage?.removeItem(STORAGE_KEY);
+      if (this.storage) nativeStorageDidChange(STORAGE_KEY, null);
     } catch {
       /* ignore */
     }
     return this.get();
+  }
+}
+
+function defaultStorage(): Storage | null {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
   }
 }

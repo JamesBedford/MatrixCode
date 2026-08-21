@@ -336,7 +336,12 @@ static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
               session:@{@"epoch": @1700000000000}
          storedValues:@{}];
     [view setTokenTimelineStartDate:[NSDate dateWithTimeIntervalSince1970:2000]];
+    [view restartDeterministicRainFromEmpty:NO];
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"imageEpochSeconds"] doubleValue],
+                               2000, 0.000001);
     [view shiftTokenTimelineBy:12.5];
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"imageEpochSeconds"] doubleValue],
+                               2012.5, 0.000001);
     [view reloadStoredValues:@{
         @"mx-controls": MatrixCodeJSONString(@{@"speed": @2}),
     }];
@@ -988,14 +993,106 @@ static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
     [view updateActiveImageFrameStateAtTime:now + 0.5];
 
     XCTAssertNotNil([view valueForKey:@"activeImage"]);
+    XCTAssertEqualObjects([[view valueForKey:@"activeImage"] objectForKey:@"name"], @"Signal");
     XCTAssertEqual([[view valueForKey:@"activeImageWidth"] integerValue], 2);
     XCTAssertEqual([[view valueForKey:@"activeImageHeight"] integerValue], 2);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImageStart"] doubleValue], now, 0.000001);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImageEnd"] doubleValue], now + 12, 0.000001);
     XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImageFrameIntensity"] floatValue], 0.5, 0.001);
     XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImageFrameScramble"] floatValue], 0.5, 0.001);
-    XCTAssertGreaterThan([[view valueForKey:@"activeImagePlacementX"] floatValue], 0);
-    XCTAssertLessThan([[view valueForKey:@"activeImagePlacementX"] floatValue], 1);
-    XCTAssertGreaterThan([[view valueForKey:@"activeImagePlacementY"] floatValue], 0);
-    XCTAssertLessThan([[view valueForKey:@"activeImagePlacementY"] floatValue], 1);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImagePlacementX"] floatValue],
+                               0.31529415, 0.000001);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImagePlacementY"] floatValue],
+                               0.02486330, 0.000001);
+}
+
+- (void)testReducedMotionStaticFrameSuppressesImageScheduleWithoutConsumingIt {
+    NSString *mask = [[NSData dataWithBytes:(const uint8_t[]){255} length:1]
+        base64EncodedStringWithOptions:0];
+    NSDictionary *storedValues = @{
+        @"mx-images": MatrixCodeJSONString(@{
+            @"images": @[@{ @"name": @"Pixel", @"width": @1, @"height": @1,
+                              @"data": mask }],
+            @"enabled": @YES,
+            @"frequencyMs": @500,
+            @"persistenceMs": @500,
+            @"appearMs": @0,
+            @"disappearMs": @0,
+        }),
+    };
+    NSTimeInterval epoch = 1700000000;
+    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, 320, 240)
+              session:@{ @"seed": @1234, @"epoch": @(epoch * 1000.0) }
+         storedValues:storedValues];
+    if (!view) {
+        XCTSkip(@"Metal is unavailable on this test host");
+        return;
+    }
+
+    [view setReducedMotionEnabled:YES];
+    [view updateImageScheduleAtTime:epoch + 2.5
+                         globalCols:20
+                         globalRows:20
+                          localCols:20
+                          localRows:20];
+    XCTAssertNil([view valueForKey:@"activeImage"]);
+
+    // Suppression must not disable or consume the playlist: normal playback can
+    // still activate the same schedule after reduced motion is turned off.
+    [view setReducedMotionEnabled:NO];
+    [view updateImageScheduleAtTime:epoch + 2.5
+                         globalCols:20
+                         globalRows:20
+                          localCols:20
+                          localRows:20];
+    XCTAssertNotNil([view valueForKey:@"activeImage"]);
+}
+
+- (void)testSingleDisplayPauseShiftFreezesImageScheduleAndRevealEpoch {
+    const uint8_t bytes[] = {0, 96, 180, 255};
+    NSData *mask = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+    NSDictionary *images = @{
+        @"enabled": @YES,
+        @"images": @[@{@"name": @"Signal", @"width": @2, @"height": @2,
+                       @"data": [mask base64EncodedStringWithOptions:0]}],
+        @"frequencyMs": @500,
+        @"persistenceMs": @10000,
+        @"appearMs": @1000,
+        @"disappearMs": @1000,
+        @"flickerOut": @YES,
+        @"brightnessFade": @YES,
+    };
+    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, 420, 400)
+              session:@{
+                  @"seed": @13579,
+                  @"epoch": @1700000000000,
+                  @"currentScreenId": @"screen-test",
+                  @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
+                                  @"width": @420, @"height": @400}],
+              }
+         storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
+    NSTimeInterval activation = 1700000001.0;
+    [view updateImageScheduleAtTime:activation
+                         globalCols:21 globalRows:20 localCols:21 localRows:20];
+    [view updateActiveImageFrameStateAtTime:activation + 0.4];
+    float intensityBeforePause = [[view valueForKey:@"activeImageFrameIntensity"] floatValue];
+    NSTimeInterval startBeforePause = [[view valueForKey:@"activeImageStart"] doubleValue];
+    NSTimeInterval endBeforePause = [[view valueForKey:@"activeImageEnd"] doubleValue];
+    NSTimeInterval epochBeforePause = [[view valueForKey:@"imageEpochSeconds"] doubleValue];
+
+    [view shiftTokenTimelineBy:10];
+    [view updateActiveImageFrameStateAtTime:activation + 10.4];
+
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImageStart"] doubleValue],
+                               startBeforePause + 10, 0.000001);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImageEnd"] doubleValue],
+                               endBeforePause + 10, 0.000001);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"imageEpochSeconds"] doubleValue],
+                               epochBeforePause + 10, 0.000001);
+    XCTAssertEqualWithAccuracy([[view valueForKey:@"activeImageFrameIntensity"] floatValue],
+                               intensityBeforePause, 0.000001);
 }
 
 - (void)testMultiMonitorImageScheduleUsesSharedFireTime {
@@ -1052,6 +1149,96 @@ static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
                                0.000001);
 }
 
+- (void)testMultiMonitorLateStartFastForwardsWithoutReplayingBacklog {
+    const uint8_t firstByte = 255;
+    const uint8_t secondByte = 128;
+    NSData *firstMask = [NSData dataWithBytes:&firstByte length:1];
+    NSData *secondMask = [NSData dataWithBytes:&secondByte length:1];
+    NSDictionary *images = @{
+        @"enabled": @YES,
+        @"images": @[
+            @{@"name": @"First", @"width": @1, @"height": @1,
+              @"data": [firstMask base64EncodedStringWithOptions:0]},
+            @{@"name": @"Second", @"width": @1, @"height": @1,
+              @"data": [secondMask base64EncodedStringWithOptions:0]},
+        ],
+        @"frequencyMs": @500,
+        @"persistenceMs": @500,
+        @"appearMs": @100,
+        @"disappearMs": @100,
+        @"flickerOut": @YES,
+        @"brightnessFade": @YES,
+    };
+    NSArray *screens = @[
+        @{@"id": @"left", @"left": @0, @"top": @0, @"width": @420, @"height": @400},
+        @{@"id": @"right", @"left": @420, @"top": @0, @"width": @420, @"height": @400},
+    ];
+    NSDictionary *session = @{
+        @"seed": @(0x2468acU),
+        @"epoch": @1700000000000,
+        @"currentScreenId": @"left",
+        @"screens": screens,
+    };
+    MatrixCodeMetalView *reference = [[MatrixCodeMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, 420, 400)
+              session:session
+         storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
+    MatrixCodeMetalView *late = [[MatrixCodeMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, 420, 400)
+              session:session
+         storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
+    NSTimeInterval epoch = 1700000000.0;
+    NSTimeInterval now = epoch + 60;
+
+    for (NSUInteger step = 0; step <= 600; step++) {
+        [reference updateImageScheduleAtTime:epoch + step * 0.1
+                                  globalCols:42 globalRows:20 localCols:21 localRows:20];
+    }
+    [late updateImageScheduleAtTime:now
+                         globalCols:42 globalRows:20 localCols:21 localRows:20];
+    [reference updateActiveImageFrameStateAtTime:now];
+    [late updateActiveImageFrameStateAtTime:now];
+
+    NSDictionary *referenceActive = [reference valueForKey:@"activeImage"];
+    NSDictionary *lateActive = [late valueForKey:@"activeImage"];
+    if (lateActive) {
+        XCTAssertGreaterThan([[late valueForKey:@"activeImageEnd"] doubleValue], now);
+    } else {
+        XCTAssertGreaterThan([[late valueForKey:@"nextImageFire"] doubleValue], now);
+    }
+    XCTAssertEqualObjects(lateActive[@"name"], @"First");
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImageStart"] doubleValue] - epoch,
+                               59.8733743876, 0.00001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImageEnd"] doubleValue] - epoch,
+                               60.5733743876, 0.00001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImagePlacementX"] floatValue],
+                               0.3110779524, 0.000001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImagePlacementY"] floatValue],
+                               0.3646557331, 0.000001);
+    XCTAssertEqualObjects(lateActive, referenceActive);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImageStart"] doubleValue],
+                               [[reference valueForKey:@"activeImageStart"] doubleValue],
+                               0.000001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImageEnd"] doubleValue],
+                               [[reference valueForKey:@"activeImageEnd"] doubleValue],
+                               0.000001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"nextImageFire"] doubleValue],
+                               [[reference valueForKey:@"nextImageFire"] doubleValue],
+                               0.000001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImagePlacementX"] floatValue],
+                               [[reference valueForKey:@"activeImagePlacementX"] floatValue],
+                               0.000001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImagePlacementY"] floatValue],
+                               [[reference valueForKey:@"activeImagePlacementY"] floatValue],
+                               0.000001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImageFrameIntensity"] floatValue],
+                               [[reference valueForKey:@"activeImageFrameIntensity"] floatValue],
+                               0.000001);
+    XCTAssertEqualWithAccuracy([[late valueForKey:@"activeImageFrameScramble"] floatValue],
+                               [[reference valueForKey:@"activeImageFrameScramble"] floatValue],
+                               0.000001);
+}
+
 - (void)testRendererDropsStoredImagesWithInvalidDimensions {
     NSDictionary *images = @{
         @"enabled": @YES,
@@ -1082,6 +1269,32 @@ static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
                           localCols:21
                           localRows:20];
     XCTAssertNil([view valueForKey:@"activeImage"]);
+}
+
+- (void)testRendererUsesPortableImageDimensionAndCountLimits {
+    NSMutableData *legacyMask = [NSMutableData dataWithLength:97];
+    NSMutableArray *items = [NSMutableArray arrayWithObject:@{
+        @"name": @"Legacy 97", @"width": @97, @"height": @1,
+        @"data": [legacyMask base64EncodedStringWithOptions:0],
+    }];
+    for (NSUInteger index = 0; index < 65; index++) {
+        const uint8_t byte = (uint8_t)index;
+        NSData *mask = [NSData dataWithBytes:&byte length:1];
+        [items addObject:@{
+            @"name": [NSString stringWithFormat:@"Portable %02lu", (unsigned long)index],
+            @"width": @1, @"height": @1,
+            @"data": [mask base64EncodedStringWithOptions:0],
+        }];
+    }
+    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, 420, 400)
+              session:nil
+         storedValues:@{ @"mx-images": MatrixCodeJSONString(@{ @"images": items }) }];
+    NSArray *sanitized = [[view valueForKey:@"images"] objectForKey:@"images"];
+
+    XCTAssertEqual(sanitized.count, (NSUInteger)64);
+    XCTAssertEqualObjects(sanitized.firstObject[@"name"], @"Portable 00");
+    XCTAssertEqualObjects(sanitized.lastObject[@"name"], @"Portable 63");
 }
 
 - (void)testActiveImageVisualFrameStillRendersAsRain {

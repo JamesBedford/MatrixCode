@@ -304,6 +304,32 @@ static void MatrixCodeFixtureFeed(uint32_t *hash, uint32_t value) {
     XCTAssertEqual(sink.targets.count, (NSUInteger)0);
 }
 
+- (void)testTimelineShiftKeepsAnActiveMessageFrozenAcrossPause {
+    MatrixCodeMessageScheduler *scheduler = [[MatrixCodeMessageScheduler alloc]
+        initWithSeed:MatrixCodeMessageSchedulerSeed];
+    MatrixCodeMessageRecordingSink *sink = [[MatrixCodeMessageRecordingSink alloc] init];
+    sink.columns = 30;
+    sink.rows = 40;
+    NSDictionary *document = MatrixCodeMessageDocument(@{
+        @"messages": @[@"HI"],
+        @"appearMs": @500,
+        @"persistenceMs": @1000,
+        @"disappearMs": @500,
+    });
+
+    [scheduler previewOneAtTimeMilliseconds:0 sink:sink document:document];
+    [scheduler updateAtTimeMilliseconds:400 sink:sink];
+    double intensityBeforePause = sink.intensity;
+
+    [scheduler shiftTimelineByMilliseconds:5000];
+    [scheduler updateAtTimeMilliseconds:5400 sink:sink];
+    XCTAssertGreaterThan(sink.targets.count, (NSUInteger)0);
+    XCTAssertEqualWithAccuracy(sink.intensity, intensityBeforePause, 0.00001);
+
+    [scheduler updateAtTimeMilliseconds:7000 sink:sink];
+    XCTAssertEqual(sink.targets.count, (NSUInteger)0);
+}
+
 - (void)testRainSimulationSatisfiesMessageSinkSurface {
     MatrixCodeRainSimulation *simulation =
         [[MatrixCodeRainSimulation alloc] initWithColumns:20 rows:30 seed:1234U];

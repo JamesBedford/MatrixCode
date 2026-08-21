@@ -106,9 +106,9 @@ export function sanitizeControls(raw: unknown): Partial<Controls> {
   return out;
 }
 
-function loadStored(): Partial<Controls> {
+function loadStored(storage: Storage | null): Partial<Controls> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = storage?.getItem(STORAGE_KEY);
     if (!raw) return {};
     return sanitizeControls(JSON.parse(raw) as unknown);
   } catch {
@@ -165,10 +165,21 @@ function syncUrl(state: Controls): void {
 export class ControlsStore {
   private state: Controls;
   private listeners = new Set<Listener>();
+  private readonly storage: Storage | null;
+  private readonly writeUrl: boolean;
+  private readonly notifyNative: boolean;
 
-  constructor() {
-    this.state = { ...DEFAULT_CONTROLS, ...loadStored(), ...loadUrl() };
-    syncUrl(this.state);
+  constructor(options: ControlsStoreOptions = {}) {
+    this.storage = options.storage === undefined ? defaultStorage() : options.storage;
+    this.writeUrl = options.writeUrl !== false;
+    this.notifyNative = options.notifyNative !== false;
+    this.state = {
+      ...DEFAULT_CONTROLS,
+      ...loadStored(this.storage),
+      ...(options.readUrl === false ? {} : loadUrl()),
+      ...sanitizeControls(options.initial),
+    };
+    if (this.writeUrl) syncUrl(this.state);
   }
 
   get(): Controls {
@@ -186,7 +197,7 @@ export class ControlsStore {
     }
     if (changed.size === 0) return;
     this.persist();
-    syncUrl(this.state);
+    if (this.writeUrl) syncUrl(this.state);
     const snapshot = this.get();
     for (const cb of this.listeners) cb(snapshot, changed);
   }
@@ -199,10 +210,27 @@ export class ControlsStore {
   private persist(): void {
     try {
       const value = JSON.stringify(this.state);
-      localStorage.setItem(STORAGE_KEY, value);
-      nativeStorageDidChange(STORAGE_KEY, value);
+      this.storage?.setItem(STORAGE_KEY, value);
+      if (this.storage && this.notifyNative) nativeStorageDidChange(STORAGE_KEY, value);
     } catch {
       /* storage may be unavailable (private mode) — ignore */
     }
+  }
+}
+
+export interface ControlsStoreOptions {
+  initial?: Partial<Controls>;
+  /** null creates an in-memory-only store (used by Wallpaper Engine). */
+  storage?: Storage | null;
+  readUrl?: boolean;
+  writeUrl?: boolean;
+  notifyNative?: boolean;
+}
+
+function defaultStorage(): Storage | null {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
   }
 }

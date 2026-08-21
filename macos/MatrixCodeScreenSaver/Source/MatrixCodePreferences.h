@@ -9,6 +9,7 @@ FOUNDATION_EXPORT MatrixCodeAppPresentationMode const MatrixCodeAppPresentationM
 
 @interface MatrixCodePreferences : NSObject
 
+- (instancetype)initWithDefaults:(NSUserDefaults *)defaults NS_DESIGNATED_INITIALIZER;
 + (MatrixCodeAppPresentationMode)savedAppPresentationMode;
 + (MatrixCodeAppPresentationMode)savedAppPresentationModeInDefaults:(NSUserDefaults *)defaults;
 + (void)setSavedAppPresentationMode:(MatrixCodeAppPresentationMode)mode;

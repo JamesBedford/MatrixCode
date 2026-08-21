@@ -6,6 +6,7 @@
 
 #import "MatrixCodeConfigurationController.h"
 #import "MatrixCodeConstants.h"
+#import "MatrixCodeImageContract.h"
 #import "MatrixCodeIntroOverlayView.h"
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodePreferences.h"
@@ -227,21 +228,6 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     } mutableCopy];
 }
 
-static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
-    return [@{
-        @"images": [NSMutableArray array],
-        @"enabled": @NO,
-        @"frequencyMs": @14000,
-        @"persistenceMs": @12000,
-        @"appearMs": @4500,
-        @"disappearMs": @4500,
-        @"flickerOut": @YES,
-        @"brightnessFade": @NO,
-        @"imageScale": @0.72,
-        @"imagePlacementJitter": @0.35,
-    } mutableCopy];
-}
-
 + (void)initialize {
     if (self == MatrixCodeRainHostView.class) {
         MatrixCodeClaimedScreenIDs = [NSMutableSet set];
@@ -458,6 +444,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
         if (requiresWarmup) [self.metalView prepareReducedMotionFrame];
     }
     self.reducedMotion = reducedMotion;
+    [self.metalView setReducedMotionEnabled:reducedMotion];
     [self refreshAnimationForEnvironment];
 }
 
@@ -657,6 +644,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
         [self showMetalFailureNotice];
         return;
     }
+    [self.metalView setReducedMotionEnabled:self.reducedMotion];
     [self.metalFailureNotice removeFromSuperview];
     self.metalFailureNotice = nil;
     [self.metalView configureFramePacingForScreen:screen ?: self.window.screen];
@@ -1032,11 +1020,31 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
 }
 
 - (void)startAnimation {
+    BOOL startsNewActivation = !self.hostActive;
     self.hostActive = YES;
+    // A ScreenSaverView can be reused for several activations. Treat each paired
+    // stop/start as a fresh browser-style load instead of retaining the previous
+    // run's wall-clock origin; otherwise replayAtDate: is immediately completed
+    // by the first frame after a later activation. Shared multi-display sessions
+    // keep their common epoch so every display remains deterministic.
+    if (startsNewActivation && !self.synchronizedMultiDisplayTimeline) {
+        self.runTimelineStarted = NO;
+    }
     [self observeCurrentWindowGeometry];
     [self syncPresentationLayoutToWindow];
     [self ensureMetalView];
     NSDictionary<NSString *, NSString *> *storedValues = [self.preferences storedValues];
+    if (startsNewActivation && !self.synchronizedMultiDisplayTimeline) {
+        NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
+            [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]]);
+        // Reduced motion abandons choreography only for the current activation.
+        // A later activation re-evaluates the persisted load ramp and intro just
+        // like a new browser load does.
+        self.reducedMotionAbandonedRainChoreography = self.reducedMotion;
+        self.rampDuration = self.reducedMotion
+            ? 0
+            : [controls[@"rampUpMs"] doubleValue] / 1000.0;
+    }
     [self.metalView reloadStoredValues:storedValues];
     if (self.metalView) [self prepareRunTimelineForAnimationStartIfNeeded];
     self.tokenResolver = [[MatrixCodeTokenResolver alloc] initWithStoredValues:storedValues
@@ -1044,13 +1052,19 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     [self.introOverlay reloadStoredValues:storedValues tokenResolver:self.tokenResolver];
     self.introScheduled = self.introOverlay.enabled &&
         !self.reducedMotionAbandonedRainChoreography;
-    if (self.introScheduled && !self.introOverlay.rainDuringIntro) {
+    BOOL activationStartsFromEmpty = !self.reducedMotion &&
+        (self.rampDuration > 0 ||
+         (self.introScheduled && !self.introOverlay.rainDuringIntro));
+    if (startsNewActivation && !self.synchronizedMultiDisplayTimeline) {
+        self.rainTimelineRequiresReducedMotionWarmup = activationStartsFromEmpty;
+        [self.metalView restartDeterministicRainFromEmpty:activationStartsFromEmpty];
+    } else if (self.introScheduled && !self.introOverlay.rainDuringIntro) {
         self.rainTimelineRequiresReducedMotionWarmup = YES;
     }
     // Re-arm rather than resume: every launch and every screen-saver activation replays the
     // intro from the top while it is enabled.
-    if (self.introScheduled && !self.reducedMotion &&
-        self.introOverlay && !self.introOverlay.playing) {
+    if (startsNewActivation && self.introScheduled && !self.reducedMotion &&
+        self.introOverlay) {
         [self.introOverlay replayAtDate:self.runStartDate];
     }
     if (![self animationShouldRun]) {
@@ -1341,11 +1355,8 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultImagesDocument(void) {
     }
     NSMutableDictionary<NSString *, NSString *> *values = [self storedValuesForShortcutMutation];
     NSDictionary *stored = MatrixCodeRainHostJSONObject(values[@"mx-images"], NSDictionary.class);
-    NSMutableDictionary *images = MatrixCodeRainHostDefaultImagesDocument();
-    if (stored) {
-        [images addEntriesFromDictionary:stored];
-    }
-    BOOL enabled = MatrixCodeRainHostBool(images, @"enabled", NO);
+    NSMutableDictionary *images = [MatrixCodeSanitizeImagesDocument(stored) mutableCopy];
+    BOOL enabled = [images[@"enabled"] boolValue];
     BOOL nextEnabled = !enabled;
     images[@"enabled"] = MatrixCodeRainHostBoolObject(nextEnabled);
     values[@"mx-images"] = MatrixCodeRainHostJSONString(images);

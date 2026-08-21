@@ -1,0 +1,60 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Matrix Code"
+      Manufacturer="$(var.Publisher)"
+      Version="$(var.Version)"
+      UpgradeCode="$(var.UpgradeCode)"
+      Scope="perMachine"
+      Language="1033">
+    <SummaryInformation Description="Native Matrix Code application and Windows screen saver" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of Matrix Code is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="MatrixCodeIcon" SourceFile="$(var.SourceRoot)\resources\MatrixCode.ico" />
+    <Property Id="ARPPRODUCTICON" Value="MatrixCodeIcon" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Matrix Code">
+        <Component Id="ApplicationComponent" Guid="{3150D8E4-8C9B-4E68-9535-C9225F2A06A3}" Bitness="always64">
+          <File Id="ApplicationFile" Source="$(var.StageDir)\MatrixCode.exe" KeyPath="yes">
+            <Shortcut Id="ApplicationShortcut" Directory="MatrixCodeProgramMenuFolder" Name="Matrix Code"
+                      Description="Film-accurate Matrix digital rain" WorkingDirectory="INSTALLFOLDER" />
+          </File>
+          <File Id="ReadmeFile" Source="$(var.StageDir)\README.md" />
+          <File Id="LicenseFile" Source="$(var.StageDir)\LICENSE.txt" />
+          <File Id="LicensesFile" Source="$(var.StageDir)\LICENSES.md" />
+        </Component>
+        <Component Id="SettingsShortcutComponent" Guid="{3C022ABC-EF75-4C5E-A1C2-8853445869D0}" Bitness="always64">
+          <Shortcut Id="SettingsShortcut" Directory="MatrixCodeProgramMenuFolder" Name="Configure Matrix Code"
+                    Target="[INSTALLFOLDER]MatrixCode.exe" Arguments="--settings"
+                    Description="Configure Matrix Code" WorkingDirectory="INSTALLFOLDER" />
+          <RegistryValue Root="HKLM" Key="Software\MatrixCode" Name="InstallDirectory"
+                         Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="System64Folder">
+      <Component Id="ScreenSaverComponent" Guid="{9AD66484-6221-45DA-86C9-2173A864522D}" Bitness="always64">
+        <File Id="ScreenSaverFile" Source="$(var.StageDir)\Matrix Code.scr" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="MatrixCodeProgramMenuFolder" Name="Matrix Code">
+        <Component Id="ProgramMenuCleanup" Guid="{02A16679-9F17-48B5-8ACD-F42916229D13}" Bitness="always64">
+          <RemoveFolder Id="RemoveMatrixCodeProgramMenu" On="uninstall" />
+          <RegistryValue Root="HKLM" Key="Software\MatrixCode" Name="ProgramMenu"
+                         Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Complete" Title="Matrix Code" Level="1">
+      <ComponentRef Id="ApplicationComponent" />
+      <ComponentRef Id="SettingsShortcutComponent" />
+      <ComponentRef Id="ScreenSaverComponent" />
+      <ComponentRef Id="ProgramMenuCleanup" />
+    </Feature>
+  </Package>
+</Wix>

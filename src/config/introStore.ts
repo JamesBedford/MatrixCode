@@ -81,14 +81,16 @@ export function toTypeConfig(s: IntroScript): TypeConfig {
 /** localStorage-backed store for the user's custom intro script. */
 export class IntroStore {
   private script: IntroScript;
+  private readonly storage: Storage | null;
 
-  constructor() {
-    this.script = this.load();
+  constructor(storage: Storage | null = defaultStorage(), initial?: IntroScript) {
+    this.storage = storage;
+    this.script = initial === undefined ? this.load() : sanitizeIntro(initial);
   }
 
   private load(): IntroScript {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = this.storage?.getItem(STORAGE_KEY);
       if (!raw) return cloneIntro(DEFAULT_INTRO);
       return sanitizeIntro(JSON.parse(raw) as unknown);
     } catch {
@@ -104,8 +106,8 @@ export class IntroStore {
     this.script = sanitizeIntro(script);
     try {
       const value = JSON.stringify(this.script);
-      localStorage.setItem(STORAGE_KEY, value);
-      nativeStorageDidChange(STORAGE_KEY, value);
+      this.storage?.setItem(STORAGE_KEY, value);
+      if (this.storage) nativeStorageDidChange(STORAGE_KEY, value);
     } catch {
       /* storage may be unavailable (private mode) — ignore */
     }
@@ -114,11 +116,19 @@ export class IntroStore {
   reset(): IntroScript {
     this.script = cloneIntro(DEFAULT_INTRO);
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      nativeStorageDidChange(STORAGE_KEY, null);
+      this.storage?.removeItem(STORAGE_KEY);
+      if (this.storage) nativeStorageDidChange(STORAGE_KEY, null);
     } catch {
       /* ignore */
     }
     return this.get();
+  }
+}
+
+function defaultStorage(): Storage | null {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
   }
 }

@@ -1137,6 +1137,7 @@ restrictedToMultiMonitorControls:YES];
         @"glyphRate": @5,
         @"mirror": @YES,
         @"preset": @"amber",
+        @"customColor": @"#123456",
     };
     NSDictionary *messages = @{
         @"enabled": @YES,
@@ -1193,6 +1194,7 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertEqualWithAccuracy([storedControls[@"glyphRate"] doubleValue], 1, 0.001);
     XCTAssertEqual([storedControls[@"mirror"] boolValue], NO);
     XCTAssertEqualObjects(storedControls[@"preset"], @"amber");
+    XCTAssertEqualObjects(storedControls[@"customColor"], @"#123456");
     XCTAssertEqualObjects(storedMessages[@"messages"], (@[@"KEEP"]));
 
     NSView *updatedCard = MatrixCodeDescendantWithIdentifier(

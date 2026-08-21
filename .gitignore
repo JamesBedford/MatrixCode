@@ -5,6 +5,7 @@ dist-ssr
 .DS_Store
 .vite
 coverage
+windows/MatrixCode/out/
 .claude/
 __pycache__/
 .pytest_cache/

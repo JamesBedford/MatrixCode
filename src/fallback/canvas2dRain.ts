@@ -1,6 +1,16 @@
 import { createRng } from "../util/rng.ts";
 import { getPreset } from "../config/colorPresets.ts";
-import type { PresetName } from "../types.ts";
+import type { ImagesDoc, PresetName } from "../types.ts";
+import type { ActiveImageFrame } from "../sim/imageScheduler.ts";
+import { imageUnit } from "../sim/imageScheduler.ts";
+import {
+  imageCellIdentity,
+  imageEdgeFeather,
+  imageFallingGate,
+  imageRevealGeometry,
+  imageSignal,
+  sampleImageMask,
+} from "../sim/imageReveal.ts";
 
 // Classic Canvas2D digital rain used only when WebGL2 is unavailable. Lower
 // fidelity (no real bloom) but still authentic: mirrored half-width katakana,
@@ -9,6 +19,19 @@ import type { PresetName } from "../types.ts";
 export interface Canvas2dRainHandle {
   start: () => void;
   stop: () => void;
+  /** Paint a deterministic, warmed rain frame without leaving an animation running. */
+  renderStatic: (nowMs?: number) => void;
+}
+
+export interface CanvasImageRevealSource {
+  frame: ActiveImageFrame | null;
+  doc: ImagesDoc;
+  seed: number;
+}
+
+export interface CanvasFrameDecision {
+  render: boolean;
+  elapsedMs: number;
 }
 
 export function shouldSparkleGoldHead(preset: PresetName, random: () => number): boolean {
@@ -24,9 +47,11 @@ export function startCanvas2dRain(
   preset: PresetName = "classic",
   glyphScale = 1,
   customColor?: string,
+  imageSource?: (nowMs: number) => CanvasImageRevealSource,
+  frameGate?: (nowMs: number) => CanvasFrameDecision,
 ): Canvas2dRainHandle {
   const ctx0 = canvas.getContext("2d");
-  if (!ctx0) return { start: () => {}, stop: () => {} };
+  if (!ctx0) return { start: () => {}, stop: () => {}, renderStatic: () => {} };
   const ctx = ctx0; // non-null, captured by the animation closures
 
   const colors = getPreset(preset, customColor);
@@ -37,6 +62,7 @@ export function startCanvas2dRain(
   const rng = createRng(7);
   const sparkleRng = createRng(17);
   const fontSize = 18 * glyphScale;
+  const staticWarmupFrames = 150;
   let cols = 0;
   let drops: number[] = [];
   let speeds: number[] = [];
@@ -57,10 +83,53 @@ export function startCanvas2dRain(
   let lastH = canvas.height;
 
   const bg = rgb(colors.background, 1);
-  const fade = rgb(colors.background, 0.08);
 
-  function frame(): void {
-    if (!running) return;
+  function drawImageReveal(nowMs: number, rows: number): void {
+    const source = imageSource?.(nowMs);
+    const active = source?.frame;
+    if (!source || !active) return;
+    const geometry = imageRevealGeometry(active, source.doc, cols, rows);
+    const firstCol = Math.max(0, Math.floor(geometry.originCol));
+    const lastCol = Math.min(cols - 1, Math.ceil(geometry.originCol + geometry.cols));
+    const firstRow = Math.max(0, Math.floor(geometry.originRow));
+    const lastRow = Math.min(Math.ceil(rows) - 1, Math.ceil(geometry.originRow + geometry.rows));
+    ctx.save();
+    ctx.font = `${fontSize}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = rgb(colors.bright, 1);
+    ctx.shadowColor = rgb(colors.bright, 1);
+    ctx.shadowBlur = 9;
+    for (let row = firstRow; row <= lastRow; row++) {
+      for (let col = firstCol; col <= lastCol; col++) {
+        const u = (col + 0.5 - geometry.originCol) / geometry.cols;
+        const v = (row + 0.5 - geometry.originRow) / geometry.rows;
+        if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+        const luminance = sampleImageMask(active.mask, active.image.width, active.image.height, u, v);
+        const signal = imageSignal(luminance) * imageEdgeFeather(u, v, geometry.featherU, geometry.featherV);
+        if (signal <= 0.001) continue;
+        const identity = imageCellIdentity(source.seed, col, row);
+        if (
+          active.scramble > 0 &&
+          imageUnit((identity ^ Math.imul(active.animationBucket, 0x9e3779b9) ^ 0xb4b82e39) >>> 0) < active.scramble
+        ) continue;
+        const gate = imageFallingGate(col, row, active.rainElapsed, source.seed) * 0.48;
+        const influence = Math.min(1, signal * gate * active.intensity);
+        if (influence <= 0.001) continue;
+        const levels = "·:+*MW";
+        const glyph = levels[Math.min(levels.length - 1, Math.floor(luminance * levels.length))]!;
+        ctx.globalAlpha = Math.max(0.08, influence);
+        ctx.save();
+        ctx.translate(col * fontSize + fontSize / 2, row * fontSize + fontSize / 2);
+        ctx.scale(-1, 1);
+        ctx.fillText(glyph, 0, 0);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  function paint(nowMs: number, frameScale: number, includeImageReveal = true): void {
     if (canvas.width !== lastW || canvas.height !== lastH) {
       lastW = canvas.width;
       lastH = canvas.height;
@@ -70,7 +139,8 @@ export function startCanvas2dRain(
     }
 
     // Translucent fade leaves decaying trails.
-    ctx.fillStyle = fade;
+    const fadeAlpha = frameGate ? 1 - Math.pow(1 - 0.08, frameScale) : 0.08;
+    ctx.fillStyle = rgb(colors.background, fadeAlpha);
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.font = `${fontSize}px monospace`;
@@ -100,11 +170,22 @@ export function startCanvas2dRain(
         ctx.fillText(ch, 0, 0);
         ctx.restore();
       }
-      drops[i]! += speeds[i]!;
+      drops[i]! += speeds[i]! * frameScale;
       if (y * fontSize > canvas.height && rng() > 0.975) drops[i] = Math.floor(rng() * -20);
       if (y > rows + 40) drops[i] = Math.floor(rng() * -20);
     }
+    if (includeImageReveal) drawImageReveal(nowMs, rows);
+  }
+
+  function frame(nowMs: number): void {
+    if (!running) return;
     raf = requestAnimationFrame(frame);
+    const decision = frameGate?.(nowMs);
+    if (decision && !decision.render) return;
+    const frameScale = decision && decision.elapsedMs > 0
+      ? Math.min(8, decision.elapsedMs / (1000 / 60))
+      : 1;
+    paint(nowMs, frameScale);
   }
 
   ctx.fillStyle = bg;
@@ -121,6 +202,25 @@ export function startCanvas2dRain(
     stop: () => {
       running = false;
       cancelAnimationFrame(raf);
+    },
+    renderStatic: (nowMs = performance.now()) => {
+      const wasRunning = running;
+      if (wasRunning) {
+        running = false;
+        cancelAnimationFrame(raf);
+      }
+      // The animated fallback normally enters from above the viewport. A reduced-motion
+      // load has no RAFs in which to reach the screen, so advance the same deterministic
+      // state offscreen and retain the resulting representative frame.
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let index = 0; index < staticWarmupFrames; index++) {
+        paint(nowMs, 1, index === staticWarmupFrames - 1);
+      }
+      if (wasRunning) {
+        running = true;
+        raf = requestAnimationFrame(frame);
+      }
     },
   };
 }

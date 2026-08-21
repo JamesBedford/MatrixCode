@@ -70,6 +70,9 @@ typedef NSString * _Nonnull (^MatrixCodeMessageTextResolver)(NSString *rawText);
 /** Cancel the current activation and arm the new document on the next update. */
 - (void)configureWithDocument:(NSDictionary<NSString *, id> *)document;
 
+/** Keep all scheduled phases stationary while an application-level pause is active. */
+- (void)shiftTimelineByMilliseconds:(double)durationMilliseconds;
+
 - (void)updateAtTimeMilliseconds:(double)nowMilliseconds
                             sink:(id<MatrixCodeMessageSink>)sink;
 

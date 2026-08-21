@@ -268,6 +268,26 @@ describe("MessageScheduler.fire (via previewOne)", () => {
 });
 
 describe("MessageScheduler.update scheduling", () => {
+  it("keeps an active message frozen while its timeline is shifted across a pause", () => {
+    const s = sched();
+    const sim = new FakeSim(30, 40);
+    s.previewOne(0, sim, doc({
+      messages: ["HI"],
+      appearMs: 500,
+      persistenceMs: 1000,
+      disappearMs: 500,
+    }));
+
+    s.update(400, sim);
+    const intensityBeforePause = sim.intensity;
+    s.shiftTimelineBy(5000);
+    s.update(5400, sim);
+    expect(sim.last).not.toBeNull();
+    expect(sim.intensity).toBeCloseTo(intensityBeforePause, 5);
+    s.update(7000, sim);
+    expect(sim.last).toBeNull();
+  });
+
   it("fires after the frequency gap and clears after persistence", () => {
     const s = sched(5);
     const sim = new FakeSim(30, 40);

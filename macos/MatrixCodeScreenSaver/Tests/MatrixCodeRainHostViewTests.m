@@ -35,6 +35,7 @@
 @property(nonatomic) NSUInteger rewindCount;
 @property(nonatomic) NSUInteger drawCount;
 @property(nonatomic) NSUInteger prepareReducedMotionCount;
+@property(nonatomic) BOOL reducedMotionEnabled;
 @property(nonatomic) double densityScale;
 @property(nonatomic) NSTimeInterval rainElapsed;
 @property(nonatomic) double currentRenderScale;
@@ -472,6 +473,7 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     [hostView applyReducedMotionPreference:YES];
 
     XCTAssertEqual(probe.prepareReducedMotionCount, 1u);
+    XCTAssertTrue(probe.reducedMotionEnabled);
     XCTAssertEqualObjects(probe.events,
                           (@[@"prepare", @"active:0", @"density", @"draw"]));
     XCTAssertEqualWithAccuracy(probe.densityScale, 1, 0.0001);
@@ -486,6 +488,7 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
 
     [hostView applyReducedMotionPreference:NO];
 
+    XCTAssertFalse(probe.reducedMotionEnabled);
     XCTAssertEqualObjects(probe.animationStates, (@[@NO, @YES]));
     XCTAssertEqualWithAccuracy([[hostView valueForKey:@"rampDuration"] doubleValue], 0, 0.0001);
     XCTAssertFalse([[hostView valueForKey:@"introScheduled"] boolValue]);
@@ -634,6 +637,11 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     [hostView startAnimation];
     XCTAssertTrue(overlay.playing);
     XCTAssertTrue([[hostView valueForKey:@"introScheduled"] boolValue]);
+    XCTAssertEqual(probe.deterministicRestartCount, 1u);
+    XCTAssertFalse(probe.deterministicRestartStartsFromEmpty);
+    NSDate *firstActivationStart = [hostView valueForKey:@"runStartDate"];
+    XCTAssertGreaterThan(firstActivationStart.timeIntervalSince1970,
+                         runStartDate.timeIntervalSince1970);
 
     // Running the intro to completion must not consume it: the next activation replays it.
     [overlay skip];
@@ -643,6 +651,44 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     [hostView startAnimation];
     XCTAssertTrue(overlay.playing);
     XCTAssertTrue([[hostView valueForKey:@"introScheduled"] boolValue]);
+    XCTAssertEqual(probe.deterministicRestartCount, 2u);
+    XCTAssertFalse(probe.deterministicRestartStartsFromEmpty);
+    NSDate *secondActivationStart = [hostView valueForKey:@"runStartDate"];
+    XCTAssertGreaterThanOrEqual(secondActivationStart.timeIntervalSince1970,
+                                firstActivationStart.timeIntervalSince1970);
+
+    // Merely setting `playing` is insufficient: a stale first-activation start
+    // date makes the first real frame finish the sequence immediately.
+    [overlay updateAtDate:[NSDate dateWithTimeIntervalSinceNow:0.05]
+          framesPerSecond:60];
+    XCTAssertTrue(overlay.playing);
+}
+
+- (void)testFreshActivationRestoresPersistedRampAfterPriorChoreographyWasAbandoned {
+    NSDictionary *values = @{
+        @"mx-controls": MatrixCodeJSONString(@{@"rampUpMs": @8000}),
+        @"mx-intro": @"{\"enabled\":false}",
+    };
+    [self.preferences commitValues:values];
+    MatrixCodeRainHostView *hostView =
+        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
+                                                 mode:MatrixCodeRainHostModeScreenSaverPlayback
+                                              session:nil
+                                suppressesIntroOverlay:YES];
+    MatrixCodeRampMetalProbe *probe = [[MatrixCodeRampMetalProbe alloc] init];
+    probe.preferredFramesPerSecond = 60;
+    [hostView setValue:probe forKey:@"metalView"];
+    [hostView setValue:@NO forKey:@"reducedMotion"];
+    [hostView setValue:@YES forKey:@"reducedMotionAbandonedRainChoreography"];
+    [hostView setValue:@0 forKey:@"rampDuration"];
+
+    [hostView startAnimation];
+
+    XCTAssertEqualWithAccuracy([[hostView valueForKey:@"rampDuration"] doubleValue],
+                               8, 0.0001);
+    XCTAssertFalse([[hostView valueForKey:@"reducedMotionAbandonedRainChoreography"] boolValue]);
+    XCTAssertEqual(probe.deterministicRestartCount, 1u);
+    XCTAssertTrue(probe.deterministicRestartStartsFromEmpty);
 }
 
 - (void)testDisabledIntroNeverStarts {

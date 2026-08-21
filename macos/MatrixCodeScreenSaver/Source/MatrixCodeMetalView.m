@@ -9,6 +9,7 @@
 
 #import "MatrixCodeConstants.h"
 #import "MatrixCodeAdaptiveResolution.h"
+#import "MatrixCodeImageContract.h"
 #import "MatrixCodeSession.h"
 #import "MatrixCodeMessageScheduler.h"
 #import "MatrixCodeRainLifecycle.h"
@@ -87,6 +88,9 @@ static const size_t MatrixCodeAtlasCellPixels = 64;
 static const uint32_t MatrixCodeNormalRainSeed = 0x1a2b3cU;
 static const uint32_t MatrixCodeRainLaneSeedMultiplier = 0x9e3779b9U;
 static const NSInteger MatrixCodeMaximumRainLanes = 8;
+// Covers more than 15 hours even at the shortest legal reveal+gap cadence; the guard is therefore
+// reserved for genuinely stale/hostile epochs rather than ordinary frame stalls or overnight sleep.
+static const NSUInteger MatrixCodeMaximumSynchronizedImageFastForwardSteps = 65536;
 static const double MatrixCodeOverlapOnsetDensity = 20;
 static const double MatrixCodeMaximumDensity = 100;
 static const NSTimeInterval MatrixCodeRainWarmupSeconds = 2.5;
@@ -199,18 +203,6 @@ static NSInteger MatrixCodeSimulationStepPlan(NSTimeInterval elapsed,
     return steps;
 }
 
-static uint32_t MatrixCodeHash(uint32_t value) {
-    value ^= value >> 16;
-    value *= 0x7feb352dU;
-    value ^= value >> 15;
-    value *= 0x846ca68bU;
-    return value ^ (value >> 16);
-}
-
-static float MatrixCodeUnit(uint32_t value) {
-    return (float)(MatrixCodeHash(value) & 0x00ffffffU) / 16777216.0f;
-}
-
 static double MatrixCodeVanDerCorput(NSUInteger value) {
     double result = 0;
     double denominator = 1;
@@ -220,12 +212,6 @@ static double MatrixCodeVanDerCorput(NSUInteger value) {
         value /= 2;
     }
     return result;
-}
-
-static uint32_t MatrixCodeCellIdentity(uint32_t laneSeed, NSInteger globalColumn, NSInteger globalRow) {
-    uint32_t column = (uint32_t)(int32_t)globalColumn;
-    uint32_t row = (uint32_t)(int32_t)globalRow;
-    return MatrixCodeHash(laneSeed ^ column * 73856093U ^ row * 19349663U);
 }
 
 static double MatrixCodeNumber(NSDictionary *dictionary,
@@ -278,67 +264,6 @@ static NSDictionary<NSString *, id> *MatrixCodeStoredMessagesDocument(
         [object isKindOfClass:NSDictionary.class] ? object : @{});
 }
 
-static NSMutableDictionary *MatrixCodeSanitizedRenderImageItem(id item) {
-    if (![item isKindOfClass:NSDictionary.class]) return nil;
-    NSDictionary *dictionary = item;
-    NSInteger width = (NSInteger)MatrixCodeNumber(dictionary, @"width", 0, 1, 128);
-    NSInteger height = (NSInteger)MatrixCodeNumber(dictionary, @"height", 0, 1, 128);
-    if (width <= 0 || height <= 0) return nil;
-    id rawData = dictionary[@"data"];
-    if (![rawData isKindOfClass:NSString.class]) return nil;
-    NSString *encoded = rawData;
-    if (encoded.length > 49152) return nil;
-    NSData *mask = [[NSData alloc] initWithBase64EncodedString:encoded options:0];
-    if (!mask || mask.length != (NSUInteger)(width * height)) return nil;
-    NSString *name = [dictionary[@"name"] isKindOfClass:NSString.class]
-        ? dictionary[@"name"] : @"Image";
-    return [@{
-        @"name": [name substringToIndex:MIN((NSUInteger)80, name.length)],
-        @"width": @(width),
-        @"height": @(height),
-        @"data": encoded,
-    } mutableCopy];
-}
-
-static NSArray<NSDictionary *> *MatrixCodeSanitizedRenderImages(NSDictionary *dictionary) {
-    NSArray *configured = [dictionary[@"images"] isKindOfClass:NSArray.class]
-        ? dictionary[@"images"] : @[];
-    NSMutableArray<NSDictionary *> *images = [NSMutableArray array];
-    for (NSUInteger index = 0; index < configured.count; index++) {
-        NSMutableDictionary *image = MatrixCodeSanitizedRenderImageItem(configured[index]);
-        if (image) [images addObject:image];
-    }
-    return images;
-}
-
-static float MatrixCodeImageSampleMask(NSData *mask, NSInteger width, NSInteger height, float u, float v) {
-    if (!mask || width <= 0 || height <= 0 ||
-        mask.length != (NSUInteger)(width * height) ||
-        u < 0 || u > 1 || v < 0 || v > 1) {
-        return 0;
-    }
-    const uint8_t *bytes = mask.bytes;
-    float x = fminf(width - 1, fmaxf(0, u * (width - 1)));
-    float y = fminf(height - 1, fmaxf(0, v * (height - 1)));
-    NSInteger x0 = (NSInteger)floorf(x);
-    NSInteger y0 = (NSInteger)floorf(y);
-    NSInteger x1 = MIN(width - 1, x0 + 1);
-    NSInteger y1 = MIN(height - 1, y0 + 1);
-    float tx = x - x0;
-    float ty = y - y0;
-    float a = bytes[y0 * width + x0] / 255.0f;
-    float b = bytes[y0 * width + x1] / 255.0f;
-    float c = bytes[y1 * width + x0] / 255.0f;
-    float d = bytes[y1 * width + x1] / 255.0f;
-    return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
-}
-
-static float MatrixCodeSmoothstep(float edge0, float edge1, float value) {
-    if (edge0 == edge1) return value < edge0 ? 0 : 1;
-    float t = fminf(1, fmaxf(0, (value - edge0) / (edge1 - edge0)));
-    return t * t * (3.0f - 2.0f * t);
-}
-
 #if DEBUG
 static float MatrixCodeStepChanceForReferenceRateChance(float chance,
                                                         float elapsed,
@@ -349,69 +274,6 @@ static float MatrixCodeStepChanceForReferenceRateChance(float chance,
     return 1.0f - expf(logf(1.0f - p) * referenceRate * elapsed);
 }
 #endif
-
-static float MatrixCodeImageSignalForLuminance(float luminance) {
-    float value = fminf(1, fmaxf(0, luminance));
-    float nonEmpty = MatrixCodeSmoothstep(0.035f, 0.12f, value);
-    float contrastSignal = fabsf(value - 0.5f) * 2.0f * nonEmpty;
-    float brightSignal = value * 0.72f;
-    return fmaxf(contrastSignal, brightSignal) * nonEmpty;
-}
-
-static float MatrixCodeImageEdgeFeather(float u, float v, float featherU, float featherV) {
-    float horizontal = fminf(MatrixCodeSmoothstep(0, featherU, u),
-                             MatrixCodeSmoothstep(0, featherU, 1.0f - u));
-    float vertical = fminf(MatrixCodeSmoothstep(0, featherV, v),
-                           MatrixCodeSmoothstep(0, featherV, 1.0f - v));
-    return horizontal * vertical;
-}
-
-static float MatrixCodeImageFallingGate(NSInteger globalColumn,
-                                        NSInteger globalRow,
-                                        float rainElapsed,
-                                        uint32_t seed) {
-    uint32_t columnKey = seed ^ (uint32_t)(int32_t)globalColumn * 0x9e3779b9U ^ 0x748f4a15U;
-    float speed = 4.5f + MatrixCodeUnit(columnKey ^ 0x85ebca6bU) * 8.0f;
-    float span = 9.0f + MatrixCodeUnit(columnKey ^ 0x27d4eb2dU) * 12.0f;
-    float offset = MatrixCodeUnit(columnKey ^ 0xd3a2646cU) * span;
-    float phase = fmodf((float)globalRow - rainElapsed * speed + offset, span);
-    if (phase < 0) phase += span;
-    float head = expf(-phase * 0.55f);
-    float afterglow = phase < span * 0.42f ? powf(1.0f - phase / (span * 0.42f), 2.0f) : 0;
-    return fminf(1, fmaxf(head, afterglow * 0.65f));
-}
-
-static NSInteger MatrixCodeImageGlyphForLuminance(float luminance,
-                                                  uint32_t key,
-                                                  NSString *glyphMode) {
-    float value = fminf(1, fmaxf(0, luminance));
-    NSInteger level = MIN(6, MAX(0, (NSInteger)floorf(value * 7.0f)));
-    if ([glyphMode isEqualToString:@"binary"]) {
-        return MatrixCodeRainDigitStartIndex() + (value >= 0.58f ? 0 : 1);
-    }
-    if ([glyphMode isEqualToString:@"digits"]) {
-        static const NSInteger digits[7] = {1, 7, 4, 2, 5, 8, 0};
-        return MatrixCodeRainDigitStartIndex() + digits[level];
-    }
-    if ([glyphMode isEqualToString:@"latin"]) {
-        static const NSInteger letters[7] = {8, 11, 19, 0, 13, 12, 22};
-        return MatrixCodeRainLatinStartIndex() + letters[level];
-    }
-    if ([glyphMode isEqualToString:@"symbols"]) {
-        static const NSInteger symbols[7] = {1, 6, 4, 5, 2, 3, 0};
-        return MatrixCodeRainSymbolsStartIndex() + symbols[level];
-    }
-    if ([glyphMode isEqualToString:@"katakana"]) {
-        return (NSInteger)(MatrixCodeUnit(key ^ (uint32_t)level * 0x45d9f3bU) *
-            MatrixCodeRainDigitStartIndex());
-    }
-    if (value < 0.16f) return MatrixCodeRainSymbolsStartIndex() + 1;
-    if (value < 0.32f) return MatrixCodeRainDigitStartIndex() + 1;
-    if (value < 0.48f) return MatrixCodeRainLatinStartIndex() + 8;
-    if (value < 0.64f) return MatrixCodeRainLatinStartIndex() + 12;
-    return (NSInteger)(MatrixCodeUnit(key ^ (uint32_t)level * 0x45d9f3bU) *
-        MatrixCodeRainDigitStartIndex());
-}
 
 static NSString *MatrixCodeGlyphMode(NSDictionary *dictionary) {
     id value = dictionary[@"glyphMode"];
@@ -832,8 +694,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 @property(nonatomic, copy) NSDictionary<NSString *, id> *session;
 @property(nonatomic) uint32_t seed;
 @property(nonatomic) NSTimeInterval epochSeconds;
+@property(nonatomic) NSTimeInterval imageEpochSeconds;
 @property(nonatomic) NSTimeInterval tokenRunStartSeconds;
 @property(nonatomic) BOOL animationActive;
+@property(nonatomic) BOOL reducedMotionEnabled;
 @property(nonatomic) NSInteger atlasColumns;
 @property(nonatomic) NSInteger atlasRows;
 @property(nonatomic) NSInteger glyphCount;
@@ -998,6 +862,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.epochSeconds = [session[@"epoch"] respondsToSelector:@selector(doubleValue)]
         ? [session[@"epoch"] doubleValue] / 1000.0
         : NSDate.date.timeIntervalSince1970;
+    self.imageEpochSeconds = self.epochSeconds;
     self.tokenRunStartSeconds = self.epochSeconds;
 
     self.commandQueue = [device newCommandQueue];
@@ -1120,6 +985,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.messageDraftPreviewActive = NO;
     self.currentMessageRegions = nil;
 
+    // A standalone restart represents a fresh browser-style load. The host sets
+    // tokenRunStartSeconds first, so use the same origin for deterministic image
+    // scheduling instead of retaining the preceding screen-saver activation.
+    self.imageEpochSeconds = self.tokenRunStartSeconds;
     self.activeImage = nil;
     self.activeImageMaskData = nil;
     self.activeImageWidth = 0;
@@ -1132,8 +1001,8 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.activeImagePlacementY = 0.5;
     double imageFrequency = MatrixCodeNumber(
         self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0;
-    self.nextImageFire = self.epochSeconds + imageFrequency *
-        (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ 0x6d2b79f5U));
+    self.nextImageFire = self.imageEpochSeconds + imageFrequency *
+        (0.75 + 0.5 * MatrixCodeImageUnit(self.seed ^ 0x6d2b79f5U));
 
     [self.adaptiveResolution reset];
     self.renderScale = 1;
@@ -1153,6 +1022,16 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     }
     self.tokenRunStartSeconds += interval;
     [self.tokenResolver shiftRunStartBy:interval];
+    [self.messageScheduler shiftTimelineByMilliseconds:interval * 1000.0];
+    // Match ImageScheduler.shiftTimelineBy: local image timing and its deterministic reveal
+    // phase freeze across a user pause. Shared multi-display sessions intentionally remain on
+    // their common wall-clock epoch and return above.
+    self.imageEpochSeconds += interval;
+    if (self.nextImageFire != 0) self.nextImageFire += interval;
+    if (self.activeImage) {
+        self.activeImageStart += interval;
+        self.activeImageEnd += interval;
+    }
 }
 
 - (MatrixCodeMessageScheduler *)newMessageScheduler {
@@ -1254,19 +1133,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         id object = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
         if ([object isKindOfClass:NSDictionary.class]) images = object;
     }
-    NSDictionary *storedImages = images ?: @{};
-    self.images = @{
-        @"images": MatrixCodeSanitizedRenderImages(storedImages),
-        @"enabled": @(MatrixCodeBool(storedImages, @"enabled", NO)),
-        @"frequencyMs": @(MatrixCodeNumber(storedImages, @"frequencyMs", 14000, 500, 600000)),
-        @"persistenceMs": @(MatrixCodeNumber(storedImages, @"persistenceMs", 12000, 500, 600000)),
-        @"appearMs": @(MatrixCodeNumber(storedImages, @"appearMs", 4500, 0, 600000)),
-        @"disappearMs": @(MatrixCodeNumber(storedImages, @"disappearMs", 4500, 0, 600000)),
-        @"flickerOut": @(MatrixCodeBool(storedImages, @"flickerOut", YES)),
-        @"brightnessFade": @(MatrixCodeBool(storedImages, @"brightnessFade", NO)),
-        @"imageScale": @(MatrixCodeNumber(storedImages, @"imageScale", 0.72, 0.05, 1)),
-        @"imagePlacementJitter": @(MatrixCodeNumber(storedImages, @"imagePlacementJitter", 0.35, 0, 1)),
-    };
+    self.images = MatrixCodeSanitizeImagesDocument(images);
     NSTimeInterval tokenRunStart = [self usesSynchronizedMultiMonitorTimeline]
         ? self.epochSeconds
         : self.tokenRunStartSeconds;
@@ -1296,10 +1163,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         self.activeImageFrameScramble = 0;
         self.activeImagePlacementX = 0.5f;
         self.activeImagePlacementY = 0.5f;
-        float imageFrequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500,
-                                                 600000) / 1000.0f;
+        double imageFrequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500,
+                                                  600000) / 1000.0;
         self.nextImageFire = scheduleBase + imageFrequency *
-            (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ 0x6d2b79f5U));
+            (0.75 + 0.5 * MatrixCodeImageUnit(self.seed ^ 0x6d2b79f5U));
     }
     [self updatePalette];
     BOOL nextMirror = MatrixCodeBool(self.controls, @"mirror", YES);
@@ -1776,6 +1643,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     (void)globalRows;
     (void)localCols;
     (void)localRows;
+    // Reduced motion renders one stable warmed rain frame. Preserve the scheduler
+    // itself so normal playback can resume against wall time, but do not advance
+    // or expose a reveal while the static frame is being produced.
+    if (self.reducedMotionEnabled) return;
     BOOL enabled = MatrixCodeBool(self.images, @"enabled", NO);
     NSArray<NSDictionary *> *configured = [self.images[@"images"] isKindOfClass:NSArray.class]
         ? self.images[@"images"] : @[];
@@ -1783,44 +1654,88 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         [self resetActiveImageState];
         return;
     }
+    BOOL synchronizedTimeline = [self usesSynchronizedMultiMonitorTimeline];
     if (self.activeImage && now >= self.activeImageEnd) {
-        BOOL synchronizedTimeline = [self usesSynchronizedMultiMonitorTimeline];
         NSTimeInterval endedAt = self.activeImageEnd;
         [self resetActiveImageState];
-        float frequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0f;
+        double frequency = MatrixCodeNumber(
+            self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0;
         NSTimeInterval scheduleAnchor = synchronizedTimeline ? endedAt : now;
-        uint32_t cycle = (uint32_t)floor(scheduleAnchor - self.epochSeconds);
+        uint32_t cycle = (uint32_t)floor(scheduleAnchor - self.imageEpochSeconds);
         self.nextImageFire = scheduleAnchor + frequency *
-            (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ cycle ^ 0x6d2b79f5U));
+            (0.75 + 0.5 * MatrixCodeImageUnit(self.seed ^ cycle ^ 0x6d2b79f5U));
     }
-    if (!self.activeImage && now >= self.nextImageFire) {
-        BOOL synchronizedTimeline = [self usesSynchronizedMultiMonitorTimeline];
+    NSUInteger fastForwardSteps = 0;
+    while (!self.activeImage && now >= self.nextImageFire) {
+        if (synchronizedTimeline &&
+            fastForwardSteps++ >= MatrixCodeMaximumSynchronizedImageFastForwardSteps) {
+            // Multi-display sessions normally share a fresh epoch, so reaching this guard means a
+            // hostile or exceptionally stale persisted session. Rebase to a deterministic whole
+            // second rather than blocking a render thread for millions of historical cycles.
+            NSTimeInterval anchor = self.imageEpochSeconds +
+                floor(MAX(0, now - self.imageEpochSeconds));
+            uint32_t cycle = (uint32_t)floor(anchor - self.imageEpochSeconds);
+            double frequency = MatrixCodeNumber(
+                self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0;
+            self.nextImageFire = anchor + frequency *
+                (0.75 + 0.5 * MatrixCodeImageUnit(
+                    self.seed ^ cycle ^ 0x6d2b79f5U));
+            if (self.nextImageFire <= now) {
+                anchor += 1;
+                cycle = (uint32_t)floor(anchor - self.imageEpochSeconds);
+                self.nextImageFire = anchor + frequency *
+                    (0.75 + 0.5 * MatrixCodeImageUnit(
+                        self.seed ^ cycle ^ 0x6d2b79f5U));
+            }
+            break;
+        }
         NSTimeInterval fireTime = self.nextImageFire;
         NSTimeInterval activationTime = synchronizedTimeline ? fireTime : now;
-        uint32_t activation = (uint32_t)floor((activationTime - self.epochSeconds) * 10);
-        NSUInteger selected = MatrixCodeHash(self.seed ^ activation ^ 0x3f4d1c23U) % configured.count;
+        uint32_t activation = (uint32_t)floor((activationTime - self.imageEpochSeconds) * 10);
+        NSUInteger selected = MatrixCodeImageHash(
+            self.seed ^ activation ^ 0x3f4d1c23U) % configured.count;
         NSDictionary *image = configured[selected];
         NSData *mask = [[NSData alloc] initWithBase64EncodedString:image[@"data"] options:0];
         NSInteger width = [image[@"width"] integerValue];
         NSInteger height = [image[@"height"] integerValue];
         if (!mask || mask.length != (NSUInteger)(width * height)) {
-            float frequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0f;
+            double frequency = MatrixCodeNumber(
+                self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0;
             NSTimeInterval scheduleAnchor = synchronizedTimeline ? fireTime : now;
             self.nextImageFire = scheduleAnchor + frequency *
-                (0.75 + 0.5 * MatrixCodeUnit(self.seed ^ activation ^ 0x6d2b79f5U));
-            return;
+                (0.75 + 0.5 * MatrixCodeImageUnit(
+                    self.seed ^ activation ^ 0x6d2b79f5U));
+            if (!synchronizedTimeline) return;
+            continue;
         }
         self.activeImage = image;
+        self.nextImageFire = 0;
         self.activeImageMaskData = mask;
         self.activeImageWidth = width;
         self.activeImageHeight = height;
         self.activeImageStart = activationTime;
-        self.activeImagePlacementX = MatrixCodeUnit(self.seed ^ activation ^ 0x731f4a7dU);
-        self.activeImagePlacementY = MatrixCodeUnit(self.seed ^ activation ^ 0x4c2d65bfU);
-        float appear = MatrixCodeNumber(self.images, @"appearMs", 4500, 0, 600000) / 1000.0f;
-        float hold = MatrixCodeNumber(self.images, @"persistenceMs", 12000, 500, 600000) / 1000.0f;
-        float disappear = MatrixCodeNumber(self.images, @"disappearMs", 4500, 0, 600000) / 1000.0f;
+        self.activeImagePlacementX = MatrixCodeImageUnit(
+            self.seed ^ activation ^ 0x731f4a7dU);
+        self.activeImagePlacementY = MatrixCodeImageUnit(
+            self.seed ^ activation ^ 0x4c2d65bfU);
+        double appear = MatrixCodeNumber(
+            self.images, @"appearMs", 4500, 0, 600000) / 1000.0;
+        double hold = MatrixCodeNumber(
+            self.images, @"persistenceMs", 12000, 500, 600000) / 1000.0;
+        double disappear = MatrixCodeNumber(
+            self.images, @"disappearMs", 4500, 0, 600000) / 1000.0;
         self.activeImageEnd = activationTime + appear + hold + disappear;
+        if (synchronizedTimeline && self.activeImageEnd <= now) {
+            NSTimeInterval endedAt = self.activeImageEnd;
+            [self resetActiveImageState];
+            uint32_t cycle = (uint32_t)floor(endedAt - self.imageEpochSeconds);
+            double frequency = MatrixCodeNumber(
+                self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0;
+            self.nextImageFire = endedAt + frequency *
+                (0.75 + 0.5 * MatrixCodeImageUnit(
+                    self.seed ^ cycle ^ 0x6d2b79f5U));
+        }
+        if (!synchronizedTimeline) break;
     }
 }
 
@@ -2153,10 +2068,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         (self.hasFrozenFrameTime ? self.frozenFrameTimeSeconds :
             (self.animationActive ? NSDate.date.timeIntervalSince1970
                                   : self.epochSeconds + MatrixCodeRainWarmupSeconds));
-    float imageRainElapsed = usesSharedDisplayGrid
-        ? (float)(now - self.epochSeconds)
-        : (self.usesExternalRainTimeline
-            ? (float)self.rainElapsed : (float)(now - self.epochSeconds));
+    float imageRainElapsed = (float)(now - self.imageEpochSeconds);
 
     NSArray<MatrixCodeMessageRegion *> *messageRegions =
         [self messageRegionsForSharedDisplayGrid:usesSharedDisplayGrid
@@ -2260,6 +2172,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     MatrixCodeGlyphInstance *instances = self.instanceBuffer.contents;
     NSUInteger count = 0;
     BOOL imageActive =
+        !self.reducedMotionEnabled &&
         self.activeImage &&
         self.activeImageMaskData &&
         self.activeImageWidth > 0 &&
@@ -2299,8 +2212,8 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     NSData *activeImageMaskData = self.activeImageMaskData;
     NSInteger activeImageWidth = self.activeImageWidth;
     NSInteger activeImageHeight = self.activeImageHeight;
-    uint32_t animationBucket = (uint32_t)floorf(
-        (float)(now - self.epochSeconds) * 18.0f);
+    uint32_t animationBucket = MatrixCodeImageAnimationBucket(
+        now, self.imageEpochSeconds);
     NSInteger atlasColumns = self.atlasColumns;
     NSInteger atlasRows = self.atlasRows;
     NSInteger rainGlyphCount = self.rainGlyphCount;
@@ -2347,8 +2260,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                     (float)MatrixCodePackedPhaseMask;
                 NSInteger oldGlyph = state[stateOffset + 3];
 
-                // Image overlays are a native-only, default-off extension. They
-                // post-process the canonical packed RainSim cell without
+                // Image overlays post-process the canonical packed RainSim cell without
                 // perturbing rain/message PRNG state or the stored cell bytes.
                 if (imageActive && position == 0 && imageColumns > 0 && imageRows > 0) {
                     float u = ((float)globalColumn + 0.5f - imageOriginColumn) / imageColumns;
@@ -2367,7 +2279,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                         }
                         if (signal > 0.001f) {
                             uint32_t identity =
-                                MatrixCodeCellIdentity(laneSeed, globalColumn, globalRow);
+                                MatrixCodeImageCellIdentity(laneSeed, globalColumn, globalRow);
                             float packedBrightness = brightness;
                             float trailGate =
                                 fminf(1, fmaxf(0, (brightness - 0.028f) / 0.42f));
@@ -2379,7 +2291,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                             float revealGate = fmaxf(trailGate, fallingGate * 0.48f);
                             float dissolve = 1;
                             if (imageScramble > 0) {
-                                float roll = MatrixCodeUnit(
+                                float roll = MatrixCodeImageUnit(
                                     identity ^ animationBucket * 0x9e3779b9U ^ 0xb4b82e39U);
                                 dissolve = roll >= imageScramble ? 1 : 0;
                             }
@@ -2405,12 +2317,12 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                                         bright * influence *
                                         fmaxf(packedBrightness, 0.08f) * 0.58f);
 
-                                float glyphRoll = MatrixCodeUnit(
+                                float glyphRoll = MatrixCodeImageUnit(
                                     identity ^ animationBucket * 0x27d4eb2dU ^ 0x68e31da4U);
                                 if (glyph < rainGlyphCount &&
                                     glyphRoll < fminf(0.96f, 0.18f + influence * 0.78f)) {
                                     NSInteger replacement = imageGlyph;
-                                    float scrambleRoll = MatrixCodeUnit(
+                                    float scrambleRoll = MatrixCodeImageUnit(
                                         identity ^ animationBucket * 0x85ebca6bU ^ 0xd3a2646cU);
                                     if (imageScramble > 0 &&
                                         scrambleRoll < imageScramble * 0.75f) {

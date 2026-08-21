@@ -3,6 +3,7 @@
 #import "MatrixCodeIntroOverlayView.h"
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodeConstants.h"
+#import "MatrixCodeImageContract.h"
 #import "MatrixCodePreferences.h"
 #import "MatrixCodeRainLifecycle.h"
 #import "MatrixCodeSession.h"
@@ -30,9 +31,6 @@ static const CGFloat MatrixCodeSettingsPanelInset = 16.0;
 static const CGFloat MatrixCodeEditorCardWidth = 620.0;
 static const CGFloat MatrixCodeEditorCardMaxHeight = 610.0;
 static const CGFloat MatrixCodeEditorCardVerticalMargin = 48.0;
-static const NSUInteger MatrixCodeImageMaskMaxDimension = 96;
-static const NSUInteger MatrixCodeImageMaskMaxStoredCharacters = 49152;
-
 static NSString *MatrixCodeMomentTokenHint(NSArray<NSDictionary *> *moments) {
     NSMutableArray<NSString *> *namedTokens = [NSMutableArray array];
     for (NSDictionary *moment in moments) {
@@ -182,24 +180,6 @@ static BOOL MatrixCodeIsValidIndex(NSInteger index, NSUInteger count) {
 static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return [glyphMode isEqualToString:@"matrix"] ||
         [glyphMode isEqualToString:@"katakana"];
-}
-
-static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
-    if (![item isKindOfClass:NSDictionary.class]) return nil;
-    NSInteger width = (NSInteger)MatrixCodeSettingNumber(item, @"width", 0, 1, MatrixCodeImageMaskMaxDimension);
-    NSInteger height = (NSInteger)MatrixCodeSettingNumber(item, @"height", 0, 1, MatrixCodeImageMaskMaxDimension);
-    NSString *data = MatrixCodeSettingText(item[@"data"], MatrixCodeImageMaskMaxStoredCharacters);
-    NSData *mask = [[NSData alloc] initWithBase64EncodedString:data options:0];
-    if (width <= 0 || height <= 0 || mask.length != (NSUInteger)(width * height)) return nil;
-    NSString *name = MatrixCodeSettingText(item[@"name"], 80);
-    name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (!name.length) name = @"Image";
-    return [@{
-        @"name": name,
-        @"width": @(width),
-        @"height": @(height),
-        @"data": data,
-    } mutableCopy];
 }
 
 @interface MatrixCodeFlippedDocumentView : NSView
@@ -376,8 +356,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     }
     if (self.showsImage && !self.reducesMotion) {
         NSMutableDictionary *images =
-            [MatrixCodeJSONObject(previewValues[@"mx-images"], NSDictionary.class) mutableCopy];
-        if (!images) images = [NSMutableDictionary dictionary];
+            [MatrixCodeSanitizeImagesJSONString(previewValues[@"mx-images"]) mutableCopy];
         images[@"enabled"] = @YES;
         images[@"frequencyMs"] = @500;
         previewValues[@"mx-images"] = MatrixCodeJSONString(images);
@@ -899,26 +878,11 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
     NSDictionary *storedImages =
         MatrixCodeJSONObject(self.stagedValues[@"mx-images"], NSDictionary.class) ?: @{};
-    self.images = [@{
-        @"enabled": MatrixCodeSettingBoolObject(
-            MatrixCodeSettingBool(storedImages, @"enabled", NO)),
-        @"frequencyMs": @(MatrixCodeSettingNumber(storedImages, @"frequencyMs", 14000, 500, 600000)),
-        @"persistenceMs": @(MatrixCodeSettingNumber(storedImages, @"persistenceMs", 12000, 500, 600000)),
-        @"appearMs": @(MatrixCodeSettingNumber(storedImages, @"appearMs", 4500, 0, 600000)),
-        @"disappearMs": @(MatrixCodeSettingNumber(storedImages, @"disappearMs", 4500, 0, 600000)),
-        @"flickerOut": MatrixCodeSettingBoolObject(
-            MatrixCodeSettingBool(storedImages, @"flickerOut", YES)),
-        @"brightnessFade": MatrixCodeSettingBoolObject(
-            MatrixCodeSettingBool(storedImages, @"brightnessFade", NO)),
-        @"imageScale": @(MatrixCodeSettingNumber(storedImages, @"imageScale", 0.72, 0.05, 1)),
-        @"imagePlacementJitter": @(MatrixCodeSettingNumber(storedImages, @"imagePlacementJitter", 0.35, 0, 1)),
-    } mutableCopy];
+    NSDictionary *sanitizedImages = MatrixCodeSanitizeImagesDocument(storedImages);
+    self.images = [sanitizedImages mutableCopy];
     self.imageItems = [NSMutableArray array];
-    NSArray *storedImageItems = [storedImages[@"images"] isKindOfClass:NSArray.class]
-        ? storedImages[@"images"] : @[];
-    for (NSUInteger index = 0; index < storedImageItems.count; index++) {
-        NSMutableDictionary *image = MatrixCodeSanitizedImageItem(storedImageItems[index]);
-        if (image) [self.imageItems addObject:image];
+    for (NSDictionary *image in sanitizedImages[@"images"]) {
+        [self.imageItems addObject:[image mutableCopy]];
     }
 
     NSDictionary *storedCountdown =
@@ -1839,8 +1803,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     messages[@"enabled"] = @NO;
     previewValues[@"mx-messages"] = MatrixCodeJSONString(messages);
     NSMutableDictionary *images =
-        [MatrixCodeJSONObject(previewValues[@"mx-images"], NSDictionary.class) mutableCopy]
-        ?: [NSMutableDictionary dictionary];
+        [MatrixCodeSanitizeImagesJSONString(previewValues[@"mx-images"]) mutableCopy];
     images[@"enabled"] = @NO;
     previewValues[@"mx-images"] = MatrixCodeJSONString(images);
     return previewValues;
@@ -2437,7 +2400,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (NSImage *)thumbnailForImageItem:(NSDictionary *)item {
-    NSMutableDictionary *image = MatrixCodeSanitizedImageItem(item);
+    NSDictionary *image = MatrixCodeSanitizeImageItem(item);
     if (!image) return nil;
     NSInteger width = [image[@"width"] integerValue];
     NSInteger height = [image[@"height"] integerValue];
@@ -2479,13 +2442,10 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     size_t sourceHeight = CGImageGetHeight(cgImage);
     if (sourceWidth == 0 || sourceHeight == 0) return nil;
 
-    CGFloat scale = MIN((CGFloat)MatrixCodeImageMaskMaxDimension / (CGFloat)sourceWidth,
-                        (CGFloat)MatrixCodeImageMaskMaxDimension / (CGFloat)sourceHeight);
-    scale = MIN(1.0, MAX(scale, 1.0 / MAX(sourceWidth, sourceHeight)));
-    NSInteger width = MAX(1, (NSInteger)lround((CGFloat)sourceWidth * scale));
-    NSInteger height = MAX(1, (NSInteger)lround((CGFloat)sourceHeight * scale));
-    width = MIN((NSInteger)MatrixCodeImageMaskMaxDimension, width);
-    height = MIN((NSInteger)MatrixCodeImageMaskMaxDimension, height);
+    MatrixCodeImageMaskDimensions dimensions =
+        MatrixCodeImageMaskDimensionsForSource(sourceWidth, sourceHeight);
+    NSInteger width = dimensions.width;
+    NSInteger height = dimensions.height;
 
     NSMutableData *rgba = [NSMutableData dataWithLength:(NSUInteger)(width * height * 4)];
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
@@ -2503,34 +2463,11 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     CGContextDrawImage(context, CGRectMake(0, 0, width, height), cgImage);
     CGContextRelease(context);
 
-    NSUInteger count = (NSUInteger)(width * height);
-    float *luminance = calloc(count, sizeof(float));
-    if (!luminance) return nil;
-    const uint8_t *pixels = rgba.bytes;
-    float minimum = 1;
-    float maximum = 0;
-    for (NSUInteger index = 0; index < count; index++) {
-        float alpha = pixels[index * 4 + 3] / 255.0f;
-        float red = pixels[index * 4 + 0] / 255.0f;
-        float green = pixels[index * 4 + 1] / 255.0f;
-        float blue = pixels[index * 4 + 2] / 255.0f;
-        float value = (0.2126f * red + 0.7152f * green + 0.0722f * blue) * alpha;
-        luminance[index] = value;
-        minimum = fminf(minimum, value);
-        maximum = fmaxf(maximum, value);
-    }
-    NSMutableData *mask = [NSMutableData dataWithLength:count];
-    uint8_t *bytes = mask.mutableBytes;
-    float range = maximum - minimum;
-    for (NSUInteger index = 0; index < count; index++) {
-        float value = range > 0.035f ? (luminance[index] - minimum) / range : luminance[index];
-        value = powf(fminf(1, fmaxf(0, value)), 0.82f);
-        bytes[index] = (uint8_t)lroundf(value * 255.0f);
-    }
-    free(luminance);
+    NSData *mask = MatrixCodeImageMaskFromPremultipliedRGBA(rgba, width, height);
+    if (!mask) return nil;
 
     NSString *name = url.lastPathComponent.stringByDeletingPathExtension;
-    name = MatrixCodeSettingText(name, 80);
+    name = MatrixCodeSettingText(name, MatrixCodeImageNameMaximumLength);
     name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (!name.length) name = @"Image";
     return [@{
@@ -2563,7 +2500,10 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     self.imageItemsStack.spacing = 8;
     [stack addArrangedSubview:self.imageItemsStack];
     [self rebuildImageItems];
-    [stack addArrangedSubview:[NSButton buttonWithTitle:@"Add Image" target:self action:@selector(addImage:)]];
+    NSButton *add = [NSButton buttonWithTitle:@"Add Image" target:self action:@selector(addImage:)];
+    add.toolTip = [NSString stringWithFormat:@"Up to %lu images can be stored.",
+                   (unsigned long)MatrixCodeImageMaximumCount];
+    [stack addArrangedSubview:add];
 
     for (NSArray *field in @[@[@"Show one every (s)", @"frequencyMs"],
                               @[@"Appear over (s)", @"appearMs"],
@@ -2635,6 +2575,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 }
 
 - (void)addImage:(id)sender {
+    if (self.imageItems.count >= MatrixCodeImageMaximumCount) return;
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     panel.allowsMultipleSelection = YES;
     panel.canChooseDirectories = NO;
@@ -2649,6 +2590,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
         for (NSURL *url in panel.URLs) {
+            if (self.imageItems.count >= MatrixCodeImageMaximumCount) break;
             NSMutableDictionary *image = [self imageItemFromURL:url];
             if (image) [self.imageItems addObject:image];
         }
@@ -2665,7 +2607,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
 
 - (void)imageItemChanged:(NSTextField *)sender {
     if (MatrixCodeIsValidIndex(sender.tag, self.imageItems.count)) {
-        NSString *name = MatrixCodeSettingText(sender.stringValue, 80);
+        NSString *name = MatrixCodeSettingText(sender.stringValue, MatrixCodeImageNameMaximumLength);
         name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         self.imageItems[(NSUInteger)sender.tag][@"name"] = name.length ? name : @"Image";
     }
@@ -2928,13 +2870,11 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     }
     self.messages[@"messages"] = sanitizedMessages;
     values[@"mx-messages"] = MatrixCodeJSONString(self.messages);
-    NSMutableArray<NSDictionary *> *sanitizedImages = [NSMutableArray array];
-    for (NSUInteger index = 0; index < self.imageItems.count; index++) {
-        NSMutableDictionary *image = MatrixCodeSanitizedImageItem(self.imageItems[index]);
-        if (image) [sanitizedImages addObject:image];
-    }
-    self.images[@"images"] = sanitizedImages;
-    values[@"mx-images"] = MatrixCodeJSONString(self.images);
+    NSMutableDictionary *imagesDraft = [self.images mutableCopy];
+    imagesDraft[@"images"] = self.imageItems;
+    NSDictionary *sanitizedImages = MatrixCodeSanitizeImagesDocument(imagesDraft);
+    self.images = [sanitizedImages mutableCopy];
+    values[@"mx-images"] = MatrixCodeJSONString(sanitizedImages);
     NSMutableArray<NSDictionary *> *sanitizedMoments = [NSMutableArray array];
     NSMutableSet<NSString *> *names = [NSMutableSet set];
     for (NSUInteger index = 0; index < MIN((NSUInteger)12, self.moments.count); index++) {

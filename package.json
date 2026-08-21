@@ -8,10 +8,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:wallpaper": "npm run build && node scripts/wallpaper-engine/package.mjs",
+    "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Build-Windows.ps1 -Architecture x64 -Configuration Release -SkipTests",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Verify-Windows.ps1 -Architecture x64 -Configuration Debug",
     "test:watch": "vitest",
-    "verify:parity": "./scripts/verify_parity.sh"
+    "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Build-Release.ps1",
+    "verify:wallpaper": "node scripts/wallpaper-engine/generate-project.mjs --check",
+    "verify:parity": "./scripts/verify_parity.sh",
+    "verify:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Verify-Windows.ps1 -Architecture x64 -Configuration Debug -Capture"
   },
   "dependencies": {
     "twgl.js": "^5.5.4"

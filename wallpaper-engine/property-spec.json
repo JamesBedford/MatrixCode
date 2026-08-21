@@ -1,0 +1,284 @@
+{
+  "version": 1,
+  "directoryImageLimit": 64,
+  "metadata": {
+    "title": "MatrixCode",
+    "description": "Film-accurate Matrix digital rain with configurable rain, characters, messages, countdowns and image reveals.",
+    "type": "web",
+    "file": "index.html",
+    "preview": "preview.png",
+    "visibility": "private",
+    "tags": ["Relaxing"]
+  },
+  "groups": [
+    {
+      "key": "grouprain",
+      "text": "Rain",
+      "order": 1000,
+      "domain": "controls",
+      "properties": [
+        { "key": "rainspeed", "order": 1010, "text": "Speed", "type": "slider", "value": 1, "min": 0.1, "max": 3, "precision": 2 },
+        { "key": "raindensity", "order": 1020, "text": "Density", "type": "slider", "value": 2, "min": 0.1, "max": 100, "precision": 2 },
+        { "key": "rainrampseconds", "order": 1030, "text": "Load ramp (seconds)", "type": "slider", "value": 8, "min": 0, "max": 60, "precision": 2 },
+        { "key": "raintraillength", "order": 1040, "text": "Trail length", "type": "slider", "value": 0.255, "min": 0.01, "max": 0.5, "precision": 3 },
+        { "key": "raintrailvariation", "order": 1050, "text": "Trail variation", "type": "slider", "value": 1, "min": 0, "max": 1, "precision": 2 }
+      ]
+    },
+    {
+      "key": "groupcharacters",
+      "text": "Characters",
+      "order": 1200,
+      "domain": "controls",
+      "properties": [
+        { "key": "glyphscale", "order": 1210, "text": "Glyph scale", "type": "slider", "value": 1, "min": 0.5, "max": 10, "precision": 2 },
+        { "key": "glyphrate", "order": 1220, "text": "Glyph change rate", "type": "slider", "value": 1, "min": 0, "max": 5, "precision": 2 },
+        {
+          "key": "glyphmode",
+          "order": 1230,
+          "text": "Character family",
+          "type": "combo",
+          "value": "matrix",
+          "options": [
+            { "label": "Matrix", "value": "matrix" },
+            { "label": "Katakana", "value": "katakana" },
+            { "label": "Binary", "value": "binary" },
+            { "label": "Digits", "value": "digits" },
+            { "label": "Latin", "value": "latin" },
+            { "label": "Symbols", "value": "symbols" }
+          ]
+        },
+        {
+          "key": "glyphfont",
+          "order": 1240,
+          "text": "Font",
+          "type": "combo",
+          "value": "matrix",
+          "options": [
+            { "label": "Movie Gothic", "value": "matrix" },
+            { "label": "Sharp Gothic", "value": "gothic" },
+            { "label": "SF Mono", "value": "mono" },
+            { "label": "Terminal Mono", "value": "terminal" },
+            { "label": "Rounded", "value": "rounded" },
+            { "label": "Mincho", "value": "mincho" }
+          ]
+        },
+        { "key": "glyphmirror", "order": 1250, "text": "Mirror glyphs", "type": "bool", "value": true }
+      ]
+    },
+    {
+      "key": "groupappearance",
+      "text": "Appearance",
+      "order": 1400,
+      "domain": "controls",
+      "properties": [
+        {
+          "key": "colorpreset",
+          "order": 1410,
+          "text": "Colour theme",
+          "type": "combo",
+          "value": "classic",
+          "options": [
+            { "label": "Classic", "value": "classic" },
+            { "label": "Amber", "value": "amber" },
+            { "label": "Orange", "value": "orange" },
+            { "label": "Gold", "value": "gold" },
+            { "label": "Red", "value": "red" },
+            { "label": "Pink", "value": "pink" },
+            { "label": "Purple", "value": "purple" },
+            { "label": "Blue", "value": "blue" },
+            { "label": "White", "value": "white" },
+            { "label": "Custom", "value": "custom" }
+          ]
+        },
+        { "key": "customcolor", "order": 1420, "text": "Custom colour", "type": "color", "value": "0 1 0.2549019608", "condition": "colorpreset.value == 'custom'" },
+        { "key": "glow", "order": 1430, "text": "Glow", "type": "slider", "value": 0.9, "min": 0, "max": 2.5, "precision": 2 },
+        { "key": "leadglow", "order": 1440, "text": "Lead brightness", "type": "slider", "value": 1.6, "min": 0, "max": 3, "precision": 2 },
+        { "key": "scanlines", "order": 1450, "text": "Scanlines", "type": "bool", "value": false },
+        { "key": "vignette", "order": 1460, "text": "Vignette", "type": "slider", "value": 0, "min": 0, "max": 1, "precision": 2 },
+        { "key": "allowoverlap", "order": 1470, "text": "Allow overlapping streams", "type": "bool", "value": true },
+        {
+          "key": "quality",
+          "order": 1480,
+          "text": "Render quality",
+          "type": "combo",
+          "value": "high",
+          "options": [
+            { "label": "Low", "value": "low" },
+            { "label": "Medium", "value": "med" },
+            { "label": "High", "value": "high" }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "grouptokens",
+      "text": "Viewer and countdown",
+      "order": 1600,
+      "domain": "tokens",
+      "properties": [
+        { "key": "viewername", "order": 1610, "text": "Viewer name (blank uses Neo)", "type": "textinput", "value": "" },
+        { "key": "countdowntargetlocal", "order": 1620, "text": "Default target (YYYY-MM-DDTHH:mm)", "type": "textinput", "value": "", "domain": "countdown" }
+      ]
+    },
+    {
+      "key": "groupintro",
+      "text": "Intro",
+      "order": 2000,
+      "domain": "intro",
+      "properties": [
+        { "key": "introenabled", "order": 2010, "text": "Enable intro", "type": "bool", "value": true },
+        { "key": "introcharmilliseconds", "order": 2020, "text": "Typing speed (milliseconds per character)", "type": "slider", "value": 95, "min": 10, "max": 500, "condition": "introenabled.value == true" },
+        { "key": "introstartseconds", "order": 2030, "text": "Start delay (seconds)", "type": "slider", "value": 0.6, "min": 0, "max": 10, "precision": 2, "condition": "introenabled.value == true" },
+        { "key": "introfadeseconds", "order": 2040, "text": "Fade out (seconds)", "type": "slider", "value": 0.9, "min": 0, "max": 10, "precision": 2, "condition": "introenabled.value == true" },
+        { "key": "intrainduring", "order": 2050, "text": "Rain during intro", "type": "bool", "value": false, "condition": "introenabled.value == true" },
+        { "key": "intropostseconds", "order": 2060, "text": "Delay before rain (seconds)", "type": "slider", "value": 0, "min": 0, "max": 10, "precision": 2, "condition": "introenabled.value == true && intrainduring.value == false" }
+      ],
+      "slots": {
+        "count": 12,
+        "prefix": "intro",
+        "orderStart": 2100,
+        "orderStride": 10,
+        "fields": [
+          {
+            "suffix": "enabled",
+            "orderOffset": 1,
+            "text": "Line {slot}: enabled",
+            "type": "bool",
+            "values": [true, true, true, true, false, false, false, false, false, false, false, false],
+            "condition": "introenabled.value == true"
+          },
+          {
+            "suffix": "text",
+            "orderOffset": 2,
+            "text": "Line {slot}: text",
+            "type": "textinput",
+            "values": ["Wake up, {name}...", "The Matrix has you...", "Follow the white rabbit.", "Knock, knock, {name}.", "", "", "", "", "", "", "", ""],
+            "condition": "introenabled.value == true && intro{slot}enabled.value == true"
+          },
+          {
+            "suffix": "holdseconds",
+            "orderOffset": 3,
+            "text": "Line {slot}: hold (seconds)",
+            "type": "slider",
+            "value": 2.8,
+            "min": 0,
+            "max": 20,
+            "precision": 2,
+            "condition": "introenabled.value == true && intro{slot}enabled.value == true"
+          },
+          {
+            "suffix": "pauseseconds",
+            "orderOffset": 4,
+            "text": "Line {slot}: pause after (seconds)",
+            "type": "slider",
+            "value": 0,
+            "min": 0,
+            "max": 20,
+            "precision": 2,
+            "condition": "introenabled.value == true && intro{slot}enabled.value == true"
+          }
+        ]
+      }
+    },
+    {
+      "key": "groupmessages",
+      "text": "In-rain messages",
+      "order": 4000,
+      "domain": "messages",
+      "properties": [
+        { "key": "messagesenabled", "order": 4010, "text": "Enable messages", "type": "bool", "value": false },
+        { "key": "messagesfrequencyseconds", "order": 4020, "text": "Average gap (seconds)", "type": "slider", "value": 8, "min": 0.5, "max": 600, "precision": 2, "condition": "messagesenabled.value == true" },
+        { "key": "messagesholdseconds", "order": 4030, "text": "Hold (seconds)", "type": "slider", "value": 10, "min": 0.5, "max": 600, "precision": 2, "condition": "messagesenabled.value == true" },
+        { "key": "messagesappearseconds", "order": 4040, "text": "Appear (seconds)", "type": "slider", "value": 4, "min": 0, "max": 600, "precision": 2, "condition": "messagesenabled.value == true" },
+        { "key": "messagesdisappearseconds", "order": 4050, "text": "Disappear (seconds)", "type": "slider", "value": 4, "min": 0, "max": 600, "precision": 2, "condition": "messagesenabled.value == true" },
+        { "key": "messagesflicker", "order": 4060, "text": "Flicker resolve", "type": "bool", "value": true, "condition": "messagesenabled.value == true" },
+        { "key": "messagesbrightnessfade", "order": 4070, "text": "Brightness fade", "type": "bool", "value": false, "condition": "messagesenabled.value == true" },
+        {
+          "key": "messageslayout",
+          "order": 4080,
+          "text": "Layout",
+          "type": "combo",
+          "value": "row",
+          "options": [
+            { "label": "Horizontal row", "value": "row" },
+            { "label": "Single drop", "value": "drop" }
+          ],
+          "condition": "messagesenabled.value == true"
+        },
+        {
+          "key": "messagesdirection",
+          "order": 4090,
+          "text": "Drop reading direction",
+          "type": "combo",
+          "value": "topToBottom",
+          "options": [
+            { "label": "Top to bottom", "value": "topToBottom" },
+            { "label": "Bottom to top", "value": "bottomToTop" }
+          ],
+          "condition": "messagesenabled.value == true && messageslayout.value == 'drop'"
+        },
+        { "key": "messagesposition", "order": 4091, "text": "Position", "type": "slider", "value": 0.475, "min": 0, "max": 1, "precision": 3, "condition": "messagesenabled.value == true" },
+        { "key": "messagesjitter", "order": 4092, "text": "Position jitter", "type": "slider", "value": 0.25, "min": 0, "max": 1, "precision": 2, "condition": "messagesenabled.value == true" }
+      ],
+      "slots": {
+        "count": 12,
+        "prefix": "message",
+        "orderStart": 4100,
+        "orderStride": 10,
+        "fields": [
+          {
+            "suffix": "enabled",
+            "orderOffset": 1,
+            "text": "Message {slot}: enabled",
+            "type": "bool",
+            "values": [true, true, true, true, false, false, false, false, false, false, false, false],
+            "condition": "messagesenabled.value == true"
+          },
+          {
+            "suffix": "text",
+            "orderOffset": 2,
+            "text": "Message {slot}: text",
+            "type": "textinput",
+            "values": ["WAKE UP", "THE MATRIX HAS YOU", "FOLLOW THE WHITE RABBIT", "{countup}", "", "", "", "", "", "", "", ""],
+            "condition": "messagesenabled.value == true && message{slot}enabled.value == true"
+          }
+        ]
+      }
+    },
+    {
+      "key": "groupmoments",
+      "text": "Named countdowns and countups",
+      "order": 6000,
+      "domain": "countdown",
+      "slots": {
+        "count": 12,
+        "prefix": "moment",
+        "orderStart": 6100,
+        "orderStride": 10,
+        "fields": [
+          { "suffix": "enabled", "orderOffset": 1, "text": "Moment {slot}: enabled", "type": "bool", "value": false },
+          { "suffix": "name", "orderOffset": 2, "text": "Moment {slot}: token name", "type": "textinput", "value": "", "condition": "moment{slot}enabled.value == true" },
+          { "suffix": "targetlocal", "orderOffset": 3, "text": "Moment {slot}: target (YYYY-MM-DDTHH:mm)", "type": "textinput", "value": "", "condition": "moment{slot}enabled.value == true" }
+        ]
+      }
+    },
+    {
+      "key": "groupimages",
+      "text": "Image reveals",
+      "order": 8000,
+      "domain": "images",
+      "properties": [
+        { "key": "imagesenabled", "order": 8010, "text": "Enable image reveals", "type": "bool", "value": false },
+        { "key": "imagesfrequencyseconds", "order": 8020, "text": "Average gap (seconds)", "type": "slider", "value": 14, "min": 0.5, "max": 600, "precision": 2, "condition": "imagesenabled.value == true" },
+        { "key": "imagesholdseconds", "order": 8030, "text": "Hold (seconds)", "type": "slider", "value": 12, "min": 0.5, "max": 600, "precision": 2, "condition": "imagesenabled.value == true" },
+        { "key": "imagesappearseconds", "order": 8040, "text": "Appear (seconds)", "type": "slider", "value": 4.5, "min": 0, "max": 600, "precision": 2, "condition": "imagesenabled.value == true" },
+        { "key": "imagesdisappearseconds", "order": 8050, "text": "Disappear (seconds)", "type": "slider", "value": 4.5, "min": 0, "max": 600, "precision": 2, "condition": "imagesenabled.value == true" },
+        { "key": "imagesflicker", "order": 8060, "text": "Flicker resolve", "type": "bool", "value": true, "condition": "imagesenabled.value == true" },
+        { "key": "imagesbrightnessfade", "order": 8070, "text": "Brightness fade", "type": "bool", "value": false, "condition": "imagesenabled.value == true" },
+        { "key": "imagesscale", "order": 8080, "text": "Image scale", "type": "slider", "value": 0.72, "min": 0.05, "max": 1, "precision": 2, "condition": "imagesenabled.value == true" },
+        { "key": "imagesplacementjitter", "order": 8090, "text": "Placement jitter", "type": "slider", "value": 0.35, "min": 0, "max": 1, "precision": 2, "condition": "imagesenabled.value == true" },
+        { "key": "imagesdirectory", "order": 8100, "text": "Image folder (first 64 sorted images)", "type": "directory", "value": "", "mode": "fetchall", "condition": "imagesenabled.value == true" }
+      ]
+    }
+  ]
+}

@@ -55,6 +55,16 @@ html.mx-native-saver .mx-ui {
   display: none !important;
 }
 
+/* Wallpaper Engine owns configuration and pointer interaction outside the wallpaper surface. */
+html.mx-wallpaper-engine {
+  cursor: none;
+}
+html.mx-wallpaper-engine .mx-ui,
+html.mx-wallpaper-engine .mx-modal-backdrop,
+html.mx-wallpaper-engine .mx-toast {
+  display: none !important;
+}
+
 /* The standard Options sheet is the interactive surface for a real saver. */
 html.mx-native-config .mx-ui,
 html.mx-native-config .mx-ui.is-visible {
@@ -409,6 +419,26 @@ html.mx-native-config .mx-panel {
   flex-wrap: wrap;
   gap: 10px 16px;
   align-items: center;
+}
+.mx-image-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 52px minmax(8rem, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.mx-image-thumbnail {
+  width: 52px;
+  height: 40px;
+  object-fit: contain;
+  border: 1px solid var(--mx-border);
+  border-radius: 4px;
+  background: #000;
+}
+.mx-image-dimensions {
+  color: var(--mx-label);
+  font: 10px/1 ui-monospace, monospace;
+  white-space: nowrap;
 }
 .mx-field {
   display: inline-flex;

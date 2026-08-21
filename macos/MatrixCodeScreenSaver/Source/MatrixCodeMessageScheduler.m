@@ -400,6 +400,14 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
     state.placementKey = @"";
 }
 
+- (void)shiftTimelineByMilliseconds:(double)durationMilliseconds {
+    if (!isfinite(durationMilliseconds) || durationMilliseconds <= 0) return;
+    MatrixCodeMessageSchedulerState *state = self.schedulerState;
+    if (state.hasNextFireAt) state.nextFireAt += durationMilliseconds;
+    if (state.hasActiveStart) state.activeStart += durationMilliseconds;
+    if (state.hasActiveUntil) state.activeUntil += durationMilliseconds;
+}
+
 - (BOOL)computeHasRenderable:(NSDictionary<NSString *, id> *)configuration {
     for (NSString *message in MatrixCodeMessageStrings(configuration)) {
         if ([self layoutMessage:[self resolveText:message]].glyphs.count > 0) return YES;

@@ -2,6 +2,7 @@ import * as twgl from "twgl.js";
 import type { Grid, QualityTier, RenderParams } from "../types.ts";
 import type { GlyphAtlas } from "./glyphAtlas.ts";
 import type { StateTexture } from "./stateTexture.ts";
+import type { ImageRenderState } from "../sim/imageReveal.ts";
 import { createFullscreenTri, drawFullscreen } from "./fullscreenTri.ts";
 
 import fullscreenVert from "./shaders/fullscreen.vert.glsl?raw";
@@ -48,6 +49,8 @@ export class Renderer {
   private blurProg: twgl.ProgramInfo;
   private copyProg: twgl.ProgramInfo;
   private compositeProg: twgl.ProgramInfo;
+  private imageTexture: WebGLTexture;
+  private imageMaskRef: Uint8Array | null = null;
 
   /** HDR-capable color format for the scene/bloom targets, with graceful fallback. */
   readonly hdr: boolean;
@@ -89,6 +92,16 @@ export class Renderer {
     this.blurProg = twgl.createProgramInfo(gl, [fullscreenVert, blurFrag]);
     this.copyProg = twgl.createProgramInfo(gl, [fullscreenVert, copyFrag]);
     this.compositeProg = twgl.createProgramInfo(gl, [fullscreenVert, compositeFrag]);
+
+    const imageTexture = gl.createTexture();
+    if (!imageTexture) throw new Error("Unable to create image-mask texture");
+    this.imageTexture = imageTexture;
+    gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([0]));
   }
 
   setAtlas(atlas: GlyphAtlas): void {
@@ -151,6 +164,7 @@ export class Renderer {
     grid: Grid,
     params: RenderParams,
     viewport?: GridViewport,
+    image?: ImageRenderState,
   ): void {
     const preset = params.preset;
     const width = viewport?.width ?? 1;
@@ -170,7 +184,45 @@ export class Renderer {
       uViewport: [width, height],
       uCell: viewport ? [viewport.cell, viewport.cell] : [width / grid.cols, height / grid.rows],
       uGridOrigin: [viewport?.originX ?? 0, viewport?.originY ?? 0],
+      uImageEnabled: image ? 1 : 0,
+      uImageMask: this.imageTexture,
+      uImageMaskSize: [image?.maskWidth ?? 1, image?.maskHeight ?? 1],
+      uImageRect: [image?.originCol ?? 0, image?.originRow ?? 0, image?.cols ?? 1, image?.rows ?? 1],
+      uImageFeather: [image?.featherU ?? 0, image?.featherV ?? 0],
+      uImageIntensity: image?.intensity ?? 0,
+      uImageScramble: image?.scramble ?? 0,
+      uImageSeed: image?.seed ?? 0,
+      uImageRainElapsed: image?.rainElapsed ?? 0,
+      uImageAnimationBucket: image?.animationBucket ?? 0,
+      uGlobalCellOffset: [image?.globalColStart ?? 0, image?.globalRowStart ?? 0],
+      uGlyphMode: image ? glyphModeNumber(image.glyphMode) : 0,
+      uRainRanges: [
+        image?.digitStart ?? 56,
+        image?.latinStart ?? 66,
+        image?.symbolStart ?? 92,
+        image?.messageStart ?? 99,
+      ],
     });
+  }
+
+  private uploadImageMask(image?: ImageRenderState): void {
+    if (!image || image.mask === this.imageMaskRef) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R8,
+      image.maskWidth,
+      image.maskHeight,
+      0,
+      gl.RED,
+      gl.UNSIGNED_BYTE,
+      image.mask,
+    );
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    this.imageMaskRef = image.mask;
   }
 
   renderFrame(
@@ -178,6 +230,7 @@ export class Renderer {
     grid: Grid,
     extraLayers?: readonly ExtraLayer[],
     viewport?: GridViewport,
+    image?: ImageRenderState,
   ): void {
     const gl = this.gl;
     if (params.quality !== this.quality) {
@@ -187,11 +240,12 @@ export class Renderer {
     const preset = params.preset;
 
     gl.disable(gl.BLEND);
+    this.uploadImageMask(image);
 
     // 1. Glyph pass -> HDR scene. The base layer (offset 0) overwrites the frame (no glClear); any
     //    overlap layers then add on top so overlapping trails/heads accumulate emissively.
     twgl.bindFramebufferInfo(gl, this.scene);
-    this.drawGlyphLayer(this.state.texture, 0, grid, params, viewport);
+    this.drawGlyphLayer(this.state.texture, 0, grid, params, viewport, image);
     if (extraLayers && extraLayers.length > 0) {
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE);
@@ -258,5 +312,17 @@ export class Renderer {
 
   dispose(): void {
     this.disposeTargets();
+    this.gl.deleteTexture(this.imageTexture);
+  }
+}
+
+function glyphModeNumber(mode: ImageRenderState["glyphMode"]): number {
+  switch (mode) {
+    case "katakana": return 1;
+    case "binary": return 2;
+    case "digits": return 3;
+    case "latin": return 4;
+    case "symbols": return 5;
+    default: return 0;
   }
 }

@@ -1,0 +1,46 @@
+#include <windows.h>
+#include "@CMAKE_CURRENT_SOURCE_DIR@/resources/resource.h"
+
+IDR_MAIN_MANIFEST RT_MANIFEST "@CMAKE_CURRENT_SOURCE_DIR@/resources/MatrixCode.manifest"
+IDI_MATRIXCODE_ICON ICON "@CMAKE_CURRENT_SOURCE_DIR@/resources/MatrixCode.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @MATRIXCODE_VERSION_MAJOR@,@MATRIXCODE_VERSION_MINOR@,@MATRIXCODE_VERSION_PATCH@,@MATRIXCODE_VERSION_BUILD@
+ PRODUCTVERSION @MATRIXCODE_VERSION_MAJOR@,@MATRIXCODE_VERSION_MINOR@,@MATRIXCODE_VERSION_PATCH@,@MATRIXCODE_VERSION_BUILD@
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+#ifdef MATRIXCODE_SCREENSAVER
+ FILETYPE VFT_SCRNSAVE
+#else
+ FILETYPE VFT_APP
+#endif
+ FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName", "@MATRIXCODE_PUBLISHER@\0"
+      VALUE "FileDescription", "Matrix Code native digital rain\0"
+      VALUE "FileVersion", "@MATRIXCODE_VERSION@\0"
+      VALUE "InternalName", "MatrixCode\0"
+      VALUE "LegalCopyright", "MIT License\0"
+#ifdef MATRIXCODE_SCREENSAVER
+      VALUE "OriginalFilename", "Matrix Code.scr\0"
+#else
+      VALUE "OriginalFilename", "MatrixCode.exe\0"
+#endif
+      VALUE "ProductName", "Matrix Code\0"
+      VALUE "ProductVersion", "@MATRIXCODE_VERSION@\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END

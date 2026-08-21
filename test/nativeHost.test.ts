@@ -116,7 +116,8 @@ describe("native host payload", () => {
     storage.setItem("mx-controls", "edited");
     bootstrapNativeHost(storage);
     expect(storage.getItem("mx-controls")).toBe("edited");
-    expect(NATIVE_STORAGE_KEYS).toHaveLength(6);
+    expect(NATIVE_STORAGE_KEYS).toHaveLength(7);
+    expect(NATIVE_STORAGE_KEYS).toContain("mx-images");
   });
 
   it("derives a tested virtual-grid slice from native screen geometry", () => {

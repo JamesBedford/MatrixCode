@@ -3,9 +3,11 @@
 #import <ScreenSaver/ScreenSaver.h>
 
 #import "MatrixCodeConstants.h"
+#import "MatrixCodeImageContract.h"
 
 @interface MatrixCodePreferences ()
-@property(nonatomic, strong) ScreenSaverDefaults *defaults;
+@property(nonatomic, strong) NSUserDefaults *defaults;
+- (void)backupPortableImagesIfNeededBeforeReplacingWithValue:(nullable NSString *)replacement;
 @end
 
 @implementation MatrixCodePreferences
@@ -15,10 +17,26 @@ MatrixCodeAppPresentationMode const MatrixCodeAppPresentationModeFullScreen = @"
 MatrixCodeAppPresentationMode const MatrixCodeAppPresentationModeMultiMonitor = @"multiMonitor";
 static NSString * const MatrixCodeAppPresentationModeDefaultsKey = @"MatrixCodeAppPresentationMode";
 
+static NSArray * _Nullable MatrixCodeRawImagesArray(NSString * _Nullable rawJSON) {
+    if (![rawJSON isKindOfClass:NSString.class]) return nil;
+    NSData *data = [rawJSON dataUsingEncoding:NSUTF8StringEncoding];
+    id object = data
+        ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]
+        : nil;
+    if (![object isKindOfClass:NSDictionary.class]) return nil;
+    id images = ((NSDictionary *)object)[@"images"];
+    return [images isKindOfClass:NSArray.class] ? images : nil;
+}
+
 - (instancetype)init {
+    return [self initWithDefaults:
+        [ScreenSaverDefaults defaultsForModuleWithName:MatrixCodeModuleIdentifier]];
+}
+
+- (instancetype)initWithDefaults:(NSUserDefaults *)defaults {
     self = [super init];
     if (self) {
-        _defaults = [ScreenSaverDefaults defaultsForModuleWithName:MatrixCodeModuleIdentifier];
+        _defaults = defaults;
     }
     return self;
 }
@@ -82,6 +100,11 @@ static NSString * const MatrixCodeAppPresentationModeDefaultsKey = @"MatrixCodeA
 }
 
 - (void)commitValues:(NSDictionary<NSString *, NSString *> *)values {
+    NSString *imagesReplacement = values[@"mx-images"];
+    // commitValues is a complete snapshot: an omitted key is removed below, so it is
+    // still a replacement and must preserve incompatible legacy image data first.
+    [self backupPortableImagesIfNeededBeforeReplacingWithValue:
+        [imagesReplacement isKindOfClass:NSString.class] ? imagesReplacement : nil];
     for (NSString *key in MatrixCodeStorageKeys()) {
         NSString *value = values[key];
         if ([value isKindOfClass:NSString.class]) {
@@ -93,9 +116,12 @@ static NSString * const MatrixCodeAppPresentationModeDefaultsKey = @"MatrixCodeA
     [self.defaults synchronize];
 }
 
-- (void)setImmediateValue:(NSString *)value forKey:(NSString *)key {
+- (void)setImmediateValue:(NSString * _Nullable)value forKey:(NSString *)key {
     if (![MatrixCodePreferences isAllowedStorageKey:key]) {
         return;
+    }
+    if ([key isEqualToString:@"mx-images"]) {
+        [self backupPortableImagesIfNeededBeforeReplacingWithValue:value];
     }
     if (value) {
         [self.defaults setObject:value forKey:key];
@@ -103,6 +129,28 @@ static NSString * const MatrixCodeAppPresentationModeDefaultsKey = @"MatrixCodeA
         [self.defaults removeObjectForKey:key];
     }
     [self.defaults synchronize];
+}
+
+- (void)backupPortableImagesIfNeededBeforeReplacingWithValue:(NSString * _Nullable)replacement {
+    id existingBackup = [self.defaults objectForKey:MatrixCodeImagesPortableBackupDefaultsKey];
+    if (existingBackup) return;
+
+    id storedValue = [self.defaults objectForKey:@"mx-images"];
+    if (![storedValue isKindOfClass:NSString.class]) return;
+    NSString *storedJSON = storedValue;
+    if ([replacement isKindOfClass:NSString.class] && [storedJSON isEqualToString:replacement]) return;
+    if (!MatrixCodeImagesJSONStringRequiresPortableBackup(storedJSON)) return;
+    if ([replacement isKindOfClass:NSString.class] &&
+        MatrixCodeImagesJSONStringRequiresPortableBackup(replacement)) {
+        // A non-portable replacement is safe only when it retains the complete raw playlist.
+        // Merely checking that the replacement is also non-portable can lose one legacy mask
+        // while another legacy mask (or a 65th portable mask) keeps that coarse check true.
+        NSArray *storedImages = MatrixCodeRawImagesArray(storedJSON);
+        NSArray *replacementImages = MatrixCodeRawImagesArray(replacement);
+        if (storedImages && [storedImages isEqualToArray:replacementImages]) return;
+    }
+
+    [self.defaults setObject:storedJSON forKey:MatrixCodeImagesPortableBackupDefaultsKey];
 }
 
 @end

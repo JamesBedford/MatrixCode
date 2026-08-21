@@ -109,6 +109,7 @@ targets:
       - path: Source/MatrixCodeConfigurationController.m
       - path: Source/MatrixCodeConstants.m
       - path: Source/MatrixCodeIntroOverlayView.m
+      - path: Source/MatrixCodeImageContract.m
       - path: Source/MatrixCodeMessageScheduler.m
       - path: Source/MatrixCodeMetalView.m
       - path: Source/MatrixCodePreferences.m

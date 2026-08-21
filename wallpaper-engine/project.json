@@ -1,0 +1,1384 @@
+{
+  "title": "MatrixCode",
+  "description": "Film-accurate Matrix digital rain with configurable rain, characters, messages, countdowns and image reveals.",
+  "file": "index.html",
+  "general": {
+    "properties": {
+      "grouprain": {
+        "order": 1000,
+        "text": "Rain",
+        "type": "group"
+      },
+      "rainspeed": {
+        "order": 1010,
+        "text": "Speed",
+        "type": "slider",
+        "value": 1,
+        "min": 0.1,
+        "max": 3,
+        "precision": 2
+      },
+      "raindensity": {
+        "order": 1020,
+        "text": "Density",
+        "type": "slider",
+        "value": 2,
+        "min": 0.1,
+        "max": 100,
+        "precision": 2
+      },
+      "rainrampseconds": {
+        "order": 1030,
+        "text": "Load ramp (seconds)",
+        "type": "slider",
+        "value": 8,
+        "min": 0,
+        "max": 60,
+        "precision": 2
+      },
+      "raintraillength": {
+        "order": 1040,
+        "text": "Trail length",
+        "type": "slider",
+        "value": 0.255,
+        "min": 0.01,
+        "max": 0.5,
+        "precision": 3
+      },
+      "raintrailvariation": {
+        "order": 1050,
+        "text": "Trail variation",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 1,
+        "precision": 2
+      },
+      "groupcharacters": {
+        "order": 1200,
+        "text": "Characters",
+        "type": "group"
+      },
+      "glyphscale": {
+        "order": 1210,
+        "text": "Glyph scale",
+        "type": "slider",
+        "value": 1,
+        "min": 0.5,
+        "max": 10,
+        "precision": 2
+      },
+      "glyphrate": {
+        "order": 1220,
+        "text": "Glyph change rate",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 5,
+        "precision": 2
+      },
+      "glyphmode": {
+        "order": 1230,
+        "text": "Character family",
+        "type": "combo",
+        "value": "matrix",
+        "options": [
+          {
+            "label": "Matrix",
+            "value": "matrix"
+          },
+          {
+            "label": "Katakana",
+            "value": "katakana"
+          },
+          {
+            "label": "Binary",
+            "value": "binary"
+          },
+          {
+            "label": "Digits",
+            "value": "digits"
+          },
+          {
+            "label": "Latin",
+            "value": "latin"
+          },
+          {
+            "label": "Symbols",
+            "value": "symbols"
+          }
+        ]
+      },
+      "glyphfont": {
+        "order": 1240,
+        "text": "Font",
+        "type": "combo",
+        "value": "matrix",
+        "options": [
+          {
+            "label": "Movie Gothic",
+            "value": "matrix"
+          },
+          {
+            "label": "Sharp Gothic",
+            "value": "gothic"
+          },
+          {
+            "label": "SF Mono",
+            "value": "mono"
+          },
+          {
+            "label": "Terminal Mono",
+            "value": "terminal"
+          },
+          {
+            "label": "Rounded",
+            "value": "rounded"
+          },
+          {
+            "label": "Mincho",
+            "value": "mincho"
+          }
+        ]
+      },
+      "glyphmirror": {
+        "order": 1250,
+        "text": "Mirror glyphs",
+        "type": "bool",
+        "value": true
+      },
+      "groupappearance": {
+        "order": 1400,
+        "text": "Appearance",
+        "type": "group"
+      },
+      "colorpreset": {
+        "order": 1410,
+        "text": "Colour theme",
+        "type": "combo",
+        "value": "classic",
+        "options": [
+          {
+            "label": "Classic",
+            "value": "classic"
+          },
+          {
+            "label": "Amber",
+            "value": "amber"
+          },
+          {
+            "label": "Orange",
+            "value": "orange"
+          },
+          {
+            "label": "Gold",
+            "value": "gold"
+          },
+          {
+            "label": "Red",
+            "value": "red"
+          },
+          {
+            "label": "Pink",
+            "value": "pink"
+          },
+          {
+            "label": "Purple",
+            "value": "purple"
+          },
+          {
+            "label": "Blue",
+            "value": "blue"
+          },
+          {
+            "label": "White",
+            "value": "white"
+          },
+          {
+            "label": "Custom",
+            "value": "custom"
+          }
+        ]
+      },
+      "customcolor": {
+        "order": 1420,
+        "text": "Custom colour",
+        "type": "color",
+        "value": "0 1 0.2549019608",
+        "condition": "colorpreset.value == 'custom'"
+      },
+      "glow": {
+        "order": 1430,
+        "text": "Glow",
+        "type": "slider",
+        "value": 0.9,
+        "min": 0,
+        "max": 2.5,
+        "precision": 2
+      },
+      "leadglow": {
+        "order": 1440,
+        "text": "Lead brightness",
+        "type": "slider",
+        "value": 1.6,
+        "min": 0,
+        "max": 3,
+        "precision": 2
+      },
+      "scanlines": {
+        "order": 1450,
+        "text": "Scanlines",
+        "type": "bool",
+        "value": false
+      },
+      "vignette": {
+        "order": 1460,
+        "text": "Vignette",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 1,
+        "precision": 2
+      },
+      "allowoverlap": {
+        "order": 1470,
+        "text": "Allow overlapping streams",
+        "type": "bool",
+        "value": true
+      },
+      "quality": {
+        "order": 1480,
+        "text": "Render quality",
+        "type": "combo",
+        "value": "high",
+        "options": [
+          {
+            "label": "Low",
+            "value": "low"
+          },
+          {
+            "label": "Medium",
+            "value": "med"
+          },
+          {
+            "label": "High",
+            "value": "high"
+          }
+        ]
+      },
+      "grouptokens": {
+        "order": 1600,
+        "text": "Viewer and countdown",
+        "type": "group"
+      },
+      "viewername": {
+        "order": 1610,
+        "text": "Viewer name (blank uses Neo)",
+        "type": "textinput",
+        "value": ""
+      },
+      "countdowntargetlocal": {
+        "order": 1620,
+        "text": "Default target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": ""
+      },
+      "groupintro": {
+        "order": 2000,
+        "text": "Intro",
+        "type": "group"
+      },
+      "introenabled": {
+        "order": 2010,
+        "text": "Enable intro",
+        "type": "bool",
+        "value": true
+      },
+      "introcharmilliseconds": {
+        "order": 2020,
+        "text": "Typing speed (milliseconds per character)",
+        "type": "slider",
+        "value": 95,
+        "min": 10,
+        "max": 500,
+        "condition": "introenabled.value == true"
+      },
+      "introstartseconds": {
+        "order": 2030,
+        "text": "Start delay (seconds)",
+        "type": "slider",
+        "value": 0.6,
+        "min": 0,
+        "max": 10,
+        "precision": 2,
+        "condition": "introenabled.value == true"
+      },
+      "introfadeseconds": {
+        "order": 2040,
+        "text": "Fade out (seconds)",
+        "type": "slider",
+        "value": 0.9,
+        "min": 0,
+        "max": 10,
+        "precision": 2,
+        "condition": "introenabled.value == true"
+      },
+      "intrainduring": {
+        "order": 2050,
+        "text": "Rain during intro",
+        "type": "bool",
+        "value": false,
+        "condition": "introenabled.value == true"
+      },
+      "intropostseconds": {
+        "order": 2060,
+        "text": "Delay before rain (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 10,
+        "precision": 2,
+        "condition": "introenabled.value == true && intrainduring.value == false"
+      },
+      "intro01enabled": {
+        "text": "Line 01: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2101,
+        "value": true
+      },
+      "intro01text": {
+        "text": "Line 01: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro01enabled.value == true",
+        "order": 2102,
+        "value": "Wake up, {name}..."
+      },
+      "intro01holdseconds": {
+        "text": "Line 01: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro01enabled.value == true",
+        "order": 2103
+      },
+      "intro01pauseseconds": {
+        "text": "Line 01: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro01enabled.value == true",
+        "order": 2104
+      },
+      "intro02enabled": {
+        "text": "Line 02: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2111,
+        "value": true
+      },
+      "intro02text": {
+        "text": "Line 02: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro02enabled.value == true",
+        "order": 2112,
+        "value": "The Matrix has you..."
+      },
+      "intro02holdseconds": {
+        "text": "Line 02: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro02enabled.value == true",
+        "order": 2113
+      },
+      "intro02pauseseconds": {
+        "text": "Line 02: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro02enabled.value == true",
+        "order": 2114
+      },
+      "intro03enabled": {
+        "text": "Line 03: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2121,
+        "value": true
+      },
+      "intro03text": {
+        "text": "Line 03: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro03enabled.value == true",
+        "order": 2122,
+        "value": "Follow the white rabbit."
+      },
+      "intro03holdseconds": {
+        "text": "Line 03: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro03enabled.value == true",
+        "order": 2123
+      },
+      "intro03pauseseconds": {
+        "text": "Line 03: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro03enabled.value == true",
+        "order": 2124
+      },
+      "intro04enabled": {
+        "text": "Line 04: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2131,
+        "value": true
+      },
+      "intro04text": {
+        "text": "Line 04: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro04enabled.value == true",
+        "order": 2132,
+        "value": "Knock, knock, {name}."
+      },
+      "intro04holdseconds": {
+        "text": "Line 04: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro04enabled.value == true",
+        "order": 2133
+      },
+      "intro04pauseseconds": {
+        "text": "Line 04: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro04enabled.value == true",
+        "order": 2134
+      },
+      "intro05enabled": {
+        "text": "Line 05: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2141,
+        "value": false
+      },
+      "intro05text": {
+        "text": "Line 05: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro05enabled.value == true",
+        "order": 2142,
+        "value": ""
+      },
+      "intro05holdseconds": {
+        "text": "Line 05: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro05enabled.value == true",
+        "order": 2143
+      },
+      "intro05pauseseconds": {
+        "text": "Line 05: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro05enabled.value == true",
+        "order": 2144
+      },
+      "intro06enabled": {
+        "text": "Line 06: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2151,
+        "value": false
+      },
+      "intro06text": {
+        "text": "Line 06: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro06enabled.value == true",
+        "order": 2152,
+        "value": ""
+      },
+      "intro06holdseconds": {
+        "text": "Line 06: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro06enabled.value == true",
+        "order": 2153
+      },
+      "intro06pauseseconds": {
+        "text": "Line 06: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro06enabled.value == true",
+        "order": 2154
+      },
+      "intro07enabled": {
+        "text": "Line 07: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2161,
+        "value": false
+      },
+      "intro07text": {
+        "text": "Line 07: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro07enabled.value == true",
+        "order": 2162,
+        "value": ""
+      },
+      "intro07holdseconds": {
+        "text": "Line 07: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro07enabled.value == true",
+        "order": 2163
+      },
+      "intro07pauseseconds": {
+        "text": "Line 07: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro07enabled.value == true",
+        "order": 2164
+      },
+      "intro08enabled": {
+        "text": "Line 08: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2171,
+        "value": false
+      },
+      "intro08text": {
+        "text": "Line 08: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro08enabled.value == true",
+        "order": 2172,
+        "value": ""
+      },
+      "intro08holdseconds": {
+        "text": "Line 08: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro08enabled.value == true",
+        "order": 2173
+      },
+      "intro08pauseseconds": {
+        "text": "Line 08: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro08enabled.value == true",
+        "order": 2174
+      },
+      "intro09enabled": {
+        "text": "Line 09: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2181,
+        "value": false
+      },
+      "intro09text": {
+        "text": "Line 09: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro09enabled.value == true",
+        "order": 2182,
+        "value": ""
+      },
+      "intro09holdseconds": {
+        "text": "Line 09: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro09enabled.value == true",
+        "order": 2183
+      },
+      "intro09pauseseconds": {
+        "text": "Line 09: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro09enabled.value == true",
+        "order": 2184
+      },
+      "intro10enabled": {
+        "text": "Line 10: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2191,
+        "value": false
+      },
+      "intro10text": {
+        "text": "Line 10: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro10enabled.value == true",
+        "order": 2192,
+        "value": ""
+      },
+      "intro10holdseconds": {
+        "text": "Line 10: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro10enabled.value == true",
+        "order": 2193
+      },
+      "intro10pauseseconds": {
+        "text": "Line 10: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro10enabled.value == true",
+        "order": 2194
+      },
+      "intro11enabled": {
+        "text": "Line 11: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2201,
+        "value": false
+      },
+      "intro11text": {
+        "text": "Line 11: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro11enabled.value == true",
+        "order": 2202,
+        "value": ""
+      },
+      "intro11holdseconds": {
+        "text": "Line 11: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro11enabled.value == true",
+        "order": 2203
+      },
+      "intro11pauseseconds": {
+        "text": "Line 11: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro11enabled.value == true",
+        "order": 2204
+      },
+      "intro12enabled": {
+        "text": "Line 12: enabled",
+        "type": "bool",
+        "condition": "introenabled.value == true",
+        "order": 2211,
+        "value": false
+      },
+      "intro12text": {
+        "text": "Line 12: text",
+        "type": "textinput",
+        "condition": "introenabled.value == true && intro12enabled.value == true",
+        "order": 2212,
+        "value": ""
+      },
+      "intro12holdseconds": {
+        "text": "Line 12: hold (seconds)",
+        "type": "slider",
+        "value": 2.8,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro12enabled.value == true",
+        "order": 2213
+      },
+      "intro12pauseseconds": {
+        "text": "Line 12: pause after (seconds)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "precision": 2,
+        "condition": "introenabled.value == true && intro12enabled.value == true",
+        "order": 2214
+      },
+      "groupmessages": {
+        "order": 4000,
+        "text": "In-rain messages",
+        "type": "group"
+      },
+      "messagesenabled": {
+        "order": 4010,
+        "text": "Enable messages",
+        "type": "bool",
+        "value": false
+      },
+      "messagesfrequencyseconds": {
+        "order": 4020,
+        "text": "Average gap (seconds)",
+        "type": "slider",
+        "value": 8,
+        "min": 0.5,
+        "max": 600,
+        "precision": 2,
+        "condition": "messagesenabled.value == true"
+      },
+      "messagesholdseconds": {
+        "order": 4030,
+        "text": "Hold (seconds)",
+        "type": "slider",
+        "value": 10,
+        "min": 0.5,
+        "max": 600,
+        "precision": 2,
+        "condition": "messagesenabled.value == true"
+      },
+      "messagesappearseconds": {
+        "order": 4040,
+        "text": "Appear (seconds)",
+        "type": "slider",
+        "value": 4,
+        "min": 0,
+        "max": 600,
+        "precision": 2,
+        "condition": "messagesenabled.value == true"
+      },
+      "messagesdisappearseconds": {
+        "order": 4050,
+        "text": "Disappear (seconds)",
+        "type": "slider",
+        "value": 4,
+        "min": 0,
+        "max": 600,
+        "precision": 2,
+        "condition": "messagesenabled.value == true"
+      },
+      "messagesflicker": {
+        "order": 4060,
+        "text": "Flicker resolve",
+        "type": "bool",
+        "value": true,
+        "condition": "messagesenabled.value == true"
+      },
+      "messagesbrightnessfade": {
+        "order": 4070,
+        "text": "Brightness fade",
+        "type": "bool",
+        "value": false,
+        "condition": "messagesenabled.value == true"
+      },
+      "messageslayout": {
+        "order": 4080,
+        "text": "Layout",
+        "type": "combo",
+        "value": "row",
+        "options": [
+          {
+            "label": "Horizontal row",
+            "value": "row"
+          },
+          {
+            "label": "Single drop",
+            "value": "drop"
+          }
+        ],
+        "condition": "messagesenabled.value == true"
+      },
+      "messagesdirection": {
+        "order": 4090,
+        "text": "Drop reading direction",
+        "type": "combo",
+        "value": "topToBottom",
+        "options": [
+          {
+            "label": "Top to bottom",
+            "value": "topToBottom"
+          },
+          {
+            "label": "Bottom to top",
+            "value": "bottomToTop"
+          }
+        ],
+        "condition": "messagesenabled.value == true && messageslayout.value == 'drop'"
+      },
+      "messagesposition": {
+        "order": 4091,
+        "text": "Position",
+        "type": "slider",
+        "value": 0.475,
+        "min": 0,
+        "max": 1,
+        "precision": 3,
+        "condition": "messagesenabled.value == true"
+      },
+      "messagesjitter": {
+        "order": 4092,
+        "text": "Position jitter",
+        "type": "slider",
+        "value": 0.25,
+        "min": 0,
+        "max": 1,
+        "precision": 2,
+        "condition": "messagesenabled.value == true"
+      },
+      "message01enabled": {
+        "text": "Message 01: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4101,
+        "value": true
+      },
+      "message01text": {
+        "text": "Message 01: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message01enabled.value == true",
+        "order": 4102,
+        "value": "WAKE UP"
+      },
+      "message02enabled": {
+        "text": "Message 02: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4111,
+        "value": true
+      },
+      "message02text": {
+        "text": "Message 02: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message02enabled.value == true",
+        "order": 4112,
+        "value": "THE MATRIX HAS YOU"
+      },
+      "message03enabled": {
+        "text": "Message 03: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4121,
+        "value": true
+      },
+      "message03text": {
+        "text": "Message 03: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message03enabled.value == true",
+        "order": 4122,
+        "value": "FOLLOW THE WHITE RABBIT"
+      },
+      "message04enabled": {
+        "text": "Message 04: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4131,
+        "value": true
+      },
+      "message04text": {
+        "text": "Message 04: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message04enabled.value == true",
+        "order": 4132,
+        "value": "{countup}"
+      },
+      "message05enabled": {
+        "text": "Message 05: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4141,
+        "value": false
+      },
+      "message05text": {
+        "text": "Message 05: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message05enabled.value == true",
+        "order": 4142,
+        "value": ""
+      },
+      "message06enabled": {
+        "text": "Message 06: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4151,
+        "value": false
+      },
+      "message06text": {
+        "text": "Message 06: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message06enabled.value == true",
+        "order": 4152,
+        "value": ""
+      },
+      "message07enabled": {
+        "text": "Message 07: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4161,
+        "value": false
+      },
+      "message07text": {
+        "text": "Message 07: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message07enabled.value == true",
+        "order": 4162,
+        "value": ""
+      },
+      "message08enabled": {
+        "text": "Message 08: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4171,
+        "value": false
+      },
+      "message08text": {
+        "text": "Message 08: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message08enabled.value == true",
+        "order": 4172,
+        "value": ""
+      },
+      "message09enabled": {
+        "text": "Message 09: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4181,
+        "value": false
+      },
+      "message09text": {
+        "text": "Message 09: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message09enabled.value == true",
+        "order": 4182,
+        "value": ""
+      },
+      "message10enabled": {
+        "text": "Message 10: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4191,
+        "value": false
+      },
+      "message10text": {
+        "text": "Message 10: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message10enabled.value == true",
+        "order": 4192,
+        "value": ""
+      },
+      "message11enabled": {
+        "text": "Message 11: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4201,
+        "value": false
+      },
+      "message11text": {
+        "text": "Message 11: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message11enabled.value == true",
+        "order": 4202,
+        "value": ""
+      },
+      "message12enabled": {
+        "text": "Message 12: enabled",
+        "type": "bool",
+        "condition": "messagesenabled.value == true",
+        "order": 4211,
+        "value": false
+      },
+      "message12text": {
+        "text": "Message 12: text",
+        "type": "textinput",
+        "condition": "messagesenabled.value == true && message12enabled.value == true",
+        "order": 4212,
+        "value": ""
+      },
+      "groupmoments": {
+        "order": 6000,
+        "text": "Named countdowns and countups",
+        "type": "group"
+      },
+      "moment01enabled": {
+        "text": "Moment 01: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6101
+      },
+      "moment01name": {
+        "text": "Moment 01: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment01enabled.value == true",
+        "order": 6102
+      },
+      "moment01targetlocal": {
+        "text": "Moment 01: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment01enabled.value == true",
+        "order": 6103
+      },
+      "moment02enabled": {
+        "text": "Moment 02: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6111
+      },
+      "moment02name": {
+        "text": "Moment 02: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment02enabled.value == true",
+        "order": 6112
+      },
+      "moment02targetlocal": {
+        "text": "Moment 02: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment02enabled.value == true",
+        "order": 6113
+      },
+      "moment03enabled": {
+        "text": "Moment 03: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6121
+      },
+      "moment03name": {
+        "text": "Moment 03: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment03enabled.value == true",
+        "order": 6122
+      },
+      "moment03targetlocal": {
+        "text": "Moment 03: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment03enabled.value == true",
+        "order": 6123
+      },
+      "moment04enabled": {
+        "text": "Moment 04: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6131
+      },
+      "moment04name": {
+        "text": "Moment 04: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment04enabled.value == true",
+        "order": 6132
+      },
+      "moment04targetlocal": {
+        "text": "Moment 04: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment04enabled.value == true",
+        "order": 6133
+      },
+      "moment05enabled": {
+        "text": "Moment 05: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6141
+      },
+      "moment05name": {
+        "text": "Moment 05: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment05enabled.value == true",
+        "order": 6142
+      },
+      "moment05targetlocal": {
+        "text": "Moment 05: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment05enabled.value == true",
+        "order": 6143
+      },
+      "moment06enabled": {
+        "text": "Moment 06: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6151
+      },
+      "moment06name": {
+        "text": "Moment 06: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment06enabled.value == true",
+        "order": 6152
+      },
+      "moment06targetlocal": {
+        "text": "Moment 06: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment06enabled.value == true",
+        "order": 6153
+      },
+      "moment07enabled": {
+        "text": "Moment 07: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6161
+      },
+      "moment07name": {
+        "text": "Moment 07: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment07enabled.value == true",
+        "order": 6162
+      },
+      "moment07targetlocal": {
+        "text": "Moment 07: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment07enabled.value == true",
+        "order": 6163
+      },
+      "moment08enabled": {
+        "text": "Moment 08: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6171
+      },
+      "moment08name": {
+        "text": "Moment 08: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment08enabled.value == true",
+        "order": 6172
+      },
+      "moment08targetlocal": {
+        "text": "Moment 08: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment08enabled.value == true",
+        "order": 6173
+      },
+      "moment09enabled": {
+        "text": "Moment 09: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6181
+      },
+      "moment09name": {
+        "text": "Moment 09: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment09enabled.value == true",
+        "order": 6182
+      },
+      "moment09targetlocal": {
+        "text": "Moment 09: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment09enabled.value == true",
+        "order": 6183
+      },
+      "moment10enabled": {
+        "text": "Moment 10: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6191
+      },
+      "moment10name": {
+        "text": "Moment 10: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment10enabled.value == true",
+        "order": 6192
+      },
+      "moment10targetlocal": {
+        "text": "Moment 10: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment10enabled.value == true",
+        "order": 6193
+      },
+      "moment11enabled": {
+        "text": "Moment 11: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6201
+      },
+      "moment11name": {
+        "text": "Moment 11: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment11enabled.value == true",
+        "order": 6202
+      },
+      "moment11targetlocal": {
+        "text": "Moment 11: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment11enabled.value == true",
+        "order": 6203
+      },
+      "moment12enabled": {
+        "text": "Moment 12: enabled",
+        "type": "bool",
+        "value": false,
+        "order": 6211
+      },
+      "moment12name": {
+        "text": "Moment 12: token name",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment12enabled.value == true",
+        "order": 6212
+      },
+      "moment12targetlocal": {
+        "text": "Moment 12: target (YYYY-MM-DDTHH:mm)",
+        "type": "textinput",
+        "value": "",
+        "condition": "moment12enabled.value == true",
+        "order": 6213
+      },
+      "groupimages": {
+        "order": 8000,
+        "text": "Image reveals",
+        "type": "group"
+      },
+      "imagesenabled": {
+        "order": 8010,
+        "text": "Enable image reveals",
+        "type": "bool",
+        "value": false
+      },
+      "imagesfrequencyseconds": {
+        "order": 8020,
+        "text": "Average gap (seconds)",
+        "type": "slider",
+        "value": 14,
+        "min": 0.5,
+        "max": 600,
+        "precision": 2,
+        "condition": "imagesenabled.value == true"
+      },
+      "imagesholdseconds": {
+        "order": 8030,
+        "text": "Hold (seconds)",
+        "type": "slider",
+        "value": 12,
+        "min": 0.5,
+        "max": 600,
+        "precision": 2,
+        "condition": "imagesenabled.value == true"
+      },
+      "imagesappearseconds": {
+        "order": 8040,
+        "text": "Appear (seconds)",
+        "type": "slider",
+        "value": 4.5,
+        "min": 0,
+        "max": 600,
+        "precision": 2,
+        "condition": "imagesenabled.value == true"
+      },
+      "imagesdisappearseconds": {
+        "order": 8050,
+        "text": "Disappear (seconds)",
+        "type": "slider",
+        "value": 4.5,
+        "min": 0,
+        "max": 600,
+        "precision": 2,
+        "condition": "imagesenabled.value == true"
+      },
+      "imagesflicker": {
+        "order": 8060,
+        "text": "Flicker resolve",
+        "type": "bool",
+        "value": true,
+        "condition": "imagesenabled.value == true"
+      },
+      "imagesbrightnessfade": {
+        "order": 8070,
+        "text": "Brightness fade",
+        "type": "bool",
+        "value": false,
+        "condition": "imagesenabled.value == true"
+      },
+      "imagesscale": {
+        "order": 8080,
+        "text": "Image scale",
+        "type": "slider",
+        "value": 0.72,
+        "min": 0.05,
+        "max": 1,
+        "precision": 2,
+        "condition": "imagesenabled.value == true"
+      },
+      "imagesplacementjitter": {
+        "order": 8090,
+        "text": "Placement jitter",
+        "type": "slider",
+        "value": 0.35,
+        "min": 0,
+        "max": 1,
+        "precision": 2,
+        "condition": "imagesenabled.value == true"
+      },
+      "imagesdirectory": {
+        "order": 8100,
+        "text": "Image folder (first 64 sorted images)",
+        "type": "directory",
+        "value": "",
+        "mode": "fetchall",
+        "condition": "imagesenabled.value == true"
+      }
+    }
+  },
+  "preview": "preview.png",
+  "tags": [
+    "Relaxing"
+  ],
+  "type": "web",
+  "visibility": "private"
+}

@@ -21,6 +21,7 @@ typedef void (^MatrixCodeMetalFrameHandler)(MatrixCodeMetalView *view,
 - (void)configureFramePacingForScreen:(nullable NSScreen *)screen;
 - (void)setAnimationActive:(BOOL)active;
 - (void)freezeAnimationAtDate:(NSDate *)date;
+- (void)setReducedMotionEnabled:(BOOL)enabled;
 - (void)prepareReducedMotionFrame;
 - (void)restartDeterministicRainFromEmpty:(BOOL)startsFromEmpty;
 - (void)setTokenTimelineStartDate:(NSDate *)date;

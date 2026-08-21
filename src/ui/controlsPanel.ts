@@ -11,6 +11,7 @@ export interface PanelCallbacks {
   onEditCharacters: () => void;
   onEditIntro: () => void;
   onEditMessages: () => void;
+  onEditImages?: () => void;
   onEditCountdown: () => void;
 }
 
@@ -149,6 +150,11 @@ export class ControlsPanel {
       editMsgs.style.marginTop = "6px";
       this.panel.appendChild(editMsgs);
 
+      const editImages = this.button("✎ Edit images", () => this.cb.onEditImages?.());
+      editImages.title = "Edit images (X)";
+      editImages.style.marginTop = "6px";
+      this.panel.appendChild(editImages);
+
       const editCountdown = this.button("⏱ Edit countdown", () => this.cb.onEditCountdown());
       editCountdown.title = "Edit countdown (C)";
       editCountdown.style.marginTop = "6px";
@@ -169,7 +175,7 @@ export class ControlsPanel {
     hint.className = "mx-hint";
     hint.innerHTML = options.multiMonitor
       ? "<kbd>H</kbd> panel · <kbd>−</kbd>/<kbd>=</kbd> density · <kbd>Esc</kbd> exit"
-      : "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>N</kbd>/<kbd>Shift+M</kbd> toggle msgs · <kbd>C</kbd> countdown · <kbd>−</kbd>/<kbd>=</kbd> density";
+      : "<kbd>F</kbd> fullscreen · <kbd>H</kbd> panel · <kbd>I</kbd> intro · <kbd>M</kbd> messages · <kbd>X</kbd> images · <kbd>N</kbd>/<kbd>Shift+M</kbd> toggle msgs · <kbd>Shift+X</kbd> toggle images · <kbd>C</kbd> countdown · <kbd>−</kbd>/<kbd>=</kbd> density";
     this.panel.appendChild(hint);
 
     this.el.appendChild(this.panel);

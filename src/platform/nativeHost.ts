@@ -7,6 +7,7 @@ export const NATIVE_STORAGE_KEYS = [
   "mx-controls",
   "mx-intro",
   "mx-messages",
+  "mx-images",
   "mx-countdown",
   "mx-ui-state",
   "mx-user-name",

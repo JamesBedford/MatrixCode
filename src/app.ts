@@ -1,7 +1,10 @@
-import type { ColorPreset, Controls, Grid, RenderParams, MessagesDoc } from "./types.ts";
+import type { ColorPreset, Controls, Grid, RenderParams, MessagesDoc, ImagesDoc, ImageMask } from "./types.ts";
 import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
 import { MessageScheduler } from "./sim/messageScheduler.ts";
+import { ImageScheduler, type ActiveImageFrame } from "./sim/imageScheduler.ts";
+import { buildImageRenderState } from "./sim/imageReveal.ts";
+import { imageUrlToMask } from "./sim/imageMask.ts";
 import { createRng } from "./util/rng.ts";
 import { MessageOverlay, resolveUserName } from "./sim/messageOverlay.ts";
 import { resolveTokens } from "./sim/tokens.ts";
@@ -24,6 +27,8 @@ import { IntroStore, sanitizeIntro, toTypeConfig, type IntroScript } from "./con
 import { IntroEditor } from "./ui/introEditor.ts";
 import { MessagesStore } from "./config/messagesStore.ts";
 import { MessagesEditor } from "./ui/messagesEditor.ts";
+import { ImagesStore, MAX_IMAGES } from "./config/imagesStore.ts";
+import { ImagesEditor } from "./ui/imagesEditor.ts";
 import { CountdownStore } from "./config/countdownStore.ts";
 import { CountdownEditor } from "./ui/countdownEditor.ts";
 import {
@@ -34,7 +39,7 @@ import {
   type ActiveSettingsSurface,
 } from "./config/uiState.ts";
 import { MODAL_OPEN_CHANGE_EVENT } from "./ui/modalKit.ts";
-import { startCanvas2dRain } from "./fallback/canvas2dRain.ts";
+import { startCanvas2dRain, type Canvas2dRainHandle } from "./fallback/canvas2dRain.ts";
 import { computeVirtualGrid, stepsToAdvance, extractSlice } from "./multimonitor/multiMonitorGrid.ts";
 import {
   type MultiMonitorConfig,
@@ -47,11 +52,39 @@ import {
   prefetchScreens,
 } from "./multimonitor/multiMonitorFullscreen.ts";
 import { isNativeHosted, nativeMultiMonitorConfig } from "./platform/nativeHost.ts";
+import type {
+  WallpaperEngineBridge,
+  WallpaperEngineConfiguration,
+  WallpaperEngineImagesConfiguration,
+} from "./platform/wallpaperEngine.ts";
 
 export interface MatrixRainHandle {
   destroy: () => void;
   setActive: (active: boolean) => void;
   controls: ControlsStore;
+}
+
+export interface MatrixRainHostOptions {
+  /** Present only inside Wallpaper Engine; makes its property pane authoritative and ephemeral. */
+  wallpaperEngine?: WallpaperEngineBridge;
+}
+
+function wallpaperImagesDoc(
+  config: WallpaperEngineImagesConfiguration,
+  images: ImageMask[] = [],
+): ImagesDoc {
+  return {
+    images,
+    enabled: config.enabled,
+    frequencyMs: config.frequencyMs,
+    persistenceMs: config.persistenceMs,
+    appearMs: config.appearMs,
+    disappearMs: config.disappearMs,
+    flickerOut: config.flickerOut,
+    brightnessFade: config.brightnessFade,
+    imageScale: config.imageScale,
+    imagePlacementJitter: config.imagePlacementJitter,
+  };
 }
 
 const ATLAS_CELL_PX = 64;
@@ -142,13 +175,36 @@ function createHud(parent: HTMLElement): HTMLElement {
 export async function mountMatrixRain(
   container: HTMLElement,
   options?: Partial<Controls>,
+  hostOptions: MatrixRainHostOptions = {},
 ): Promise<MatrixRainHandle> {
-  const controls = new ControlsStore();
-  if (options) controls.set(options);
+  const wallpaperBridge = hostOptions.wallpaperEngine;
+  const wallpaperHosted = wallpaperBridge !== undefined;
+  const wallpaperInitial = wallpaperBridge?.configuration();
+  if (wallpaperHosted) {
+    document.documentElement.classList.add("mx-wallpaper-engine");
+    container.classList.add("mx-wallpaper-engine");
+  }
+  const clearWallpaperClasses = (): void => {
+    container.classList.remove("mx-wallpaper-engine");
+    if (wallpaperHosted) document.documentElement.classList.remove("mx-wallpaper-engine");
+  };
+  const controls = wallpaperInitial
+    ? new ControlsStore({
+        initial: wallpaperInitial.controls,
+        storage: null,
+        readUrl: false,
+        writeUrl: false,
+        notifyNative: false,
+      })
+    : new ControlsStore();
+  const imagesStore = wallpaperInitial
+    ? new ImagesStore(null, wallpaperImagesDoc(wallpaperInitial.images))
+    : new ImagesStore();
+  if (options && !wallpaperHosted) controls.set(options);
   applyChromeAccent(getPreset(controls.get().preset, controls.get().customColor));
   applyFavicon(getPreset(controls.get().preset, controls.get().customColor));
 
-  const canvas = document.createElement("canvas");
+  let canvas = document.createElement("canvas");
   container.appendChild(canvas);
 
   const gl = canvas.getContext("webgl2", {
@@ -158,30 +214,157 @@ export async function mountMatrixRain(
     powerPreference: "high-performance",
   });
 
-  // ---------- Fallback: no WebGL2 ----------
-  if (!gl) {
-    const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale, controls.get().customColor);
+  const createFallbackHandle = (noticeText: string): MatrixRainHandle => {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let fallbackHostActive = true;
+    let fallbackPaused = wallpaperBridge?.pauseClock.isPaused() ?? false;
+    let fallbackPauseStartedAtMs = fallbackPaused ? performance.now() : null;
+    const imageEpoch = performance.now();
+    const fallbackImages = new ImageScheduler({ seed: BASE_SEED, epochMs: imageEpoch });
+    fallbackImages.configure(imagesStore.get(), imageEpoch);
+    let fallback: Canvas2dRainHandle | null = null;
+    let imageGeneration = 0;
+    let imageSources = "";
+    let imageMasks: ImageMask[] = [];
+    let imageConfig = wallpaperInitial?.images ?? null;
+
+    const shouldRun = (): boolean =>
+      fallbackHostActive && !fallbackPaused && !document.hidden && !reduceMotion.matches;
+    const syncPlayback = (): void => {
+      if (shouldRun()) fallback?.start();
+      else fallback?.stop();
+    };
+    const launch = (): void => {
+      fallback?.stop();
+      const current = controls.get();
+      fallback = startCanvas2dRain(
+        canvas,
+        current.preset,
+        current.glyphScale,
+        current.customColor,
+        (nowMs) => {
+          const imageNowMs = fallbackPaused
+            ? (fallbackPauseStartedAtMs ?? nowMs)
+            : nowMs;
+          return {
+            frame: reduceMotion.matches ? null : fallbackImages.update(imageNowMs),
+            doc: imagesStore.get(),
+            seed: BASE_SEED,
+          };
+        },
+        wallpaperBridge ? (nowMs) => wallpaperBridge.fpsLimiter.sample(nowMs) : undefined,
+      );
+      syncPlayback();
+      // A newly-created fallback has not received an RAF yet. If animation is disabled
+      // from the outset, paint the same deterministic state into a representative frame.
+      if (!shouldRun()) fallback.renderStatic(performance.now());
+    };
+
     const sizeCanvas = (): void => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.round((container.clientWidth || window.innerWidth) * dpr);
-      canvas.height = Math.round((container.clientHeight || window.innerHeight) * dpr);
+      canvas.width = Math.max(1, Math.round((container.clientWidth || window.innerWidth) * dpr));
+      canvas.height = Math.max(1, Math.round((container.clientHeight || window.innerHeight) * dpr));
+      // Resizing clears a 2D canvas. Repaint immediately when no RAF will follow.
+      if (fallback && !shouldRun()) fallback.renderStatic(performance.now());
     };
     sizeCanvas();
-    const ro = new ResizeObserver(sizeCanvas);
-    ro.observe(container);
-    showNotice(container, "Compatibility mode — WebGL2 unavailable");
+    launch();
+    const resizeObserver = new ResizeObserver(sizeCanvas);
+    resizeObserver.observe(container);
+    const notice = showNotice(container, noticeText);
+
+    const commitImages = (config: WallpaperEngineImagesConfiguration): void => {
+      const doc = wallpaperImagesDoc(config, imageMasks);
+      imagesStore.set(doc);
+      fallbackImages.configure(doc, performance.now(), true);
+      if (fallbackPaused) fallbackPauseStartedAtMs = performance.now();
+    };
+    const applyImages = (config: WallpaperEngineImagesConfiguration): void => {
+      imageConfig = config;
+      const signature = config.sources.map(({ path, url }) => `${path}\u0000${url}`).join("\u0001");
+      if (signature === imageSources) {
+        commitImages(config);
+        return;
+      }
+      imageSources = signature;
+      imageMasks = [];
+      const generation = ++imageGeneration;
+      commitImages(config);
+      void (async () => {
+        const decoded: ImageMask[] = [];
+        for (const source of config.sources) {
+          if (decoded.length >= MAX_IMAGES || generation !== imageGeneration) break;
+          try {
+            decoded.push(await imageUrlToMask(source.url, source.path));
+          } catch {
+            // Continue through the sorted candidates until 64 usable images have decoded.
+          }
+        }
+        if (generation !== imageGeneration) return;
+        imageMasks = decoded;
+        if (imageConfig) commitImages(imageConfig);
+      })();
+    };
+
+    if (wallpaperInitial) applyImages(wallpaperInitial.images);
+    const unsubscribeFallbackControls = controls.subscribe(() => launch());
+    const detach = wallpaperBridge?.attach((event) => {
+      if (event.type === "properties") {
+        if (event.changedDomains.has("controls")) controls.set(event.configuration.controls);
+        if (event.changedDomains.has("images")) applyImages(event.configuration.images);
+      } else if (event.type === "directory") {
+        applyImages(event.configuration.images);
+      } else if (event.type === "pause") {
+        fallbackPaused = event.transition.paused;
+        if (fallbackPaused) {
+          fallbackPauseStartedAtMs ??= performance.now();
+        } else {
+          const resumedAtMs = performance.now();
+          const duration = fallbackPauseStartedAtMs === null
+            ? event.transition.pausedDurationMs
+            : Math.max(0, resumedAtMs - fallbackPauseStartedAtMs);
+          fallbackPauseStartedAtMs = null;
+          fallbackImages.shiftTimelineBy(duration);
+        }
+        syncPlayback();
+      }
+    }) ?? null;
+    const onFallbackVisibility = (): void => {
+      if (!document.hidden) wallpaperBridge?.fpsLimiter.reset(performance.now());
+      syncPlayback();
+    };
+    const onFallbackReducedMotion = (): void => {
+      syncPlayback();
+      // Clear any reveal already baked into the 2D canvas when reduced motion turns on.
+      if (reduceMotion.matches) fallback?.renderStatic(performance.now());
+    };
+    document.addEventListener("visibilitychange", onFallbackVisibility);
+    reduceMotion.addEventListener("change", onFallbackReducedMotion);
+
     return {
       controls,
       setActive: (active: boolean) => {
-        if (active) fb.start();
-        else fb.stop();
+        fallbackHostActive = active;
+        syncPlayback();
       },
       destroy: () => {
-        fb.stop();
-        ro.disconnect();
+        fallback?.stop();
+        detach?.();
+        imageGeneration++;
+        unsubscribeFallbackControls();
+        resizeObserver.disconnect();
+        document.removeEventListener("visibilitychange", onFallbackVisibility);
+        reduceMotion.removeEventListener("change", onFallbackReducedMotion);
+        notice.remove();
         canvas.remove();
+        clearWallpaperClasses();
       },
     };
+  };
+
+  // ---------- Fallback: no WebGL2 ----------
+  if (!gl) {
+    return createFallbackHandle("Compatibility mode — WebGL2 unavailable");
   }
 
   // ---------- GPU path ----------
@@ -206,11 +389,13 @@ export async function mountMatrixRain(
   // drops under sustained load to keep the rain smooth. Disable with ?adaptive=0.
   let renderScale = 1;
   const adaptiveRes = new AdaptiveResolution();
-  const urlParams = new URLSearchParams(location.search);
+  const urlParams = new URLSearchParams(wallpaperHosted ? "" : location.search);
   const adaptiveEnabled = urlParams.get("adaptive") !== "0";
   const hudRequested = urlParams.has("hud");
-  if (hudRequested) setFpsOverlayVisible(true);
-  let hud = hudRequested || loadFpsOverlayVisible() ? createHud(container) : null;
+  if (hudRequested && !wallpaperHosted) setFpsOverlayVisible(true);
+  let hud = !wallpaperHosted && (hudRequested || loadFpsOverlayVisible())
+    ? createHud(container)
+    : null;
   let pending: { w: number; h: number } | null = null;
   let running = false;
   let hostActive = true;
@@ -223,6 +408,7 @@ export async function mountMatrixRain(
   let currentFps = 0;
   let userPaused = false;
   let userPauseStartedAtMs: number | null = null;
+  let wallpaperPaused = wallpaperBridge?.pauseClock.isPaused() ?? false;
   // Intro rain choreography. Default sentinel: rain already running at full (no intro / repeat visit).
   let rainStartAtMs = Number.NEGATIVE_INFINITY;
   let rampUpMs = 0;
@@ -233,9 +419,11 @@ export async function mountMatrixRain(
 
   // Multi-monitor mode: this window is a panel iff the URL carries a slice config.
   const nativeHosted = isNativeHosted();
-  const panelConfig = nativeMultiMonitorConfig(controls.get()) ?? parsePanelConfig();
+  const panelConfig = wallpaperHosted
+    ? null
+    : nativeMultiMonitorConfig(controls.get()) ?? parsePanelConfig();
   const panelShowsControls = panelConfig?.showControls === true;
-  const hasSettingsUi = !panelConfig || panelShowsControls;
+  const hasSettingsUi = !wallpaperHosted && (!panelConfig || panelShowsControls);
   const hasIntroUi = !panelConfig;
   let multiMonitorState: MultiMonitorState | null = null;
   let exitChan: ReturnType<typeof openExitChannel> | null = null;
@@ -342,25 +530,27 @@ export async function mountMatrixRain(
     await buildGpu();
   } catch (err) {
     console.error("Matrix GPU init failed, using fallback:", err);
-    const fb = startCanvas2dRain(canvas, controls.get().preset, controls.get().glyphScale, controls.get().customColor);
-    showNotice(container, "Compatibility mode");
-    return {
-      controls,
-      setActive: (active: boolean) => {
-        if (active) fb.start();
-        else fb.stop();
-      },
-      destroy: () => fb.stop(),
-    };
+    // A canvas cannot switch context types after WebGL creation; replace it before requesting 2D.
+    canvas.remove();
+    canvas = document.createElement("canvas");
+    container.appendChild(canvas);
+    return createFallbackHandle("Compatibility mode");
   }
 
   // ---------- Overlays ----------
   // Multi-monitor panels never play the intro, but the centremost panel can expose settings.
-  const introStore = hasIntroUi ? new IntroStore() : null;
+  const introStore = hasIntroUi
+    ? (wallpaperInitial ? new IntroStore(null, wallpaperInitial.intro) : new IntroStore())
+    : null;
   // Multi-monitor mode panels have no editor UI, but they still need the same persisted message and
   // countdown documents as the controller so every window can schedule an identical virtual-grid message.
-  const messagesStore = new MessagesStore();
-  const countdownStore = new CountdownStore();
+  const messagesStore = wallpaperInitial
+    ? new MessagesStore(null, wallpaperInitial.messages)
+    : new MessagesStore();
+  const countdownStore = wallpaperInitial
+    ? new CountdownStore(null, wallpaperInitial.countdown)
+    : new CountdownStore();
+  let wallpaperUserName = wallpaperInitial?.userName ?? null;
   // When this run began — drives {uptime} and bare {countup} (see resolveTokens / countTarget).
   let runStartMs = Date.now();
   // Super mode temporarily supplies its shared fixed-step wall clock so ticking tokens resolve
@@ -373,7 +563,7 @@ export async function mountMatrixRain(
     return resolveTokens(raw, {
       // Resolve lazily so an active intro or rain message reflects a viewer-name
       // edit immediately, matching the native host without a page reload.
-      name: resolveUserName(),
+      name: wallpaperUserName ?? resolveUserName(),
       nowMs: tokenClockMs ?? Date.now(),
       countdownTargetMs: doc?.targetMs ?? null,
       moments: Object.fromEntries((doc?.moments ?? []).map((m) => [m.name, m.targetMs])),
@@ -390,6 +580,25 @@ export async function mountMatrixRain(
     return scheduler;
   };
   let messageScheduler = createMessageScheduler();
+  const initialImageEpoch = panelConfig?.epoch ?? performance.now();
+  const createImageScheduler = (
+    doc: ImagesDoc = imagesStore.get(),
+    config: MultiMonitorConfig | null = multiMonitorState?.config ?? panelConfig,
+    nowMs = config?.epoch ?? performance.now(),
+  ): ImageScheduler => {
+    const scheduler = new ImageScheduler({
+      seed: config?.seed ?? BASE_SEED,
+      epochMs: config?.epoch ?? initialImageEpoch,
+      synchronized: config !== null,
+    });
+    scheduler.configure(doc, nowMs);
+    return scheduler;
+  };
+  let imageScheduler = createImageScheduler();
+  let activeImageFrame: ActiveImageFrame | null = null;
+  let wallpaperPauseStartedAtMs = wallpaperPaused ? performance.now() : null;
+  let wallpaperMessagePauseStartedAtMs = wallpaperPauseStartedAtMs;
+  let wallpaperImagePauseStartedAtMs = wallpaperPauseStartedAtMs;
   const message = hasIntroUi ? new MessageOverlay(container, { resolveText: resolveMessageText }) : null;
 
   // Reflect the stored script onto the live overlay (raw lines; tokens resolve per-frame).
@@ -472,6 +681,29 @@ export async function mountMatrixRain(
     messageScheduler?.configure(messagesStore.get());
   };
 
+  let imageDraftPreviewActive = false;
+
+  const saveImages = (draft: ImagesDoc): void => {
+    imageDraftPreviewActive = false;
+    imagesStore.set(draft);
+    imageScheduler.configure(imagesStore.get(), performance.now(), true);
+    activeImageFrame = null;
+  };
+
+  const previewImages = (draft: ImagesDoc): void => {
+    if (reduceMq.matches || draft.images.length === 0) return;
+    imageDraftPreviewActive = true;
+    activeImageFrame = imageScheduler.previewOne(performance.now(), draft);
+    if (!running) renderStatic();
+  };
+
+  const cancelImagePreview = (): void => {
+    if (!imageDraftPreviewActive) return;
+    imageDraftPreviewActive = false;
+    imageScheduler.configure(imagesStore.get(), performance.now(), true);
+    activeImageFrame = null;
+  };
+
   // A single onDone handler serves the after-mode rain start and the preview restore.
   message?.onDone(() => {
     if (rainPendingAfterIntro) {
@@ -485,7 +717,7 @@ export async function mountMatrixRain(
   });
 
   let editor: IntroEditor | null = null;
-  if (hasIntroUi && introStore && message) {
+  if (hasSettingsUi && hasIntroUi && introStore && message) {
     editor = new IntroEditor(container, introStore, {
       onPreview: previewIntro,
       onSave: saveIntro,
@@ -494,7 +726,7 @@ export async function mountMatrixRain(
   }
 
   let messagesEditor: MessagesEditor | null = null;
-  if (!panelConfig && messagesStore) {
+  if (hasSettingsUi && !panelConfig && messagesStore) {
     messagesEditor = new MessagesEditor(container, messagesStore, {
       onPreview: previewMessages,
       onSave: saveMessages,
@@ -502,8 +734,17 @@ export async function mountMatrixRain(
     }, getMomentNames);
   }
 
+  let imagesEditor: ImagesEditor | null = null;
+  if (hasSettingsUi && !panelConfig) {
+    imagesEditor = new ImagesEditor(container, imagesStore, controls, {
+      onPreview: previewImages,
+      onSave: saveImages,
+      onCancel: cancelImagePreview,
+    });
+  }
+
   let countdownEditor: CountdownEditor | null = null;
-  if (!panelConfig && countdownStore) {
+  if (hasSettingsUi && !panelConfig && countdownStore) {
     // No scheduler/overlay reconfigure needed — both surfaces read the store live via resolveMessageText.
     countdownEditor = new CountdownEditor(container, countdownStore, {
       onSave: (d) => countdownStore.set(d),
@@ -529,12 +770,14 @@ export async function mountMatrixRain(
   bindSettingsSurface(characterEditor, "characters");
   bindSettingsSurface(editor, "intro");
   bindSettingsSurface(messagesEditor, "messages");
+  bindSettingsSurface(imagesEditor, "images");
   bindSettingsSurface(countdownEditor, "countdown");
 
   const openSettingsSurface = (surface: ActiveSettingsSurface): void => {
     if (surface === "characters" && characterEditor) characterEditor.open();
     else if (surface === "intro" && editor) editor.open();
     else if (surface === "messages" && messagesEditor) messagesEditor.open();
+    else if (surface === "images" && imagesEditor) imagesEditor.open();
     else if (surface === "countdown" && countdownEditor) countdownEditor.open();
     else setActiveSettingsSurface(null);
   };
@@ -547,6 +790,7 @@ export async function mountMatrixRain(
     onEditCharacters: () => openSettingsSurface("characters"),
     onEditIntro: () => openSettingsSurface("intro"),
     onEditMessages: () => openSettingsSurface("messages"),
+    onEditImages: () => openSettingsSurface("images"),
     onEditCountdown: () => openSettingsSurface("countdown"),
   };
   let panel: ControlsPanel | null = null;
@@ -597,11 +841,23 @@ export async function mountMatrixRain(
           height: cssH,
         }
       : undefined;
+    const imageDoc = imagesStore.get();
+    const image = buildImageRenderState({
+      frame: activeImageFrame,
+      doc: imageDoc,
+      virtualCols: multiMonitorState?.config.vCols ?? grid.cols,
+      virtualRows: multiMonitorState?.config.vRows ?? grid.rows,
+      globalColStart: slice?.colStart ?? 0,
+      globalRowStart: slice?.rowStart ?? 0,
+      seed: multiMonitorState?.config.seed ?? BASE_SEED,
+      glyphSet,
+    });
     renderer.renderFrame(
       paramsOf(controls.get()),
       grid,
       multiMonitorState ? undefined : activeExtraLayers(),
       viewport,
+      image,
     );
   };
   const renderStatic = paint;
@@ -637,6 +893,8 @@ export async function mountMatrixRain(
   const loop = (now: number): void => {
     if (!running) return;
     raf = requestAnimationFrame(loop);
+    const wallpaperFrame = wallpaperBridge?.fpsLimiter.sample(now);
+    if (wallpaperFrame && !wallpaperFrame.render) return;
     const fpsIntervalMs = Math.min(Math.max(now - fpsLast, 0), 100);
     fpsLast = now;
     fpsEmaMs = fpsEmaMs === 0 ? fpsIntervalMs : fpsEmaMs + 0.15 * (fpsIntervalMs - fpsEmaMs);
@@ -665,17 +923,25 @@ export async function mountMatrixRain(
       }
       tokenClockMs = null;
       multiMonitorState.simClock += steps * MULTI_MONITOR_FIXED_DT;
+      const sharedNow =
+        multiMonitorState.config.epoch +
+        (multiMonitorState.simClock - multiMonitorState.config.warmupSeconds) * 1000;
+      activeImageFrame = imageScheduler.update(sharedNow);
       paint();
       return;
     }
     flushResize();
-    const intervalMs = now - last;
+    const intervalMs = wallpaperFrame?.elapsedMs ?? now - last;
     const stepPlan = simulationStepPlan(intervalMs / 1000);
     last = now;
     // Adaptive resolution: feed the achieved frame interval; reallocate the backing only when the
     // scale actually changes (the controller's cooldown keeps that rare). The controller's EMA is
     // updated either way so the HUD reads a stable FPS even when scaling is disabled.
-    const s = adaptiveRes.update(Math.min(intervalMs, 100));
+    const wallpaperFps = wallpaperBridge?.fpsLimiter.getFps() ?? 0;
+    const adaptiveIntervalMs = wallpaperFps > 0 && wallpaperFps < 60
+      ? intervalMs * wallpaperFps / 60
+      : intervalMs;
+    const s = adaptiveRes.update(Math.min(adaptiveIntervalMs, 100));
     if (adaptiveEnabled && s !== renderScale) {
       renderScale = s;
       applyBackingSize();
@@ -684,6 +950,7 @@ export async function mountMatrixRain(
       hud.textContent = `${currentFps.toFixed(0)} fps · ${Math.round(renderScale * 100)}% res · ${canvas.width}×${canvas.height}`;
     }
     let extraLayers: ExtraLayer[] = [];
+    activeImageFrame = imageScheduler.update(now);
     if (now >= rainStartAtMs) {
       // Ramp the rain in uniformly (columns fade in in random order, coverage scales linearly), with an
       // eased-in/eased-out but mostly-linear progress curve so the build-up feels steady, not front-loaded.
@@ -702,25 +969,54 @@ export async function mountMatrixRain(
     }
     // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
     stateTex.upload(sim.state);
-    renderer.renderFrame(paramsOf(c), grid, extraLayers);
+    const image = buildImageRenderState({
+      frame: activeImageFrame,
+      doc: imagesStore.get(),
+      virtualCols: grid.cols,
+      virtualRows: grid.rows,
+      seed: BASE_SEED,
+      glyphSet,
+    });
+    renderer.renderFrame(paramsOf(c), grid, extraLayers, undefined, image);
     message?.update(now);
   };
 
   const start = (): void => {
     if (running) return;
-    if (!hostActive || reduceMq.matches || userPaused) {
-      renderStatic();
+    if (!hostActive || reduceMq.matches || userPaused || wallpaperPaused || document.hidden) {
+      if (!document.hidden) renderStatic();
       return;
     }
     running = true;
     last = performance.now();
     fpsLast = last;
+    wallpaperBridge?.fpsLimiter.reset(last);
     raf = requestAnimationFrame(loop);
   };
 
   const stop = (): void => {
     running = false;
     cancelAnimationFrame(raf);
+  };
+
+  const resumePausedTimelines = (
+    pausedDurationMs: number,
+    messagePausedDurationMs = pausedDurationMs,
+    imagePausedDurationMs = pausedDurationMs,
+  ): void => {
+    if (!Number.isFinite(pausedDurationMs) || pausedDurationMs <= 0) return;
+    runStartMs += pausedDurationMs;
+    if (Number.isFinite(rainStartAtMs)) rainStartAtMs += pausedDurationMs;
+    message?.shiftTimelineBy(pausedDurationMs);
+    messageScheduler.shiftTimelineBy(messagePausedDurationMs);
+    imageScheduler.shiftTimelineBy(imagePausedDurationMs);
+    adaptiveRes.reset();
+    if (renderScale !== 1) {
+      renderScale = 1;
+      applyBackingSize();
+    }
+    fpsEmaMs = 0;
+    currentFps = 0;
   };
 
   // In multi-monitor mode the grid is fixed by the shared geometry, so a resize (e.g. the
@@ -783,6 +1079,8 @@ export async function mountMatrixRain(
   // ---------- Reduced motion ----------
   const onReduceChange = (): void => {
     if (reduceMq.matches) {
+      // Match the native reduced-motion contract: show stable warmed rain with no scheduled image animation.
+      activeImageFrame = null;
       // Reduced motion always shows warmed, full-density rain — abandon any in-progress
       // intro choreography (after-mode black phase or density ramp) so it isn't left frozen.
       if (rainStartAtMs !== Number.NEGATIVE_INFINITY) {
@@ -828,7 +1126,7 @@ export async function mountMatrixRain(
 
   // ---------- Fullscreen + keys ----------
   const toggleFullscreen = (): void => {
-    if (nativeHosted) return;
+    if (nativeHosted || wallpaperHosted) return;
     if (document.fullscreenElement) void document.exitFullscreen();
     else void container.requestFullscreen?.();
   };
@@ -848,6 +1146,10 @@ export async function mountMatrixRain(
     // are fresh. Reload persisted settings and restart all schedulers here so the original window
     // cannot retain a stale document while newly opened panel windows use the latest one.
     messageScheduler = createMessageScheduler(new MessagesStore().get());
+    const freshImages = new ImagesStore().get();
+    imagesStore.set(freshImages);
+    imageScheduler = createImageScheduler(freshImages, config, config.epoch);
+    activeImageFrame = null;
     const lc = config.slice.cols;
     const lr = config.slice.rows;
     stateTex.resize(lc, lr);
@@ -897,6 +1199,11 @@ export async function mountMatrixRain(
       pending = null; // a stale fullscreen-sized resize must not survive the switch back
       applySize(cssW, cssH); // rebuild sim/state/renderer back to this window's own grid
       messageScheduler = createMessageScheduler();
+      // Multi-monitor images use a synchronized Date.now() epoch. Normal mode is driven by
+      // performance.now(), so replace that scheduler when returning instead of feeding it a
+      // different clock domain (which would leave every reveal indefinitely in the future).
+      imageScheduler = createImageScheduler(imagesStore.get(), null, performance.now());
+      activeImageFrame = null;
       resetExtras(); // overlap is disabled in multi-monitor mode; start the overlap lanes clean on return
       renderStatic();
     } else if (!nativeHosted) {
@@ -932,7 +1239,7 @@ export async function mountMatrixRain(
 
   // Controller path: start multi-monitor mode across every available monitor.
   const enterMultiMonitor = async (): Promise<void> => {
-    if (nativeHosted || multiMonitorState || panelConfig) return;
+    if (nativeHosted || wallpaperHosted || multiMonitorState || panelConfig) return;
     const cell = DEFAULT_SIM_CONFIG.targetCellPx * controls.get().glyphScale;
     let res: MultiMonitorSessionResult;
     try {
@@ -982,6 +1289,16 @@ export async function mountMatrixRain(
     if (announce) showShortcutToast("Messages", doc.enabled);
   };
 
+  const toggleImages = (announce = false): void => {
+    const doc = imagesStore.get();
+    doc.enabled = !doc.enabled;
+    imagesStore.set(doc);
+    imageScheduler.configure(imagesStore.get(), performance.now());
+    activeImageFrame = null;
+    imagesEditor?.syncEnabled(doc.enabled);
+    if (announce) showShortcutToast("Images", doc.enabled);
+  };
+
   const setHudVisible = (visible: boolean): void => {
     if (visible === Boolean(hud)) return;
     if (visible) {
@@ -1007,6 +1324,7 @@ export async function mountMatrixRain(
   };
 
   const onKey = (e: KeyboardEvent): void => {
+    if (wallpaperHosted) return;
     let handled = false;
     if (multiMonitorState && multiMonitorState.config.showControls !== true) {
       if (e.key === "Escape") {
@@ -1036,7 +1354,9 @@ export async function mountMatrixRain(
       else if (e.key === "h" || e.key === "H") { panel?.toggleVisible(); handled = true; }
       else if (e.key === "i" || e.key === "I") { openSettingsSurface("intro"); handled = true; }
       else if (!e.repeat && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.code === "KeyM") { toggleMessages(true); handled = true; }
+      else if (!e.repeat && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.code === "KeyX") { toggleImages(true); handled = true; }
       else if (e.key === "m" || e.key === "M") { openSettingsSurface("messages"); handled = true; }
+      else if (e.key === "x" || e.key === "X") { openSettingsSurface("images"); handled = true; }
       else if (e.key === "c" || e.key === "C") { openSettingsSurface("countdown"); handled = true; }
       else if (e.key === "n" || e.key === "N") { toggleMessages(true); handled = true; }
       else if (e.key === "-" || e.key === "_") { nudgeDensity(1 / DENSITY_KEY_STEP); handled = true; }
@@ -1055,9 +1375,7 @@ export async function mountMatrixRain(
               ? 0
               : Math.max(0, resumedAtMs - userPauseStartedAtMs);
             userPauseStartedAtMs = null;
-            runStartMs += pausedDuration;
-            if (Number.isFinite(rainStartAtMs)) rainStartAtMs += pausedDuration;
-            message?.shiftTimelineBy(pausedDuration);
+            resumePausedTimelines(pausedDuration);
             start();
           }
         }
@@ -1069,7 +1387,7 @@ export async function mountMatrixRain(
       e.stopPropagation();
     }
   };
-  window.addEventListener("keydown", onKey);
+  if (!wallpaperHosted) window.addEventListener("keydown", onKey);
 
   const onPointerDown = (): void => {
     if (message?.isPlaying()) message.skip();
@@ -1082,7 +1400,7 @@ export async function mountMatrixRain(
   let clickCount = 0;
   let clickTimer = 0;
   const onCanvasClick = (): void => {
-    if (multiMonitorState) return;
+    if (wallpaperHosted || multiMonitorState) return;
     const next = advanceMultiClick(clickCount);
     clickCount = next.count;
     if (next.action === "multiMonitor") {
@@ -1101,12 +1419,12 @@ export async function mountMatrixRain(
     if (nativeHosted) return;
     if (!document.fullscreenElement) void enterPanelFullscreen(container);
   };
-  canvas.addEventListener("click", panelConfig ? onPanelClick : onCanvasClick);
+  if (!wallpaperHosted) canvas.addEventListener("click", panelConfig ? onPanelClick : onCanvasClick);
 
   // Esc inside fullscreen is intercepted by the browser (no keydown reaches us),
   // so the authoritative "show ended" signal is leaving fullscreen.
   const onFullscreenChange = (): void => {
-    if (nativeHosted) return;
+    if (nativeHosted || wallpaperHosted) return;
     if (multiMonitorState && !document.fullscreenElement) exitMultiMonitor(true);
   };
   document.addEventListener("fullscreenchange", onFullscreenChange);
@@ -1181,6 +1499,102 @@ export async function mountMatrixRain(
     if (!running) renderStatic();
   });
 
+  let wallpaperImageGeneration = 0;
+  let wallpaperImageSources = "";
+  let wallpaperMasks: ImageMask[] = [];
+  let wallpaperImageConfig = wallpaperInitial?.images ?? null;
+
+  const commitWallpaperImages = (config: WallpaperEngineImagesConfiguration): void => {
+    const doc = wallpaperImagesDoc(config, wallpaperMasks);
+    imagesStore.set(doc);
+    imageScheduler.configure(doc, performance.now(), true);
+    if (wallpaperPaused) wallpaperImagePauseStartedAtMs = performance.now();
+    activeImageFrame = null;
+    if (!running) renderStatic();
+  };
+
+  const applyWallpaperImages = (config: WallpaperEngineImagesConfiguration): void => {
+    wallpaperImageConfig = config;
+    const signature = config.sources.map(({ path, url }) => `${path}\u0000${url}`).join("\u0001");
+    if (signature === wallpaperImageSources) {
+      commitWallpaperImages(config);
+      return;
+    }
+
+    wallpaperImageSources = signature;
+    wallpaperMasks = [];
+    const generation = ++wallpaperImageGeneration;
+    commitWallpaperImages(config);
+    void (async () => {
+      const decoded: ImageMask[] = [];
+      for (const source of config.sources) {
+        if (decoded.length >= MAX_IMAGES) break;
+        if (generation !== wallpaperImageGeneration) return;
+        try {
+          decoded.push(await imageUrlToMask(source.url, source.path));
+        } catch {
+          // Corrupt, unsupported, or temporarily unavailable files do not disable the playlist.
+        }
+      }
+      if (generation !== wallpaperImageGeneration) return;
+      wallpaperMasks = decoded;
+      if (wallpaperImageConfig) commitWallpaperImages(wallpaperImageConfig);
+    })();
+  };
+
+  const applyWallpaperConfiguration = (
+    config: WallpaperEngineConfiguration,
+    domains?: ReadonlySet<string>,
+  ): void => {
+    const changed = (domain: string): boolean => domains === undefined || domains.has(domain);
+    if (changed("controls")) controls.set(config.controls);
+    if (changed("intro") && introStore) {
+      introStore.set(config.intro);
+      seedOverlay();
+    }
+    if (changed("messages")) {
+      messagesStore.set(config.messages);
+      messageScheduler.configure(messagesStore.get());
+      if (wallpaperPaused) wallpaperMessagePauseStartedAtMs = performance.now();
+    }
+    if (changed("countdown")) countdownStore.set(config.countdown);
+    if (changed("tokens")) wallpaperUserName = config.userName;
+    if (changed("images")) applyWallpaperImages(config.images);
+  };
+
+  if (wallpaperInitial) applyWallpaperConfiguration(wallpaperInitial);
+  const detachWallpaper = wallpaperBridge?.attach((event) => {
+    if (event.type === "properties") {
+      applyWallpaperConfiguration(event.configuration, event.changedDomains);
+    } else if (event.type === "directory") {
+      applyWallpaperImages(event.configuration.images);
+    } else if (event.type === "pause") {
+      wallpaperPaused = event.transition.paused;
+      if (wallpaperPaused) {
+        wallpaperPauseStartedAtMs ??= performance.now();
+        wallpaperMessagePauseStartedAtMs ??= performance.now();
+        wallpaperImagePauseStartedAtMs ??= performance.now();
+        stop();
+      } else {
+        const resumedAtMs = performance.now();
+        const relevantDuration = wallpaperPauseStartedAtMs === null
+          ? event.transition.pausedDurationMs
+          : Math.max(0, resumedAtMs - wallpaperPauseStartedAtMs);
+        const messageDuration = wallpaperMessagePauseStartedAtMs === null
+          ? relevantDuration
+          : Math.max(0, resumedAtMs - wallpaperMessagePauseStartedAtMs);
+        const imageDuration = wallpaperImagePauseStartedAtMs === null
+          ? relevantDuration
+          : Math.max(0, resumedAtMs - wallpaperImagePauseStartedAtMs);
+        wallpaperPauseStartedAtMs = null;
+        wallpaperMessagePauseStartedAtMs = null;
+        wallpaperImagePauseStartedAtMs = null;
+        resumePausedTimelines(relevantDuration, messageDuration, imageDuration);
+        start();
+      }
+    }
+  }) ?? null;
+
   // ---------- Intro on load ----------
   const maybePlayIntro = (): void => {
     if (!message || !introStore) return;
@@ -1211,9 +1625,11 @@ export async function mountMatrixRain(
     start();
     maybePlayIntro();
     if (!running) renderStatic(); // reduced-motion: ensure one frame is shown
-    const restoredSurface = loadUiState().activeSettingsSurface;
-    if (restoredSurface) openSettingsSurface(restoredSurface);
-    if (!nativeHosted) void prefetchScreens(); // warm screen details before multi-monitor mode is requested
+    if (!wallpaperHosted) {
+      const restoredSurface = loadUiState().activeSettingsSurface;
+      if (restoredSurface) openSettingsSurface(restoredSurface);
+    }
+    if (!nativeHosted && !wallpaperHosted) void prefetchScreens(); // warm screen details before multi-monitor mode is requested
   }
 
   return {
@@ -1236,6 +1652,9 @@ export async function mountMatrixRain(
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("click", panelConfig ? onPanelClick : onCanvasClick);
+      detachWallpaper?.();
+      wallpaperImageGeneration++;
+      clearWallpaperClasses();
       hud?.remove();
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       window.removeEventListener("beforeunload", onBeforeUnload);
@@ -1243,6 +1662,7 @@ export async function mountMatrixRain(
       unsubscribe();
       editor?.destroy();
       messagesEditor?.destroy();
+      imagesEditor?.destroy();
       countdownEditor?.destroy();
       characterEditor?.destroy();
       panel?.destroy();

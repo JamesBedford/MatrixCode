@@ -1,6 +1,6 @@
 import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 
-export type ActiveSettingsSurface = "characters" | "intro" | "messages" | "countdown";
+export type ActiveSettingsSurface = "characters" | "intro" | "messages" | "images" | "countdown";
 
 export interface UiState {
   activeSettingsSurface: ActiveSettingsSurface | null;
@@ -8,7 +8,7 @@ export interface UiState {
 }
 
 const STORAGE_KEY = "mx-ui-state";
-const SURFACES: ActiveSettingsSurface[] = ["characters", "intro", "messages", "countdown"];
+const SURFACES: ActiveSettingsSurface[] = ["characters", "intro", "messages", "images", "countdown"];
 const DEFAULT_UI_STATE: UiState = { activeSettingsSurface: null, fpsOverlayVisible: false };
 
 function storage(): Storage | null {

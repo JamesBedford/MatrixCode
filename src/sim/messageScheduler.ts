@@ -191,6 +191,14 @@ export class MessageScheduler {
     this.fire(nowMs, sim, placementRegions);
   }
 
+  /** Keep all scheduled phases stationary while an external host pauses rendering. */
+  shiftTimelineBy(durationMs: number): void {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return;
+    if (this.nextFireAt !== null) this.nextFireAt += durationMs;
+    if (this.activeStart !== null) this.activeStart += durationMs;
+    if (this.activeUntil !== null) this.activeUntil += durationMs;
+  }
+
   /** A jittered gap (±25%) before the next message. */
   private gap(): number {
     return this.cfg!.frequencyMs * (JITTER_MIN + JITTER_SPAN * this.rng());

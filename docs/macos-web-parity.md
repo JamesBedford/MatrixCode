@@ -11,7 +11,7 @@ Parity has three independently verifiable layers:
 2. **Simulation parity** — a fixed seed, grid, control sequence, and timestep
    sequence produce the same packed RGBA8 cell state.
 3. **Render parity** — the same packed state and glyph coverage produce the same
-   color ramps, head-only bloom, ACES composite, scanlines, and vignette.
+   color ramps, scene-alpha bloom signal, ACES composite, scanlines, and vignette.
 
 ## Canonical comparison conditions
 
@@ -21,7 +21,8 @@ Cross-backend image comparisons must fix every input that can legitimately vary:
 - a fixed output scale and color space, with adaptive resolution disabled in
   both implementations (`?adaptive=0` on web and `MATRIXCODE_ADAPTIVE=0` for
   the native process);
-- native-only image reveals disabled;
+- image reveals disabled in both captures, or driven by the same fixed portable
+  masks, schedule, and epoch;
 - the same glyph mode, font selection, and mirror setting;
 - an offscreen output target, so window occlusion and display refresh rate do not
   affect the capture.
@@ -46,9 +47,9 @@ The following are platform integration differences, not rain-feature gaps:
   but an HTTP-served browser page cannot access the operating-system account and
   therefore retains the portable `Neo` fallback.
 - PWA metadata and browser fallback rendering have no native equivalent.
-- Native image reveals are an optional extension. They are off by default and
-  excluded from strict render comparisons until the web renderer supports the
-  same `mx-images` document.
+- Image reveals are optional and off by default on both platforms. Strict
+  comparisons either disable them or provide the same `mx-images` document and
+  deterministic timing inputs to both renderers.
 
 ## Verification
 

@@ -1,0 +1,54 @@
+{
+  "formatVersion": 1,
+  "source": "test/rainSimGolden.test.ts",
+  "simulation": [
+    {
+      "name": "pure-rain",
+      "columns": 40,
+      "rows": 60,
+      "seed": 12648430,
+      "warmupSeconds": 3,
+      "frames": 300,
+      "deltaSeconds": 0.016666666666666666,
+      "fnv1a32": 437809828
+    },
+    {
+      "name": "message-fade-scramble",
+      "columns": 24,
+      "rows": 40,
+      "seed": 12345,
+      "warmupSeconds": 2,
+      "frames": 250,
+      "deltaSeconds": 0.016666666666666666,
+      "fnv1a32": 3260864663
+    },
+    {
+      "name": "distributed-warmup",
+      "columns": 24,
+      "rows": 90,
+      "seed": 13579,
+      "warmupSeconds": 2.5,
+      "fnv1a32": 3658144001
+    },
+    {
+      "name": "varied-trail",
+      "columns": 40,
+      "rows": 60,
+      "seed": 12648430,
+      "trailVariation": 0.35,
+      "warmupSeconds": 3,
+      "frames": 300,
+      "deltaSeconds": 0.016666666666666666,
+      "fnv1a32": 1771342251
+    },
+    {
+      "name": "varied-trail-distributed-warmup",
+      "columns": 24,
+      "rows": 90,
+      "seed": 13579,
+      "trailVariation": 0.35,
+      "warmupSeconds": 2.5,
+      "fnv1a32": 3061054872
+    }
+  ]
+}

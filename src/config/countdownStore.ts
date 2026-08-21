@@ -49,14 +49,16 @@ export function sanitizeCountdown(raw: unknown): CountdownDoc {
 /** localStorage-backed store for the user's {countdown}/{countup} targets. */
 export class CountdownStore {
   private doc: CountdownDoc;
+  private readonly storage: Storage | null;
 
-  constructor() {
-    this.doc = this.load();
+  constructor(storage: Storage | null = defaultStorage(), initial?: CountdownDoc) {
+    this.storage = storage;
+    this.doc = initial === undefined ? this.load() : sanitizeCountdown(initial);
   }
 
   private load(): CountdownDoc {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = this.storage?.getItem(STORAGE_KEY);
       if (!raw) return cloneCountdown(DEFAULT_COUNTDOWN);
       return sanitizeCountdown(JSON.parse(raw) as unknown);
     } catch {
@@ -72,8 +74,8 @@ export class CountdownStore {
     this.doc = sanitizeCountdown(doc);
     try {
       const value = JSON.stringify(this.doc);
-      localStorage.setItem(STORAGE_KEY, value);
-      nativeStorageDidChange(STORAGE_KEY, value);
+      this.storage?.setItem(STORAGE_KEY, value);
+      if (this.storage) nativeStorageDidChange(STORAGE_KEY, value);
     } catch {
       /* storage may be unavailable (private mode) — ignore */
     }
@@ -82,11 +84,19 @@ export class CountdownStore {
   reset(): CountdownDoc {
     this.doc = cloneCountdown(DEFAULT_COUNTDOWN);
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      nativeStorageDidChange(STORAGE_KEY, null);
+      this.storage?.removeItem(STORAGE_KEY);
+      if (this.storage) nativeStorageDidChange(STORAGE_KEY, null);
     } catch {
       /* ignore */
     }
     return this.get();
+  }
+}
+
+function defaultStorage(): Storage | null {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
   }
 }

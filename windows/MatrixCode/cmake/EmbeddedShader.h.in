@@ -1,0 +1,7 @@
+#pragma once
+
+namespace matrixcode::render {
+inline constexpr const char kMatrixCodeShaderSource[] = R"MatrixCodeHlsl(
+@MATRIXCODE_SHADER_SOURCE@
+)MatrixCodeHlsl";
+}

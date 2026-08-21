@@ -99,6 +99,36 @@ export interface MessagesDoc {
   verticalJitter: number;
 }
 
+/** A compact, portable greyscale image used by the rain image-reveal effect. */
+export interface ImageMask {
+  /** User-facing label (normally the source filename without its extension). */
+  name: string;
+  /** Mask width in cells. Canonical documents are limited to 96. */
+  width: number;
+  /** Mask height in cells. Canonical documents are limited to 96. */
+  height: number;
+  /** Standard padded Base64 containing exactly width * height luminance bytes. */
+  data: string;
+}
+
+/** User-editable image playlist and deterministic reveal timing. */
+export interface ImagesDoc {
+  images: ImageMask[];
+  enabled: boolean;
+  frequencyMs: number;
+  persistenceMs: number;
+  appearMs: number;
+  disappearMs: number;
+  /** Resolve from random rain glyphs on appearance and dissolve back on disappearance. */
+  flickerOut: boolean;
+  /** Fade reveal brightness during the appearance/disappearance phases. */
+  brightnessFade: boolean;
+  /** Fraction of the full virtual-grid width occupied by the image. */
+  imageScale: number;
+  /** Placement range around the centre (0 = centred, 1 = all available space). */
+  imagePlacementJitter: number;
+}
+
 /** A named instant referenced by {countdown:name} / {countup:name}. */
 export interface CountdownMoment {
   /** Unique, non-empty label used in the token (no : { } characters). */

@@ -28,6 +28,9 @@ The native saver is expected to match the browser app's user-visible behavior:
   install, so there is no "seen" latch;
 - scheduled in-rain messages that resolve tokens and materialize through the
   rain cells instead of drawing a separate text overlay;
+- portable image reveals that aspect-fit imported artwork into at most 96×96
+  luminance cells and resolve it through falling rain without perturbing the
+  rain or message random sequences;
 - viewer name, greeting, time formatting, countdown/countup, named moments, and
   calendar tokens. A blank viewer name uses the macOS login name (or home-folder
   name if needed) with its first letter capitalized;
@@ -204,15 +207,24 @@ reset and save/cancel actions.
 The implementation uses AppKit controls throughout—there is no embedded web
 runtime. Three intentional platform differences remain: System Settings supplies
 standard sheet chrome for Screen Saver Options; date/time values use the native
-`NSDatePicker` rather than the browser's `datetime-local` control; and the
-Images editor is currently native-only, storing compact imported luminance masks
-in `mx-images` so Metal can reveal them through falling rain glyph brightness
-and glyph-selection bias without requiring ongoing file access. Users can add
-any number of image masks, choose how much of the rain field width each reveal
-uses, and randomize placement inside the unused area when the reveal is smaller
-than the full screen. The Images editor also includes a native-only **Max
-Visibility** action that applies the image and rain settings most likely to make
-image reveals obvious while leaving unrelated content settings untouched. These keep
+`NSDatePicker` rather than the browser's `datetime-local` control. The Images
+editor stores compact imported luminance masks in the shared `mx-images`
+document so Metal can reveal them through falling rain glyph brightness and
+glyph-selection bias without requiring ongoing file access. The portable
+contract retains the first 64 valid masks in source order and limits each mask
+to 96×96 cells. Existing masks at or below that size keep their encoded bytes
+unchanged. Native imports intentionally retain the established alpha-squared
+treatment of translucent pixels so existing artwork does not change appearance.
+If a save must trim more than 64 previously valid masks or canonicalize/drop a
+previously valid item (including a raw name or numeric dimension, or a legacy
+mask declared above 96 cells; the prior effective cap was 128), the original
+raw JSON is preserved once in the private local
+defaults key `mx-images-portable-backup-v0`; that backup is not synchronized
+through a host bridge. Users can choose how much of the rain field width each
+reveal uses and randomize placement inside the unused area when the reveal is
+smaller than the full screen. The Images editor also includes **Max Visibility**,
+which applies the image and rain settings most likely to make image reveals
+obvious while leaving unrelated content settings untouched. These keep
 keyboard navigation, accessibility, locale handling, Screen Saver Options
 hosting, and native image import aligned with macOS while the standalone app's
 surrounding geometry, typography, palette, and interaction model match the web UI.
@@ -248,7 +260,7 @@ than gesture-driven.
   presentation windows, and embeds
   `MatrixCodeRainHostView`.
 - `MatrixCodeMetalView` owns the Metal device and matching WebGL render graph:
-  RGBA16F scene, head-only bright-pass, one-to-three Gaussian bloom levels,
+  RGBA16F scene with its bloom signal in alpha, one-to-three Gaussian bloom levels,
   additive upsample, ACES composite, scanlines, and vignette. It renders local
   slices of one virtual grid for multi-display sessions.
 - `MatrixCodeRainSimulation` directly ports `src/sim/rainSim.ts`, including its
@@ -294,8 +306,8 @@ other codebase:
 - themes, post-processing controls, scanlines, vignette, and glow semantics;
 - intro timing, skip behavior, rain ramp, and reduced-motion behavior;
 - message scheduling, message placement, token re-resolution, and countdowns;
-- native-only `mx-images` settings and rendering, until/unless the browser app
-  gains an equivalent image-rain feature;
+- portable `mx-images` sanitization, scheduling, mask placement, and reveal
+  behavior;
 - multi-monitor geometry, seam continuity, and per-display message placement;
 - tests and documentation.
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +8,7 @@ const localBuildScript = resolve(
   process.cwd(),
   "macos/MatrixCodeScreenSaver/build.sh",
 );
+const bashIt = existsSync("/bin/bash") ? it : it.skip;
 
 function runScript(args: string[], environment: NodeJS.ProcessEnv = process.env) {
   return spawnSync("/bin/bash", [script, ...args], {
@@ -18,7 +19,7 @@ function runScript(args: string[], environment: NodeJS.ProcessEnv = process.env)
 }
 
 describe("native build script", () => {
-  it("has valid Bash syntax", () => {
+  bashIt("has valid Bash syntax", () => {
     const result = spawnSync("/bin/bash", ["-n", script], { encoding: "utf8" });
     expect(result.status, result.stderr).toBe(0);
   });
@@ -29,7 +30,7 @@ describe("native build script", () => {
     expect(source).toContain('/usr/bin/lockf -s -t 0 9');
   });
 
-  it("documents Debug, Release, Xcode selection, and output paths", () => {
+  bashIt("documents Debug, Release, Xcode selection, and output paths", () => {
     const result = runScript(["--help"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("--debug");
@@ -44,7 +45,7 @@ describe("native build script", () => {
     expect(result.stdout).toContain("MatrixCode.dmg");
   });
 
-  it("keeps the native wrapper help focused on local builds", () => {
+  bashIt("keeps the native wrapper help focused on local builds", () => {
     const result = spawnSync("/bin/bash", [localBuildScript, "--help"], {
       cwd: "/",
       encoding: "utf8",
@@ -87,7 +88,7 @@ describe("native build script", () => {
     expect(source).not.toContain('Contents/Resources/MatrixCodeShaders.msl');
   });
 
-  it("refuses to combine auto-signing with an explicit signing mode", () => {
+  bashIt("refuses to combine auto-signing with an explicit signing mode", () => {
     for (const conflicting of ["--local-signing", "--skip-notarize"]) {
       const result = runScript(["--auto-signing", conflicting]);
       expect(result.status, `${conflicting} should conflict`).not.toBe(0);
@@ -95,7 +96,7 @@ describe("native build script", () => {
     }
   });
 
-  it("rejects unknown and conflicting options before building", () => {
+  bashIt("rejects unknown and conflicting options before building", () => {
     const unknown = runScript(["--unknown"]);
     expect(unknown.status).not.toBe(0);
     expect(unknown.stderr).toContain("Unknown option: --unknown");
@@ -105,13 +106,13 @@ describe("native build script", () => {
     expect(conflicting.stderr).toContain("Choose only one configuration");
   });
 
-  it("rejects invalid configuration names", () => {
+  bashIt("rejects invalid configuration names", () => {
     const result = runScript(["--configuration", "Profile"]);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("Configuration must be Debug or Release");
   });
 
-  it("rejects incompatible signing and notarization options", () => {
+  bashIt("rejects incompatible signing and notarization options", () => {
     const debugNotarization = runScript(["--debug", "--skip-notarize"]);
     expect(debugNotarization.status).not.toBe(0);
     expect(debugNotarization.stderr).toContain("only valid for Release builds");
@@ -125,7 +126,7 @@ describe("native build script", () => {
     expect(conflictingRelease.stderr).toContain("either --local-signing or --skip-notarize");
   });
 
-  it("validates an explicit developer directory", () => {
+  bashIt("validates an explicit developer directory", () => {
     const result = runScript(["--debug"], {
       ...process.env,
       DEVELOPER_DIR: "/definitely/not/Xcode/Contents/Developer",
