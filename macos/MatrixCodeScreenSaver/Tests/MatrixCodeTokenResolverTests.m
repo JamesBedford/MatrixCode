@@ -29,6 +29,31 @@
     XCTAssertEqualObjects(resolved, @"Trinity 01:05 01:05 00:05 60 FPS");
 }
 
+- (void)testMissingEmptyAndWhitespaceViewerNamesUseCapitalizedMacOSLoginName {
+    NSDate *now = [NSDate dateWithTimeIntervalSince1970:1700000000];
+    for (NSDictionary<NSString *, NSString *> *values in
+         @[@{}, @{@"mx-user-name": @""}, @{@"mx-user-name": @" \n "}]) {
+        MatrixCodeTokenResolver *resolver = [[MatrixCodeTokenResolver alloc]
+            initWithStoredValues:values runStartDate:now];
+        XCTAssertEqualObjects([resolver resolveText:@"{name}" atDate:now framesPerSecond:60],
+                              MatrixCodeTokenResolver.defaultViewerName);
+    }
+}
+
+- (void)testDefaultViewerNamePrefersLoginThenFallsBackToHomeFolder {
+    XCTAssertEqualObjects(
+        [MatrixCodeTokenResolver defaultViewerNameForLoginName:@" mCready "
+                                                 homeDirectory:@"/Users/ignored"],
+        @"MCready");
+    XCTAssertEqualObjects(
+        [MatrixCodeTokenResolver defaultViewerNameForLoginName:@" \t "
+                                                 homeDirectory:@"/Users/james"],
+        @"James");
+    XCTAssertEqualObjects(
+        [MatrixCodeTokenResolver defaultViewerNameForLoginName:nil homeDirectory:nil],
+        @"Neo");
+}
+
 - (void)testShiftingRunStartFreezesUptimeAndBareCountupTokens {
     NSDate *start = [NSDate dateWithTimeIntervalSince1970:1700000000];
     NSDate *now = [start dateByAddingTimeInterval:65];

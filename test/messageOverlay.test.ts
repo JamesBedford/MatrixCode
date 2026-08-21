@@ -6,6 +6,9 @@ import {
   DEFAULT_SCRIPT,
   DEFAULT_TYPE_CONFIG,
   MessageOverlay,
+  capitalizeLoginName,
+  macOSLoginNameFromPath,
+  resolveDefaultUserName,
   resolveUserName,
   type MessageLine,
   type TypeConfig,
@@ -129,6 +132,24 @@ describe("MessageOverlay pause timeline", () => {
 });
 
 describe("viewer name", () => {
+  it("prefers a nonblank query name over storage", () => {
+    vi.stubGlobal("window", {
+      location: { protocol: "https:", pathname: "/matrixcode.html", search: "?name=%20Oracle%20" },
+      localStorage: { getItem: () => "Trinity" },
+    });
+
+    expect(resolveUserName()).toBe("Oracle");
+  });
+
+  it("treats a whitespace query name as unspecified and checks storage", () => {
+    vi.stubGlobal("window", {
+      location: { protocol: "https:", pathname: "/matrixcode.html", search: "?name=%20%20%20" },
+      localStorage: { getItem: () => " Trinity " },
+    });
+
+    expect(resolveUserName()).toBe("Trinity");
+  });
+
   it("reads storage on every resolution so edits affect active tokens", () => {
     let storedName: string | null = null;
     vi.stubGlobal("window", {
@@ -139,5 +160,34 @@ describe("viewer name", () => {
     expect(resolveUserName()).toBe("Neo");
     storedName = " Trinity ";
     expect(resolveUserName()).toBe("Trinity");
+  });
+
+  it("uses the capitalized macOS home-folder name for a local file", () => {
+    vi.stubGlobal("window", {
+      location: {
+        protocol: "file:",
+        pathname: "/Users/james/Downloads/matrixcode.html",
+        search: "",
+      },
+      localStorage: { getItem: () => "   " },
+    });
+
+    expect(resolveDefaultUserName()).toBe("James");
+    expect(resolveUserName()).toBe("James");
+  });
+
+  it("keeps Neo when the browser cannot expose a macOS home directory", () => {
+    vi.stubGlobal("window", {
+      location: { protocol: "https:", pathname: "/matrixcode.html", search: "" },
+      localStorage: { getItem: () => null },
+    });
+
+    expect(resolveDefaultUserName()).toBe("Neo");
+  });
+
+  it("decodes home-folder names and only capitalizes the first character", () => {
+    expect(macOSLoginNameFromPath("/Users/jane%20doe/matrixcode.html")).toBe("Jane doe");
+    expect(macOSLoginNameFromPath("/var/www/matrixcode.html")).toBeNull();
+    expect(capitalizeLoginName("  mCready  ")).toBe("MCready");
   });
 });

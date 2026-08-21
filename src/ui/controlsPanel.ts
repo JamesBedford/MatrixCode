@@ -1,6 +1,7 @@
 import type { Controls, PresetName, QualityTier } from "../types.ts";
 import { CONTROL_RANGES, DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
 import { isNativeConfiguration, nativeStorageDidChange } from "../platform/nativeHost.ts";
+import { resolveDefaultUserName } from "../sim/messageOverlay.ts";
 
 export interface PanelCallbacks {
   onToggleFullscreen: () => void;
@@ -205,7 +206,7 @@ export class ControlsPanel {
     input.className = "mx-name-input";
     input.type = "text";
     input.maxLength = 80;
-    input.placeholder = "Neo";
+    input.placeholder = resolveDefaultUserName();
     try {
       input.value = localStorage.getItem("mx-user-name") ?? "";
     } catch {

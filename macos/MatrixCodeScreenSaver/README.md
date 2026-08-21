@@ -29,7 +29,8 @@ The native saver is expected to match the browser app's user-visible behavior:
 - scheduled in-rain messages that resolve tokens and materialize through the
   rain cells instead of drawing a separate text overlay;
 - viewer name, greeting, time formatting, countdown/countup, named moments, and
-  calendar tokens;
+  calendar tokens. A blank viewer name uses the macOS login name (or home-folder
+  name if needed) with its first letter capitalized;
 - continuous multi-display rendering using one virtual display grid so rain can
   fall across monitor seams in native macOS screen-saver playback;
 - reduced-motion behavior that avoids animated playback while still rendering a

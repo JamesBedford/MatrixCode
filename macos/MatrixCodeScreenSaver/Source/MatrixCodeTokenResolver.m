@@ -181,6 +181,27 @@ static NSDateFormatter *MatrixCodeCachedFormatterForDateFormat(NSString *dateFor
 
 @implementation MatrixCodeTokenResolver
 
++ (NSString *)defaultViewerName {
+    return [self defaultViewerNameForLoginName:NSUserName() homeDirectory:NSHomeDirectory()];
+}
+
++ (NSString *)defaultViewerNameForLoginName:(NSString *)loginName
+                              homeDirectory:(NSString *)homeDirectory {
+    NSCharacterSet *whitespace = NSCharacterSet.whitespaceAndNewlineCharacterSet;
+    NSString *candidate = [loginName isKindOfClass:NSString.class]
+        ? [loginName stringByTrimmingCharactersInSet:whitespace] : @"";
+    if (!candidate.length && [homeDirectory isKindOfClass:NSString.class]) {
+        candidate = [[homeDirectory lastPathComponent]
+            stringByTrimmingCharactersInSet:whitespace];
+    }
+    if (!candidate.length) return @"Neo";
+
+    NSRange firstCharacterRange = [candidate rangeOfComposedCharacterSequenceAtIndex:0];
+    NSString *firstCharacter = [[candidate substringWithRange:firstCharacterRange] uppercaseString];
+    return [firstCharacter stringByAppendingString:
+        [candidate substringFromIndex:NSMaxRange(firstCharacterRange)]];
+}
+
 - (instancetype)initWithStoredValues:(NSDictionary<NSString *,NSString *> *)storedValues
                          runStartDate:(NSDate *)runStartDate {
     self = [super init];
@@ -188,7 +209,7 @@ static NSDateFormatter *MatrixCodeCachedFormatterForDateFormat(NSString *dateFor
     NSString *name = [storedValues[@"mx-user-name"] isKindOfClass:NSString.class]
         ? [storedValues[@"mx-user-name"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
         : @"";
-    _viewerName = name.length ? name : @"Neo";
+    _viewerName = name.length ? name : self.class.defaultViewerName;
     _runStartDate = runStartDate;
     NSDictionary *countdown = [self.class dictionaryFromJSONString:storedValues[@"mx-countdown"]];
     NSNumber *target = MatrixCodeSanitizedTarget(countdown[@"targetMs"]);

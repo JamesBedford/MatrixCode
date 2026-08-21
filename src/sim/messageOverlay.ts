@@ -50,10 +50,12 @@ export const DEFAULT_LINES: MessageLine[] = [
 ];
 
 /**
- * Resolve the viewer's name from the runtime environment, falling back to
- * DEFAULT_USER_NAME ("Neo") when it can't be determined. Sources, in order:
+ * Resolve the viewer's name from the runtime environment, falling back to the
+ * macOS home-folder name for a local file or DEFAULT_USER_NAME ("Neo") when it
+ * can't be determined. Sources, in order:
  *   1. `?name=` URL query parameter
  *   2. `mx-user-name` in localStorage
+ *   3. `/Users/<login>/` in a local `file://` URL
  */
 export function resolveUserName(): string {
   try {
@@ -64,6 +66,37 @@ export function resolveUserName(): string {
     if (fromStore && fromStore.trim()) return fromStore.trim();
   } catch {
     // Non-browser environment or storage blocked — fall through to default.
+  }
+  return resolveDefaultUserName();
+}
+
+/** Capitalize only the first character so the login's remaining spelling is preserved. */
+export function capitalizeLoginName(loginName: string): string {
+  const trimmed = loginName.trim();
+  if (!trimmed) return "";
+  const [firstCharacter, ...remainingCharacters] = Array.from(trimmed);
+  return `${firstCharacter!.toLocaleUpperCase()}${remainingCharacters.join("")}`;
+}
+
+/** Extract a macOS login name from the home directory visible in a local-file URL. */
+export function macOSLoginNameFromPath(pathname: string): string | null {
+  const match = /^\/Users\/([^/]+)(?:\/|$)/.exec(pathname);
+  if (!match?.[1]) return null;
+  try {
+    return capitalizeLoginName(decodeURIComponent(match[1])) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Default shown for a blank viewer-name field in this runtime. */
+export function resolveDefaultUserName(): string {
+  try {
+    if (window.location.protocol === "file:") {
+      return macOSLoginNameFromPath(window.location.pathname) ?? DEFAULT_USER_NAME;
+    }
+  } catch {
+    // Non-browser environment — use the portable fallback.
   }
   return DEFAULT_USER_NAME;
 }

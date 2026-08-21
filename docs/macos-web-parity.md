@@ -41,6 +41,10 @@ The following are platform integration differences, not rain-feature gaps:
 - Native date fields use `NSDatePicker`; web uses `datetime-local`.
 - Browser fullscreen and multi-monitor entry require a user gesture; the native
   app can restore its previous presentation mode.
+- A blank native viewer name uses the capitalized macOS login or home-folder
+  name. A local `file://` web build can infer that home-folder name from its URL,
+  but an HTTP-served browser page cannot access the operating-system account and
+  therefore retains the portable `Neo` fallback.
 - PWA metadata and browser fallback rendering have no native equivalent.
 - Native image reveals are an optional extension. They are off by default and
   excluded from strict render comparisons until the web renderer supports the

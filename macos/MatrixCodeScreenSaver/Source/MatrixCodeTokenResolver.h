@@ -4,6 +4,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface MatrixCodeTokenResolver : NSObject
 
++ (NSString *)defaultViewerName;
++ (NSString *)defaultViewerNameForLoginName:(nullable NSString *)loginName
+                              homeDirectory:(nullable NSString *)homeDirectory;
 - (instancetype)initWithStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues
                          runStartDate:(NSDate *)runStartDate;
 - (void)setRunStartDate:(NSDate *)runStartDate;

@@ -59,6 +59,11 @@ npm test           # run the Vitest suite
 
 The build output, `matrixcode.html`, is a single self-contained file — copy it anywhere and open it directly in a browser, no server required.
 
+When the viewer name is blank, a build opened from a local macOS `file://` path
+uses the home-folder name with its first letter capitalized. Browsers do not
+expose the operating-system login to pages served over HTTP, so those pages use
+`Neo` until a viewer name is entered or supplied with `?name=`.
+
 ## macOS screen saver
 
 The native macOS 13+ project lives in

@@ -6,6 +6,7 @@
 #import "MatrixCodePreferences.h"
 #import "MatrixCodeRainLifecycle.h"
 #import "MatrixCodeRainSimulation.h"
+#import "MatrixCodeTokenResolver.h"
 
 @interface MatrixCodeConfigurationController (Testing)
 - (void)cancel:(id)sender;
@@ -124,6 +125,18 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     [controller loadSettingsBackdropIfNeeded];
     XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
                                                        @"settings-rain-backdrop"));
+}
+
+- (void)testBlankViewerNameFieldShowsTheMacOSLoginDefaultWithoutPersistingIt {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSTextField *name = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"mx-user-name");
+
+    XCTAssertNotNil(name);
+    XCTAssertEqualObjects(name.stringValue, @"");
+    XCTAssertEqualObjects(name.placeholderString, MatrixCodeTokenResolver.defaultViewerName);
+    XCTAssertNil([self.preferences storedValues][@"mx-user-name"]);
 }
 
 - (void)testSettingsCloseButtonDismissesConfigurationSheet {

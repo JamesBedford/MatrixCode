@@ -1261,7 +1261,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     [stack setCustomSpacing:10 afterView:title];
 
     NSTextField *name = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    name.placeholderString = @"Neo";
+    name.placeholderString = MatrixCodeTokenResolver.defaultViewerName;
     name.stringValue = self.stagedValues[@"mx-user-name"] ?: @"";
     name.identifier = @"mx-user-name";
     name.target = self;
