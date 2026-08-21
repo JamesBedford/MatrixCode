@@ -512,8 +512,27 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
     _messageIntensity = MatrixCodeRainClamp(intensity, 0, 1);
 }
 
+- (void)resolveClaimedMessageGlyphs {
+    MatrixCodeRainSimulationStorage *storage = _storage;
+    if (!storage->messageTargets) return;
+    NSUInteger cellCount = (NSUInteger)_columns * (NSUInteger)_rows;
+    for (NSUInteger index = 0; index < cellCount; index++) {
+        NSInteger target = storage->messageTargets[index];
+        if (target < 0 || !storage->claimed[index] ||
+            storage->glyphNew[index] == (uint8_t)target) {
+            continue;
+        }
+        storage->glyphOld[index] = storage->glyphNew[index];
+        storage->glyphNew[index] = (uint8_t)target;
+        storage->phase[index] = 0;
+    }
+}
+
 - (void)setMessageScramble:(double)probability {
-    _messageScramble = MatrixCodeRainClamp(probability, 0, 1);
+    double next = MatrixCodeRainClamp(probability, 0, 1);
+    BOOL finishedScrambling = _messageScramble > 0 && next == 0;
+    _messageScramble = next;
+    if (finishedScrambling) [self resolveClaimedMessageGlyphs];
 }
 
 - (void)updateWithDeltaTime:(double)deltaTime

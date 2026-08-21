@@ -1,4 +1,5 @@
 #import <XCTest/XCTest.h>
+#import <math.h>
 
 #import "MatrixCodeRainSimulation.h"
 
@@ -106,6 +107,45 @@ static uint32_t MatrixCodeFNV1aChecksum(NSData *data) {
 
     XCTAssertTrue(simulation.hasMessageTargets);
     XCTAssertEqual(MatrixCodeFNV1aChecksum(simulation.stateData), 3260864663U);
+}
+
+- (void)testClaimedMessageGlyphsResolveWhenEntryScrambleFinishes {
+    MatrixCodeRainSimulation *simulation =
+        [[MatrixCodeRainSimulation alloc] initWithColumns:16 rows:40 seed:12345U];
+    NSDictionary *controls = MatrixCodeWebGoldenControls();
+    NSInteger row = 20;
+    NSInteger startColumn = 2;
+    NSMutableDictionary<NSNumber *, NSNumber *> *targets = [NSMutableDictionary dictionary];
+    for (NSInteger index = 0; index < 5; index++) {
+        targets[@(row * simulation.columns + startColumn + index)] = @(99 + index);
+    }
+    [simulation setMessageTargets:targets];
+    [simulation setMessageScramble:1];
+    for (NSUInteger frame = 0; frame < 2500; frame++) {
+        [simulation updateWithDeltaTime:1.0 / 60.0 controls:controls];
+    }
+    const uint8_t *scrambled = simulation.stateData.bytes;
+    uint8_t brightnessFloor = (uint8_t)floor(
+        MatrixCodeRainSimulationDefaultConfig().messageBrightFloor * 255 + 0.5);
+    for (NSInteger index = 0; index < 5; index++) {
+        NSUInteger offset = ((NSUInteger)row * (NSUInteger)simulation.columns +
+                             (NSUInteger)(startColumn + index)) * 4;
+        XCTAssertLessThan(scrambled[offset], (uint8_t)99);
+        XCTAssertNotEqual(scrambled[offset], (uint8_t)(99 + index));
+        XCTAssertGreaterThanOrEqual(scrambled[offset + 1], brightnessFloor - 1);
+    }
+
+    [simulation setMessageScramble:0];
+    [simulation updateWithDeltaTime:0 controls:controls];
+
+    const uint8_t *resolved = simulation.stateData.bytes;
+    for (NSInteger index = 0; index < 5; index++) {
+        NSUInteger offset = ((NSUInteger)row * (NSUInteger)simulation.columns +
+                             (NSUInteger)(startColumn + index)) * 4;
+        XCTAssertEqual(resolved[offset], (uint8_t)(99 + index));
+        XCTAssertGreaterThanOrEqual(resolved[offset + 1], brightnessFloor - 1);
+    }
+    XCTAssertTrue(simulation.hasMessageTargets);
 }
 
 - (void)testVariedTrailDecayMatchesWebPackedStateGoldenChecksum {

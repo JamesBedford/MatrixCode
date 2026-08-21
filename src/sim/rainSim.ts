@@ -78,7 +78,7 @@ export class RainSim {
   private claimed!: Uint8Array;
   // 0..1 fade envelope scaling the message hold brightness — driven by the scheduler for fade in/out.
   private messageIntensity = 1;
-  // 0..1 probability a message cell shows a random glyph instead of its letter (flicker dissolve on exit).
+  // 0..1 probability a message cell shows a random glyph instead of its letter during a flicker transition.
   private messageScramble = 0;
 
   constructor(opts: RainSimOptions) {
@@ -315,12 +315,28 @@ export class RainSim {
     this.messageIntensity = clamp(intensity, 0, 1);
   }
 
+  private resolveClaimedMessageGlyphs(): void {
+    const targets = this.messageTargets;
+    if (targets === null) return;
+    for (let idx = 0; idx < targets.length; idx++) {
+      const target = targets[idx]!;
+      if (target < 0 || this.claimed[idx] !== 1 || this.glyphNew[idx] === target) continue;
+      this.glyphOld[idx] = this.glyphNew[idx]!;
+      this.glyphNew[idx] = target;
+      this.phase[idx] = 0;
+    }
+  }
+
   /**
-   * Probability (0..1) that a message cell shows a random glyph instead of its letter. Ramped up over
-   * the fade-out for a "flicker dissolve" where the letters scramble back into the rain.
+   * Probability (0..1) that a message cell shows a random glyph instead of its letter. When an entry
+   * scramble finishes, resolve every claimed cell immediately so a random placeholder cannot remain
+   * pinned through the readable hold phase while waiting for another rain mutation.
    */
   setMessageScramble(p: number): void {
-    this.messageScramble = clamp(p, 0, 1);
+    const next = clamp(p, 0, 1);
+    const finishedScrambling = this.messageScramble > 0 && next === 0;
+    this.messageScramble = next;
+    if (finishedScrambling) this.resolveClaimedMessageGlyphs();
   }
 
   /** Whether an in-rain message is currently active. */

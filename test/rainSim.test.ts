@@ -536,20 +536,27 @@ describe("RainSim — message injection", () => {
     expect(sumFaded).toBeLessThan(sumFull); // and is dimmer overall
   });
 
-  it("scrambles message cells back to random glyphs when scramble is high", () => {
+  it("resolves every claimed message cell when an entry scramble finishes", () => {
     const sim = makeSim(16, 40);
     const row = 20, start = 2;
     sim.setMessageTargets(rowTargets(sim, row, start, MSG_GLYPHS));
-    for (let i = 0; i < 1500; i++) sim.update(1 / 60, DENSE); // reveal & hold; scramble 0 → letters pinned
-    MSG_GLYPHS.forEach((g, i) => expect(glyphAt(sim, start + i, row)).toBe(g));
-
-    // Full scramble: every head/mutation roll picks a random glyph, so the letters flicker away.
     sim.setMessageScramble(1);
-    let sawRandom = false;
-    for (let i = 0; i < 300; i++) {
-      sim.update(1 / 60, DENSE);
-      MSG_GLYPHS.forEach((g, j) => { if (glyphAt(sim, start + j, row) !== g) sawRandom = true; });
-    }
-    expect(sawRandom).toBe(true);
+    for (let i = 0; i < 2500; i++) sim.update(1 / 60, DENSE);
+
+    // The row is visibly claimed and pinned, but full scramble leaves ambient symbols in every cell.
+    MSG_GLYPHS.forEach((target, i) => {
+      expect(glyphAt(sim, start + i, row)).toBeLessThan(MSG_GLYPHS[0]!);
+      expect(glyphAt(sim, start + i, row)).not.toBe(target);
+      expect(brightAt(sim, start + i, row)).toBeGreaterThanOrEqual(FLOOR255 - 1);
+    });
+
+    // Ending the entry scramble resolves placeholders without waiting for another head or mutation.
+    sim.setMessageScramble(0);
+    sim.update(0, DENSE);
+    MSG_GLYPHS.forEach((target, i) => {
+      expect(glyphAt(sim, start + i, row)).toBe(target);
+      expect(brightAt(sim, start + i, row)).toBeGreaterThanOrEqual(FLOOR255 - 1);
+    });
+    expect(sim.hasMessageTargets()).toBe(true);
   });
 });
