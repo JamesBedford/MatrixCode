@@ -60,13 +60,18 @@ web-only surface with no native equivalent (macOS has its own icon system).
 ## System Settings thumbnail
 
 The screen-saver bundle includes `Resources/thumbnail.png` (90×58) and
-`Resources/thumbnail@2x.png` (180×116). macOS uses these conventionally named
+`Resources/thumbnail@2x.png` (180×116), declared by the
+`ScreenSaverThumbnail` bundle property. macOS uses these conventionally named
 files for the static tile in System Settings; without them it falls back to a
 generic screen-saver image. They are raw bundle resources rather than asset
 catalog entries because System Settings looks them up by filename. The saver
 target disables high-resolution image combining so Xcode preserves both PNGs
-instead of replacing them with a TIFF. This is a native macOS integration
-surface with no browser equivalent.
+instead of replacing them with a TIFF. `install.sh` also moves any stale Matrix
+Code thumbnail and its legacy view-model cache into a recoverable cache backup
+before restarting the wallpaper agents. If the view model is already absent,
+the installer backs up the recoverable legacy-thumbnail directory so macOS can
+regenerate its opaque hashed entries. This is a native macOS integration surface
+with no browser equivalent.
 
 ## Requirements
 
@@ -306,10 +311,10 @@ Useful comparison points:
 
 ## Troubleshooting
 
-- If System Settings has cached an older build, remove
-  `~/Library/Screen Savers/Matrix Code.saver`, quit System Settings, and reinstall.
-- If the preview stays on an older version, run `./install.sh` again; it clears
-  extended attributes, re-signs the local bundle, and replaces the installed copy.
+- If System Settings shows an older preview or gallery thumbnail, run
+  `./install.sh` rather than reinstalling the bundle manually. It replaces the
+  installed copy, clears extended attributes, preserves or repairs its signature,
+  backs up the stale Matrix Code thumbnail cache, and restarts its owning agents.
 - Metal is required. The current project targets Apple Silicon Macs, all of
   which provide the required Metal feature set.
 - If a display is black or a monitor seam does not appear continuous, run the

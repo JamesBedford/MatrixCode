@@ -41,10 +41,11 @@ targets:
         CFBundleName: "$(PRODUCT_NAME)"
         CFBundlePackageType: BNDL
         CFBundleShortVersionString: "2.0"
-        CFBundleVersion: "2"
+        CFBundleVersion: "3"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSHumanReadableCopyright: MIT License
         NSPrincipalClass: MatrixCodeScreenSaverView
+        ScreenSaverThumbnail: thumbnail
     dependencies:
       - sdk: AppKit.framework
       - sdk: CoreVideo.framework
@@ -80,7 +81,7 @@ targets:
         CFBundleName: "$(PRODUCT_NAME)"
         CFBundlePackageType: APPL
         CFBundleShortVersionString: "2.0"
-        CFBundleVersion: "2"
+        CFBundleVersion: "3"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSHumanReadableCopyright: MIT License
         NSPrincipalClass: NSApplication

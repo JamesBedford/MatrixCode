@@ -354,6 +354,11 @@ validate_product() {
         || fail "$(basename "${product}") unexpectedly contains web asset ${web_asset}."
 
     if [[ "${product}" == *.saver ]]; then
+        local thumbnail_resource
+        thumbnail_resource="$(/usr/libexec/PlistBuddy -c "Print :ScreenSaverThumbnail" \
+            "${product}/Contents/Info.plist" 2>/dev/null || true)"
+        [[ "${thumbnail_resource}" == "thumbnail" ]] \
+            || fail "$(basename "${product}") does not declare ScreenSaverThumbnail=thumbnail."
         validate_saver_thumbnail "${product}" "thumbnail.png" 90 58
         validate_saver_thumbnail "${product}" "thumbnail@2x.png" 180 116
     fi
