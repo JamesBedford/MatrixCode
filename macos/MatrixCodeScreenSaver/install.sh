@@ -6,6 +6,32 @@ REPO_ROOT=${SCRIPT_DIR:h:h}
 BUILD_PRODUCTS_DIR="${SCRIPT_DIR}/build/Release"
 . "${REPO_ROOT}/scripts/lib/signing.sh"
 
+OPEN_BUILD_PRODUCTS=true
+for argument in "$@"; do
+  case "${argument}" in
+    --no-open)
+      OPEN_BUILD_PRODUCTS=false
+      ;;
+    -h|--help)
+      cat <<'USAGE'
+Usage: ./install.sh [--no-open]
+
+Build and install Matrix Code.saver, then open the Release products in Finder.
+
+Options:
+  --no-open   Do not open the build products directory in Finder.
+  -h, --help  Show this help.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: ${argument}" >&2
+      echo "Usage: ./install.sh [--no-open]" >&2
+      exit 2
+      ;;
+  esac
+done
+
 "${SCRIPT_DIR}/build.sh" --release
 
 INSTALL_DIR="${HOME}/Library/Screen Savers"
@@ -44,4 +70,6 @@ if /usr/bin/killall legacyScreenSaver 2>/dev/null; then
 fi
 
 echo "Installed Matrix Code.saver. Select it in System Settings → Screen Saver."
-/usr/bin/open "${BUILD_PRODUCTS_DIR}"
+if [[ "${OPEN_BUILD_PRODUCTS}" == true ]]; then
+  /usr/bin/open "${BUILD_PRODUCTS_DIR}"
+fi

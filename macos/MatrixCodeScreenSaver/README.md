@@ -150,7 +150,11 @@ in `Tests/`.
 
 ```sh
 ./install.sh
+./install.sh --no-open  # leave Finder closed after installation
 ```
+
+The installer opens `build/Release/` in Finder after it finishes by default.
+Pass `--no-open` to suppress that behavior.
 
 Alternatively, expand `build/Release/Matrix Code.saver.zip` outside the
 cloud-synced working tree and double-click the resulting saver. Select
