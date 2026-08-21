@@ -88,6 +88,7 @@ describe("sanitizeIntro — enabled", () => {
 describe("sanitizeIntro — rain fields", () => {
   it("defaults the rain fields when missing", () => {
     const s = sanitizeIntro({});
+    expect(DEFAULT_INTRO.rainDuringIntro).toBe(false);
     expect(s.rainDuringIntro).toBe(false);
     expect(s.postIntroDelayMs).toBe(0);
   });

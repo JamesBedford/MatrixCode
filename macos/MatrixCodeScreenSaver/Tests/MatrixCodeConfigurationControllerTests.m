@@ -935,6 +935,20 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertEqualWithAccuracy(hold.doubleValue, 2.8, 0.001);
 }
 
+- (void)testRainDuringIntroIsOffByDefaultInScreenSaverSettings {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller openEditorKind:@"intro"];
+
+    NSButton *rainDuringIntro = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"rainDuringIntro");
+    NSDictionary *intro = MatrixCodeJSONDictionary([controller serializedValues][@"mx-intro"]);
+
+    XCTAssertTrue([rainDuringIntro isKindOfClass:NSButton.class]);
+    XCTAssertEqual(rainDuringIntro.state, NSControlStateValueOff);
+    XCTAssertEqualObjects(intro[@"rainDuringIntro"], @NO);
+}
+
 - (void)testIntroAndMessagesEditorsShareCompleteDynamicTokenGuidance {
     [self.preferences commitValues:@{
         @"mx-countdown": @"{\"moments\":[{\"name\":\"launch\",\"targetMs\":1700000000000}]}",

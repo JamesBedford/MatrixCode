@@ -2200,6 +2200,7 @@ static NSMutableDictionary *MatrixCodeSanitizedImageItem(NSDictionary *item) {
     }
     self.postIntroDelayField.enabled = ![self.intro[@"rainDuringIntro"] boolValue];
     NSButton *rain = [NSButton checkboxWithTitle:@"Rain during intro" target:self action:@selector(introRainChanged:)];
+    rain.identifier = @"rainDuringIntro";
     rain.state = [self.intro[@"rainDuringIntro"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
     [stack addArrangedSubview:rain];
     NSButton *preview = [NSButton buttonWithTitle:@"Preview Intro" target:self action:@selector(previewIntro:)];
