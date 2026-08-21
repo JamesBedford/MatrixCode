@@ -3,13 +3,14 @@ set -euo pipefail
 
 SCRIPT_DIR=${0:A:h}
 REPO_ROOT=${SCRIPT_DIR:h:h}
+BUILD_PRODUCTS_DIR="${SCRIPT_DIR}/build/Release"
 . "${REPO_ROOT}/scripts/lib/signing.sh"
 
 "${SCRIPT_DIR}/build.sh" --release
 
 INSTALL_DIR="${HOME}/Library/Screen Savers"
 mkdir -p "${INSTALL_DIR}"
-SOURCE_SAVER="${SCRIPT_DIR}/build/Release/Matrix Code.saver"
+SOURCE_SAVER="${BUILD_PRODUCTS_DIR}/Matrix Code.saver"
 
 # Installs from before the rename are called MatrixCode.saver but carry the same
 # bundle identifier, so leaving one behind lets System Settings list two entries
@@ -43,3 +44,4 @@ if /usr/bin/killall legacyScreenSaver 2>/dev/null; then
 fi
 
 echo "Installed Matrix Code.saver. Select it in System Settings → Screen Saver."
+/usr/bin/open "${BUILD_PRODUCTS_DIR}"
