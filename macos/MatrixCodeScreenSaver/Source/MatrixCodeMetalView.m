@@ -120,6 +120,31 @@ static NSInteger MatrixCodeAtlasColumnCount(NSInteger glyphCount) {
     return MAX(1, (NSInteger)ceil(sqrt((double)MAX(1, glyphCount))));
 }
 
+// Quartz draws in bottom-up user space; its bitmap bytes and Metal texture UVs
+// both expose the first logical atlas row at the top.
+static CGFloat MatrixCodeAtlasContextCellY(NSUInteger row,
+                                            size_t bitmapHeight,
+                                            size_t cellPixels) {
+    return (CGFloat)(bitmapHeight - (row + 1) * cellPixels);
+}
+
+static NSUInteger MatrixCodeAtlasBitmapCellY(NSUInteger row, size_t cellPixels) {
+    return row * cellPixels;
+}
+
+static vector_float2 MatrixCodeAtlasTextureOrigin(NSInteger glyph,
+                                                   NSInteger columns,
+                                                   NSInteger rows) {
+    return (vector_float2){
+        (float)(glyph % columns) / columns,
+        (float)(glyph / columns) / rows,
+    };
+}
+
+static vector_float2 MatrixCodeAtlasTextureCellSize(NSInteger columns, NSInteger rows) {
+    return (vector_float2){1.0f / columns, 1.0f / rows};
+}
+
 static NSInteger MatrixCodeNormalGridDimension(double points, double cellPoints) {
     return MAX(8, (NSInteger)lround(points / fmax(cellPoints, DBL_EPSILON)));
 }
@@ -1332,7 +1357,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             sourceGlyph, targetIndex, self.rainGlyphCount, self.controls);
         NSInteger column = targetIndex % self.atlasColumns;
         NSInteger row = targetIndex / self.atlasColumns;
-        CGFloat cellY = height - (row + 1) * cell;
+        CGFloat cellY = MatrixCodeAtlasContextCellY((NSUInteger)row, height, cell);
         CGRect digitRect = CGRectMake(column * cell, cellY, cell, cell);
         NSDictionary *glyphAttributes =
             readableDigits && MatrixCodeGlyphStringIsDigit(displayGlyph)
@@ -1381,7 +1406,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         NSUInteger column = index % (NSUInteger)self.atlasColumns;
         NSUInteger row = index / (NSUInteger)self.atlasColumns;
         NSUInteger x0 = column * cell;
-        NSUInteger y0 = height - (row + 1) * cell;
+        NSUInteger y0 = MatrixCodeAtlasBitmapCellY(row, cell);
         for (NSUInteger y = y0; y < y0 + cell; y += 2) {
             NSUInteger pixel = y * width + x0;
             for (NSUInteger x = 0; x < cell; x += 2, pixel += 2) {
@@ -1402,7 +1427,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             NSUInteger column = index % (NSUInteger)self.atlasColumns;
             NSUInteger row = index / (NSUInteger)self.atlasColumns;
             CGRect cellRect = CGRectMake(column * cell,
-                                         height - (row + 1) * cell,
+                                         MatrixCodeAtlasContextCellY(row, height, cell),
                                          cell,
                                          cell);
             CGContextClearRect(context, cellRect);
@@ -1420,7 +1445,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         // the horizontal orientation when the target crosses the mirror cutoff.
         NSUInteger sourceColumn = fallbackIndex % (NSUInteger)self.atlasColumns;
         NSUInteger sourceRow = fallbackIndex / (NSUInteger)self.atlasColumns;
-        NSUInteger sourceY = height - (sourceRow + 1) * cell;
+        NSUInteger sourceY = MatrixCodeAtlasBitmapCellY(sourceRow, cell);
         NSMutableData *sourceCell = [NSMutableData dataWithLength:cell * cell];
         uint8_t *sourceBytes = sourceCell.mutableBytes;
         uint8_t *mutableCoverage = pixels.mutableBytes;
@@ -1434,7 +1459,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             NSUInteger targetIndex = number.unsignedIntegerValue;
             NSUInteger targetColumn = targetIndex % (NSUInteger)self.atlasColumns;
             NSUInteger targetRow = targetIndex / (NSUInteger)self.atlasColumns;
-            NSUInteger targetY = height - (targetRow + 1) * cell;
+            NSUInteger targetY = MatrixCodeAtlasBitmapCellY(targetRow, cell);
             BOOL targetMirrored = mirror && targetIndex < rainGlyphCount;
             for (NSUInteger row = 0; row < cell; row++) {
                 uint8_t *target = mutableCoverage +
@@ -2342,23 +2367,17 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                 if (packedBrightnessByte == 0 && brightness <= 0) continue;
                 if (glyph < 0 || glyph >= glyphCount) glyph = 0;
                 if (oldGlyph < 0 || oldGlyph >= glyphCount) oldGlyph = glyph;
-                NSInteger atlasColumn = glyph % atlasColumns;
-                NSInteger atlasRow = glyph / atlasColumns;
-                NSInteger oldAtlasColumn = oldGlyph % atlasColumns;
-                NSInteger oldAtlasRow = oldGlyph / atlasColumns;
+                vector_float2 atlasOrigin = MatrixCodeAtlasTextureOrigin(
+                    glyph, atlasColumns, atlasRows);
+                vector_float2 oldAtlasOrigin = MatrixCodeAtlasTextureOrigin(
+                    oldGlyph, atlasColumns, atlasRows);
                 MatrixCodeGlyphInstance instance = (MatrixCodeGlyphInstance){
                     .origin = {
                         localOriginXPixels + (column + lane.offset) * cellWidthPixels,
                         localOriginYPixels + row * cellHeightPixels,
                     },
-                    .atlasOrigin = {
-                        (float)atlasColumn / atlasColumns,
-                        (float)(atlasRows - atlasRow) / atlasRows,
-                    },
-                    .oldAtlasOrigin = {
-                        (float)oldAtlasColumn / atlasColumns,
-                        (float)(atlasRows - oldAtlasRow) / atlasRows,
-                    },
+                    .atlasOrigin = atlasOrigin,
+                    .oldAtlasOrigin = oldAtlasOrigin,
                     .crossfade = crossfade,
                     .brightness = brightness,
                     .isHead = head ? 1 : 0,
@@ -2383,7 +2402,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     MatrixCodeUniforms uniforms = self.uniforms;
     uniforms.viewport = (vector_float2){drawableSize.width, drawableSize.height};
     uniforms.cellSize = (vector_float2){cellWidthPixels, cellHeightPixels};
-    uniforms.atlasCellSize = (vector_float2){1.0f / atlasColumns, -1.0f / atlasRows};
+    uniforms.atlasCellSize = MatrixCodeAtlasTextureCellSize(atlasColumns, atlasRows);
     self.uniforms = uniforms;
 }
 
@@ -2494,24 +2513,20 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                 (float)MatrixCodePackedPhaseMask;
             NSInteger glyph = state[offset];
             NSInteger oldGlyph = state[offset + 3];
-            NSInteger atlasColumn = glyph % self.atlasColumns;
-            NSInteger atlasRow = glyph / self.atlasColumns;
-            NSInteger oldAtlasColumn = oldGlyph % self.atlasColumns;
-            NSInteger oldAtlasRow = oldGlyph / self.atlasColumns;
+            vector_float2 expectedAtlasOrigin = MatrixCodeAtlasTextureOrigin(
+                glyph, self.atlasColumns, self.atlasRows);
+            vector_float2 expectedOldAtlasOrigin = MatrixCodeAtlasTextureOrigin(
+                oldGlyph, self.atlasColumns, self.atlasRows);
             if (fabsf(instance.brightness - brightness) > 0.0001f ||
                 fabsf(instance.crossfade - phase) > 0.0001f ||
                 (instance.isHead > 0.5f) !=
                     ((phaseAndFlags & MatrixCodePackedHeadFlag) != 0) ||
                 (instance.whiteHead > 0.5f) !=
                     ((phaseAndFlags & MatrixCodePackedWhiteHeadFlag) != 0) ||
-                fabsf(instance.atlasOrigin.x -
-                       (float)atlasColumn / self.atlasColumns) > 0.0001f ||
-                fabsf(instance.atlasOrigin.y -
-                       (float)(self.atlasRows - atlasRow) / self.atlasRows) > 0.0001f ||
-                fabsf(instance.oldAtlasOrigin.x -
-                       (float)oldAtlasColumn / self.atlasColumns) > 0.0001f ||
-                fabsf(instance.oldAtlasOrigin.y -
-                       (float)(self.atlasRows - oldAtlasRow) / self.atlasRows) > 0.0001f) {
+                fabsf(instance.atlasOrigin.x - expectedAtlasOrigin.x) > 0.0001f ||
+                fabsf(instance.atlasOrigin.y - expectedAtlasOrigin.y) > 0.0001f ||
+                fabsf(instance.oldAtlasOrigin.x - expectedOldAtlasOrigin.x) > 0.0001f ||
+                fabsf(instance.oldAtlasOrigin.y - expectedOldAtlasOrigin.y) > 0.0001f) {
                 return NO;
             }
         }

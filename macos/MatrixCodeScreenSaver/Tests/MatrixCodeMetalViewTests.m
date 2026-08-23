@@ -54,6 +54,110 @@ static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
     return brightCells;
 }
 
+static const uint8_t MatrixCodeTestGlyphF[7] = {
+    0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000,
+};
+static const uint8_t MatrixCodeTestGlyphJ[7] = {
+    0b11111, 0b00010, 0b00010, 0b00010, 0b00010, 0b10010, 0b01100,
+};
+static const uint8_t MatrixCodeTestGlyphR[7] = {
+    0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001,
+};
+static const NSUInteger MatrixCodeTestMessageGlyphCount = 3;
+static const uint8_t MatrixCodeTestMessageGlyphs[3] = {104, 108, 116};
+static const uint8_t *const MatrixCodeTestGlyphPatterns[3] = {
+    MatrixCodeTestGlyphF, MatrixCodeTestGlyphJ, MatrixCodeTestGlyphR,
+};
+
+static uint64_t MatrixCodeTestGlyphSignature(const uint8_t pattern[7]) {
+    uint64_t signature = 0;
+    for (NSUInteger row = 0; row < 7; row++) {
+        for (NSUInteger column = 0; column < 5; column++) {
+            if ((pattern[row] & (1 << (4 - column))) != 0) {
+                signature |= 1ULL << (row * 5 + column);
+            }
+        }
+    }
+    return signature;
+}
+
+static id<MTLTexture> MatrixCodeTestMessageAtlas(id<MTLDevice> device,
+                                                 NSUInteger columns,
+                                                 NSUInteger rows,
+                                                 NSUInteger cellPixels) {
+    const NSUInteger width = columns * cellPixels;
+    const NSUInteger height = rows * cellPixels;
+    const NSUInteger modulePixels = cellPixels / 8;
+    const NSUInteger horizontalMargin = (cellPixels - modulePixels * 5) / 2;
+    const NSUInteger verticalMargin = (cellPixels - modulePixels * 7) / 2;
+    NSMutableData *data = [NSMutableData dataWithLength:width * height];
+    uint8_t *pixels = data.mutableBytes;
+    for (NSUInteger glyphPosition = 0;
+         glyphPosition < MatrixCodeTestMessageGlyphCount;
+         glyphPosition++) {
+        NSInteger glyph = MatrixCodeTestMessageGlyphs[glyphPosition];
+        NSUInteger cellX = ((NSUInteger)glyph % columns) * cellPixels;
+        NSUInteger cellY = ((NSUInteger)glyph / columns) * cellPixels;
+        for (NSUInteger patternRow = 0; patternRow < 7; patternRow++) {
+            for (NSUInteger patternColumn = 0; patternColumn < 5; patternColumn++) {
+                if ((MatrixCodeTestGlyphPatterns[glyphPosition][patternRow] &
+                     (1 << (4 - patternColumn))) == 0) {
+                    continue;
+                }
+                NSUInteger moduleX =
+                    cellX + horizontalMargin + patternColumn * modulePixels;
+                NSUInteger moduleY =
+                    cellY + verticalMargin + patternRow * modulePixels;
+                for (NSUInteger y = moduleY; y < moduleY + modulePixels; y++) {
+                    memset(pixels + y * width + moduleX, 255, modulePixels);
+                }
+            }
+        }
+    }
+
+    MTLTextureDescriptor *descriptor =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+                                                           width:width
+                                                          height:height
+                                                       mipmapped:NO];
+    descriptor.usage = MTLTextureUsageShaderRead;
+    descriptor.storageMode = MTLStorageModeShared;
+    id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor];
+    [texture replaceRegion:MTLRegionMake2D(0, 0, width, height)
+               mipmapLevel:0
+                 withBytes:pixels
+               bytesPerRow:width];
+    return texture;
+}
+
+static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
+                                                  NSUInteger frameWidth,
+                                                  NSUInteger cellColumn,
+                                                  NSUInteger cellRow,
+                                                  NSUInteger cellPixels) {
+    const uint8_t *pixels = frame.bytes;
+    const NSUInteger modulePixels = cellPixels / 8;
+    const NSUInteger horizontalMargin = (cellPixels - modulePixels * 5) / 2;
+    const NSUInteger verticalMargin = (cellPixels - modulePixels * 7) / 2;
+    uint64_t signature = 0;
+    for (NSUInteger patternRow = 0; patternRow < 7; patternRow++) {
+        for (NSUInteger patternColumn = 0; patternColumn < 5; patternColumn++) {
+            NSUInteger x = cellColumn * cellPixels + horizontalMargin +
+                patternColumn * modulePixels + modulePixels / 2;
+            NSUInteger y = cellRow * cellPixels + verticalMargin +
+                patternRow * modulePixels + modulePixels / 2;
+            NSUInteger offset = (y * frameWidth + x) * 4;
+            uint8_t blue = pixels[offset];
+            uint8_t green = pixels[offset + 1];
+            uint8_t red = pixels[offset + 2];
+            if (MAX(red, MAX(green, blue)) > 20) {
+                signature |= 1ULL << (patternRow * 5 + patternColumn);
+            }
+        }
+    }
+    return signature;
+}
+
 - (void)testTrailSliderUsesExponentialScale {
     const float rows = 72.0f;
     const float averageSpeed = 3.5f + 8.0f * 0.5f;
@@ -223,6 +327,86 @@ static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
     XCTAssertNotNil(view);
     XCTAssertEqual([[view valueForKey:@"atlasBlankCellCount"] unsignedIntegerValue],
                    (NSUInteger)0);
+}
+
+- (void)testMessageGlyphsRenderUprightAndLeftToRight {
+    const NSUInteger frameDimension = 512;
+    NSDictionary *controls = @{
+        @"density": @100,
+        @"allowOverlap": @NO,
+        @"glyphScale": @4,
+        @"glow": @0,
+        @"vignette": @0,
+        @"scanlines": @NO,
+        @"quality": @"low",
+        @"mirror": @YES,
+    };
+    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, frameDimension, frameDimension)
+              session:@{@"seed": @12345, @"epoch": @1700000000000}
+         storedValues:@{@"mx-controls": MatrixCodeJSONString(controls)}];
+    XCTAssertNotNil(view);
+    [view diagnosticPackedStateWithWidth:frameDimension height:frameDimension];
+
+    MatrixCodeRainSimulation *simulation = [view valueForKey:@"rainSimulation"];
+    XCTAssertEqual(simulation.columns, 8);
+    XCTAssertEqual(simulation.rows, 8);
+    NSUInteger screenCellPixels = frameDimension / (NSUInteger)simulation.columns;
+    NSInteger targetRow = 3;
+    NSInteger firstTargetColumn = 2;
+    NSMutableDictionary<NSNumber *, NSNumber *> *targets = [NSMutableDictionary dictionary];
+    for (NSUInteger index = 0; index < MatrixCodeTestMessageGlyphCount; index++) {
+        NSInteger cellIndex = targetRow * simulation.columns + firstTargetColumn + index;
+        targets[@(cellIndex)] = @(MatrixCodeTestMessageGlyphs[index]);
+    }
+    [simulation setMessageTargets:targets];
+
+    BOOL resolved = NO;
+    for (NSUInteger frameIndex = 0; frameIndex < 2500 && !resolved; frameIndex++) {
+        [simulation updateWithDeltaTime:1.0 / 60.0 controls:controls];
+        const uint8_t *state = simulation.stateData.bytes;
+        resolved = YES;
+        for (NSUInteger index = 0; index < MatrixCodeTestMessageGlyphCount; index++) {
+            NSUInteger offset = ((NSUInteger)targetRow * (NSUInteger)simulation.columns +
+                                 (NSUInteger)(firstTargetColumn + index)) * 4;
+            if (state[offset] != MatrixCodeTestMessageGlyphs[index] ||
+                state[offset + 1] == 0) {
+                resolved = NO;
+                break;
+            }
+        }
+    }
+    XCTAssertTrue(resolved, @"Every synthetic message glyph must be claimed before rendering");
+
+    simulation.spawnRateScale = 0;
+    NSMutableDictionary *settledControls = [controls mutableCopy];
+    settledControls[@"speed"] = @0;
+    settledControls[@"glyphRate"] = @0;
+    for (NSUInteger frameIndex = 0; frameIndex < 10; frameIndex++) {
+        [simulation updateWithDeltaTime:1.0 / 60.0 controls:settledControls];
+    }
+
+    NSUInteger atlasColumns = [[view valueForKey:@"atlasColumns"] unsignedIntegerValue];
+    NSUInteger atlasRows = [[view valueForKey:@"atlasRows"] unsignedIntegerValue];
+    NSUInteger atlasCellPixels =
+        (NSUInteger)[MatrixCodeMetalView diagnosticAtlasCellPixels];
+    id<MTLTexture> atlas = MatrixCodeTestMessageAtlas(
+        view.device, atlasColumns, atlasRows, atlasCellPixels);
+    XCTAssertNotNil(atlas);
+    [view setValue:atlas forKey:@"atlas"];
+    NSData *frame = [view diagnosticBGRAFrameWithWidth:frameDimension
+                                                height:frameDimension];
+    XCTAssertNotNil(frame);
+
+    for (NSUInteger index = 0; index < MatrixCodeTestMessageGlyphCount; index++) {
+        uint64_t actual = MatrixCodeRenderedGlyphSignature(
+            frame, frameDimension, (NSUInteger)firstTargetColumn + index,
+            (NSUInteger)targetRow, screenCellPixels);
+        XCTAssertEqual(actual,
+                       MatrixCodeTestGlyphSignature(MatrixCodeTestGlyphPatterns[index]),
+                       @"Message glyph %lu must retain its identity and upright orientation",
+                       (unsigned long)index);
+    }
 }
 
 - (void)testNormalGridRoundsAndStretchesLikeWebRenderer {
