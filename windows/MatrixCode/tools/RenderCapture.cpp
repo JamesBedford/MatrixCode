@@ -37,6 +37,9 @@ int wmain(int argc, wchar_t** argv) {
   parameters.controls = settings.controls;
   parameters.palette = matrixcode::PaletteForControls(settings.controls);
   parameters.cellPixels = 18.0f;
+  // Exercise fractional grid-to-target alignment, where discontinuous atlas
+  // derivatives otherwise reveal cell-sized mip seams around bright glyphs.
+  parameters.adaptiveScale = 0.75f;
   parameters.elapsedSeconds = 8.0f;
   if (!renderer.Render(std::span<const matrixcode::render::RainLayerView>(&layer, 1), parameters) ||
       !renderer.CapturePng(output)) {

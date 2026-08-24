@@ -78,10 +78,19 @@ float4 GlyphPs(FullscreenOutput input) : SV_Target {
   bool whiteHead = (flags & 64) != 0;
   const float atlasColumns = 14.0;
   const float atlasRows = 13.0;
+  const float2 atlasGrid = float2(atlasColumns, atlasRows);
   float2 newTile = float2(newGlyph % 14, newGlyph / 14);
   float2 oldTile = float2(oldGlyph % 14, oldGlyph / 14);
-  float newCoverage = texture1.Sample(linearSampler, (newTile + withinCell) / float2(atlasColumns, atlasRows)).a;
-  float oldCoverage = texture1.Sample(linearSampler, (oldTile + withinCell) / float2(atlasColumns, atlasRows)).a;
+  // Derive the mip LOD from the continuous cell coordinate. Using the
+  // discontinuous withinCell value here makes the derivatives spike at each
+  // frac() seam, selecting a coarse, cell-averaged mip that bloom exposes as
+  // a bright rectangular outline around intense glyphs.
+  float2 atlasDdx = ddx(cellCoordinate) / atlasGrid;
+  float2 atlasDdy = ddy(cellCoordinate) / atlasGrid;
+  float newCoverage = texture1.SampleGrad(
+    linearSampler, (newTile + withinCell) / atlasGrid, atlasDdx, atlasDdy).a;
+  float oldCoverage = texture1.SampleGrad(
+    linearSampler, (oldTile + withinCell) / atlasGrid, atlasDdx, atlasDdy).a;
   float coverage = lerp(oldCoverage, newCoverage, phase);
   float sparklePulse = max(isHead ? 0.45 : 0.0, 4.0 * phase * (1.0 - phase));
   float sparkle = goldSparkle * sparklePulse * smoothstep(0.45, 0.95, brightness);
