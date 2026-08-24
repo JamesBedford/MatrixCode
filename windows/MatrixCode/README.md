@@ -104,6 +104,14 @@ the user's current screen saver. After installation, open Windows Settings,
 search for **Change screen saver**, and select **Matrix Code**. Uninstall keeps
 the user's per-user settings.
 
+For a development build, run `npm run install:windows` from the repository
+root. `Install-ScreenSaver.ps1` builds the x64 Release target, requests
+administrator access through UAC, backs up any different System32 copy under
+`out/backups/`, installs and SHA-256-verifies the rebuilt `.scr`, selects it for
+the current user, and opens Screen Saver Settings. Pass `-SkipBuild` directly
+to the script to reinstall an existing staged build, `-Architecture arm64` for
+an ARM64 build, or `-NoSettings` to leave the settings dialog closed.
+
 The `.scr` command-line contract is:
 
 - no arguments or `/c[:HWND]` — configuration window;

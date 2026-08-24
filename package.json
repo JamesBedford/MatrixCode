@@ -10,6 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "build:wallpaper": "npm run build && node scripts/wallpaper-engine/package.mjs",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Build-Windows.ps1 -Architecture x64 -Configuration Release -SkipTests",
+    "install:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Install-ScreenSaver.ps1",
     "preview": "vite preview",
     "test": "vitest run",
     "test:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Verify-Windows.ps1 -Architecture x64 -Configuration Debug",
