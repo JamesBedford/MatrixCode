@@ -27,13 +27,13 @@ class FakeMessageSink final : public matrixcode::MessageSink {
     rows_ = rows;
   }
   void SetMessageTargets(
-      const std::span<const std::pair<std::size_t, std::uint8_t>> targets) override {
-    Copy(targets);
+      const std::span<const std::pair<std::size_t, std::uint8_t>> values) override {
+    Copy(values);
     ++sets;
   }
   void UpdateMessageTargets(
-      const std::span<const std::pair<std::size_t, std::uint8_t>> targets) override {
-    Copy(targets);
+      const std::span<const std::pair<std::size_t, std::uint8_t>> values) override {
+    Copy(values);
     ++updates;
   }
   void ClearMessageTargets() override {

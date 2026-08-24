@@ -482,7 +482,7 @@ void NativeHost::ResetRainToEmpty(const double startSeconds) {
     simulation->Reset();
     simulation->SetSpawnRateScale(0.0);
   }
-  for (auto& state : renderStates_) std::fill(state.begin(), state.end(), 0u);
+  for (auto& state : renderStates_) std::fill(state.begin(), state.end(), std::uint8_t{0});
   for (auto& boost : renderBrightnessBoosts_) std::fill(boost.begin(), boost.end(), 0.0f);
   laneActive_.fill(false);
   if (!lanes_.empty() && lanes_.front().index < laneActive_.size()) {

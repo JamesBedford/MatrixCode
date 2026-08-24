@@ -98,6 +98,7 @@ set(MATRIXCODE_COMMON_RESOURCES
 add_executable(MatrixCodeApp WIN32 app/Main.cpp ${MATRIXCODE_COMMON_RESOURCES})
 set_target_properties(MatrixCodeApp PROPERTIES OUTPUT_NAME "MatrixCode")
 target_link_libraries(MatrixCodeApp PRIVATE MatrixCodeWin32)
+target_link_options(MatrixCodeApp PRIVATE /MANIFEST:NO)
 matrixcode_target_options(MatrixCodeApp)
 
 add_executable(MatrixCodeScreenSaver WIN32 screensaver/Main.cpp ${MATRIXCODE_COMMON_RESOURCES})
@@ -107,10 +108,12 @@ set_target_properties(MatrixCodeScreenSaver PROPERTIES
 )
 target_link_libraries(MatrixCodeScreenSaver PRIVATE MatrixCodeWin32)
 target_compile_definitions(MatrixCodeScreenSaver PRIVATE MATRIXCODE_SCREENSAVER=1)
+target_link_options(MatrixCodeScreenSaver PRIVATE /MANIFEST:NO)
 matrixcode_target_options(MatrixCodeScreenSaver)
 
 add_executable(MatrixCodeRenderCapture tools/RenderCapture.cpp ${MATRIXCODE_COMMON_RESOURCES})
 target_link_libraries(MatrixCodeRenderCapture PRIVATE MatrixCodeWin32)
+target_link_options(MatrixCodeRenderCapture PRIVATE /MANIFEST:NO)
 matrixcode_target_options(MatrixCodeRenderCapture)
 
 if(BUILD_TESTING)

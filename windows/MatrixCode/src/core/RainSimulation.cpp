@@ -56,16 +56,16 @@ RainSimulation::RainSimulation(
 void RainSimulation::Allocate(const std::size_t columns, const std::size_t rows) {
   streams_.assign(columns, {});
   respawnTimer_.assign(columns, 0.0f);
-  headMark_.assign(rows, 0);
+  headMark_.assign(rows, std::uint8_t{0});
   const auto cells = columns * rows;
   brightness_.assign(cells, 0.0f);
   trailSpeed_.assign(cells, 0.0f);
-  glyphNew_.assign(cells, 0);
-  glyphOld_.assign(cells, 0);
+  glyphNew_.assign(cells, std::uint8_t{0});
+  glyphOld_.assign(cells, std::uint8_t{0});
   phase_.assign(cells, 0.0f);
-  claimed_.assign(cells, 0);
-  state_.assign(cells * 4, 0);
-  messageTargets_.assign(cells, -1);
+  claimed_.assign(cells, std::uint8_t{0});
+  state_.assign(cells * 4, std::uint8_t{0});
+  messageTargets_.assign(cells, std::int16_t{-1});
 
   Mulberry32 gateRng(seed_ ^ 0x85ebca6bu);
   columnGate_.resize(columns);
@@ -182,26 +182,26 @@ void RainSimulation::WarmUpDistributed(
 void RainSimulation::Reset() {
   std::fill(brightness_.begin(), brightness_.end(), 0.0f);
   std::fill(trailSpeed_.begin(), trailSpeed_.end(), 0.0f);
-  std::fill(glyphNew_.begin(), glyphNew_.end(), 0);
-  std::fill(glyphOld_.begin(), glyphOld_.end(), 0);
+  std::fill(glyphNew_.begin(), glyphNew_.end(), std::uint8_t{0});
+  std::fill(glyphOld_.begin(), glyphOld_.end(), std::uint8_t{0});
   std::fill(phase_.begin(), phase_.end(), 0.0f);
-  std::fill(state_.begin(), state_.end(), 0);
+  std::fill(state_.begin(), state_.end(), std::uint8_t{0});
   time_ = 0.0;
   SeedColumns(0, columns_);
   messageActive_ = false;
-  std::fill(claimed_.begin(), claimed_.end(), 0);
+  std::fill(claimed_.begin(), claimed_.end(), std::uint8_t{0});
   messageIntensity_ = 1.0;
   messageScramble_ = 0.0;
 }
 
 void RainSimulation::SetMessageTargets(
     const std::span<const std::pair<std::size_t, std::uint8_t>> targets) {
-  std::fill(messageTargets_.begin(), messageTargets_.end(), -1);
+  std::fill(messageTargets_.begin(), messageTargets_.end(), std::int16_t{-1});
   for (const auto& [index, glyph] : targets) {
     if (index < messageTargets_.size()) messageTargets_[index] = glyph;
   }
   messageActive_ = true;
-  std::fill(claimed_.begin(), claimed_.end(), 0);
+  std::fill(claimed_.begin(), claimed_.end(), std::uint8_t{0});
   messageIntensity_ = 1.0;
   messageScramble_ = 0.0;
 }
@@ -212,7 +212,7 @@ void RainSimulation::UpdateMessageTargets(
     SetMessageTargets(targets);
     return;
   }
-  std::vector<std::int16_t> next(messageTargets_.size(), -1);
+  std::vector<std::int16_t> next(messageTargets_.size(), std::int16_t{-1});
   for (const auto& [index, glyph] : targets) {
     if (index < next.size()) next[index] = glyph;
   }
@@ -232,7 +232,7 @@ void RainSimulation::ClearMessageTargets() {
     }
   }
   messageActive_ = false;
-  std::fill(claimed_.begin(), claimed_.end(), 0);
+  std::fill(claimed_.begin(), claimed_.end(), std::uint8_t{0});
   messageIntensity_ = 1.0;
   messageScramble_ = 0.0;
 }

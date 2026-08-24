@@ -19,7 +19,7 @@ namespace {
   if (text.empty()) return false;
   wchar_t* end = nullptr;
   errno = 0;
-  const auto value = std::wctoull(text.c_str(), &end, 0);
+  const auto value = std::wcstoull(text.c_str(), &end, 0);
   if (errno != 0 || end == text.c_str() || *end != L'\0') return false;
   output = static_cast<std::uintptr_t>(value);
   return output != 0;

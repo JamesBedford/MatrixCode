@@ -303,6 +303,7 @@ ImageCellResult ApplyImageReveal(
   const double dissolve = scramble > 0.0 && roll < scramble ? 0.0 : 1.0;
   const double influence = std::min(
     1.0, signal * revealGate * std::clamp(intensity, 0.0, 1.0) * dissolve);
+  if (influence <= 0.001) return {packedBrightness, currentGlyph, influence};
   const double bright = std::max(0.0, (luminance - 0.38) / 0.62);
   const double dark = std::max(0.0, (0.58 - luminance) / 0.58);
   double brightness = packedBrightness * (1.0 - 0.46 * dark * influence);

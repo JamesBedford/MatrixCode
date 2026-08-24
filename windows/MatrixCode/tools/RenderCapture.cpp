@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 #include <windows.h>
+#include <objbase.h>
 
 #include "matrixcode/core/RainSimulation.h"
 #include "matrixcode/core/Settings.h"

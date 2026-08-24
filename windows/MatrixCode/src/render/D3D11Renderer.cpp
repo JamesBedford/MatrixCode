@@ -611,16 +611,17 @@ struct D3D11Renderer::Impl {
         return target.texture != nullptr;
       });
     if (complete && sceneWidth == nextWidth && sceneHeight == nextHeight) return true;
-    const auto width = std::max(1u, nextWidth);
-    const auto height = std::max(1u, nextHeight);
+    const auto targetWidth = std::max(1u, nextWidth);
+    const auto targetHeight = std::max(1u, nextHeight);
     Target nextScene;
     std::array<Target, 3> nextBloomA;
     std::array<Target, 3> nextBloomB;
-    if (!CreateTarget(device.Get(), width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, nextScene)) {
+    if (!CreateTarget(
+          device.Get(), targetWidth, targetHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, nextScene)) {
       return false;
     }
-    std::uint32_t levelWidth = std::max(1u, width / 2);
-    std::uint32_t levelHeight = std::max(1u, height / 2);
+    std::uint32_t levelWidth = std::max(1u, targetWidth / 2);
+    std::uint32_t levelHeight = std::max(1u, targetHeight / 2);
     for (std::size_t level = 0; level < nextBloomA.size(); ++level) {
       if (!CreateTarget(device.Get(), levelWidth, levelHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, nextBloomA[level]) ||
           !CreateTarget(device.Get(), levelWidth, levelHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, nextBloomB[level])) {
@@ -632,8 +633,8 @@ struct D3D11Renderer::Impl {
     scene = std::move(nextScene);
     bloomA = std::move(nextBloomA);
     bloomB = std::move(nextBloomB);
-    sceneWidth = width;
-    sceneHeight = height;
+    sceneWidth = targetWidth;
+    sceneHeight = targetHeight;
     return true;
   }
 

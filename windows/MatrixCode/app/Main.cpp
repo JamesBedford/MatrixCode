@@ -1,8 +1,9 @@
+#include <windows.h>
 #include <commctrl.h>
+#include <objbase.h>
 #include <shellapi.h>
 #include <string>
 #include <vector>
-#include <windows.h>
 
 #include "matrixcode/platform/SettingsStoreWin32.h"
 #include "matrixcode/platform/SettingsWindow.h"

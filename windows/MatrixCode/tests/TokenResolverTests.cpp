@@ -65,7 +65,7 @@ void RunTokenResolverTests() {
   context.name = "\xC2\xA0" "Trinity" "\xEF\xBB\xBF";
   MX_EXPECT_EQ(ResolveTokens("{name}", context), std::string("Trinity"));
   MX_EXPECT_EQ(ResolveTokens("keep {foo} and {bar}", context), std::string("keep {foo} and {bar}"));
-  MX_EXPECT_EQ(ResolveTokens("{{name}", context), std::string("{Neo"));
+  MX_EXPECT_EQ(ResolveTokens("{{name}", context), std::string("{Trinity"));
 
   context.countdownTargetMilliseconds = context.nowMilliseconds + 60000.0;
   context.moments["born"] = context.nowMilliseconds - 120000.0;

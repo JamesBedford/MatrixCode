@@ -5,9 +5,9 @@
 #include <cwctype>
 #include <fstream>
 #include <iterator>
+#include <windows.h>
 #include <knownfolders.h>
 #include <shlobj.h>
-#include <windows.h>
 
 #include "matrixcode/core/Settings.h"
 

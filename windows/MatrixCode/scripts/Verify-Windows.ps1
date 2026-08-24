@@ -17,9 +17,9 @@ $buildRoot = Join-Path $sourceRoot "out/build/$preset"
     -Configuration $Configuration
 
 if ($Capture) {
-    $capture = Join-Path $buildRoot "$Configuration/MatrixCodeRenderCapture.exe"
+    $captureExecutable = Join-Path $buildRoot "$Configuration/MatrixCodeRenderCapture.exe"
     $output = Join-Path $sourceRoot "out/captures/windows-$Architecture.png"
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
-    & $capture --output $output
+    & $captureExecutable --output $output
     if ($LASTEXITCODE -ne 0) { throw 'Canonical WARP capture failed.' }
 }
