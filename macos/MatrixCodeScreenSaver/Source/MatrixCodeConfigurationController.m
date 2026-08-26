@@ -862,6 +862,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                                      @[@"topToBottom", @"bottomToTop"], @"topToBottom"),
         @"verticalPosition": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalPosition", 0.5, 0, 1)),
         @"verticalJitter": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalJitter", 0.25, 0, 1)),
+        @"horizontalPosition": @(MatrixCodeSettingNumber(storedMessageDoc, @"horizontalPosition", 0.5, 0, 1)),
+        @"horizontalJitter": @(MatrixCodeSettingNumber(storedMessageDoc, @"horizontalJitter", 0, 0, 1)),
     } mutableCopy];
     NSArray *storedMessages = [storedMessageDoc[@"messages"] isKindOfClass:NSArray.class]
         ? storedMessageDoc[@"messages"]
@@ -1682,14 +1684,20 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return label;
 }
 
-- (NSStackView *)rowWithLabel:(NSString *)label control:(NSView *)control {
+- (NSStackView *)rowWithLabel:(NSString *)label
+                      control:(NSView *)control
+                   labelWidth:(CGFloat)labelWidth {
     NSTextField *text = [NSTextField labelWithString:label];
-    [text.widthAnchor constraintEqualToConstant:155].active = YES;
+    [text.widthAnchor constraintEqualToConstant:labelWidth].active = YES;
     NSStackView *row = [NSStackView stackViewWithViews:@[text, control]];
     row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     row.alignment = NSLayoutAttributeCenterY;
     row.spacing = 10;
     return row;
+}
+
+- (NSStackView *)rowWithLabel:(NSString *)label control:(NSView *)control {
+    return [self rowWithLabel:label control:control labelWidth:155];
 }
 
 - (NSPopUpButton *)messagePopup:(NSString *)identifier
@@ -2084,6 +2092,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                [identifier hasPrefix:@"disappearMs"] ||
                [identifier hasPrefix:@"verticalPosition"] ||
                [identifier hasPrefix:@"verticalJitter"] ||
+               [identifier hasPrefix:@"horizontalPosition"] ||
+               [identifier hasPrefix:@"horizontalJitter"] ||
                [identifier hasPrefix:@"image"]) {
         if ([self.editorKind isEqualToString:@"images"] ||
             ([identifier hasPrefix:@"image"] && ![identifier hasPrefix:@"imageName"])) {
@@ -2299,16 +2309,21 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                               @[@"Appear over (s)", @"appearMs"],
                               @[@"Each stays for (s)", @"persistenceMs"],
                               @[@"Disappear over (s)", @"disappearMs"],
-                              @[dropLayout ? @"Horizontal position (%)" : @"Vertical position (%)", @"verticalPosition"],
-                              @[dropLayout ? @"Horizontal randomness (%)" : @"Vertical randomness (%)", @"verticalJitter"]]) {
-        BOOL percent = [field[1] hasPrefix:@"vertical"];
+                              @[@"Vertical position (0 top–100 bottom)", @"verticalPosition"],
+                              @[@"Vertical randomness (%)", @"verticalJitter"],
+                              @[@"Horizontal position (0 left–100 right)", @"horizontalPosition"],
+                              @[@"Horizontal randomness (%)", @"horizontalJitter"]]) {
+        BOOL percent = [field[1] hasPrefix:@"vertical"] ||
+            [field[1] hasPrefix:@"horizontal"];
         NSTextField *number = percent
             ? [self percentField:[self.messages[field[1]] doubleValue]
                       identifier:field[1] action:@selector(messageNumberChanged:)]
             : [self secondsField:[self.messages[field[1]] doubleValue]
                       identifier:field[1] action:@selector(messageNumberChanged:)];
+        CGFloat labelWidth = percent ? 245 : 155;
         [stack addArrangedSubview:[self rowWithLabel:field[0]
-                                            control:number]];
+                                            control:number
+                                         labelWidth:labelWidth]];
     }
     for (NSArray *toggle in @[@[@"Flicker dissolve", @"flickerOut"],
                                @[@"Brightness fade", @"brightnessFade"]]) {
@@ -2374,8 +2389,9 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSString *key = [[sender.identifier stringByReplacingOccurrencesOfString:@"-percent" withString:@""]
         stringByReplacingOccurrencesOfString:@"-seconds" withString:@""];
     double value = sender.doubleValue * (percent ? 0.01 : (seconds ? 1000.0 : 1.0));
-    if ([key hasPrefix:@"vertical"]) value = MIN(1, MAX(0, value));
-    else {
+    if ([key hasPrefix:@"vertical"] || [key hasPrefix:@"horizontal"]) {
+        value = MIN(1, MAX(0, value));
+    } else {
         BOOL minimumGap = [key isEqualToString:@"frequencyMs"] ||
             [key isEqualToString:@"persistenceMs"];
         value = MIN(600000, MAX(minimumGap ? 500 : 0, value));

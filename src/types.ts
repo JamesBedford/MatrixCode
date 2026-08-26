@@ -93,10 +93,14 @@ export interface MessagesDoc {
   messageLayout: MessageLayout;
   /** Reading direction for single-drop messages. */
   messageDirection: MessageDirection;
-  /** Axis anchor for messages: vertical in row mode, horizontal in drop mode. */
+  /** Vertical anchor: the row in row mode, or the legal top row in drop mode. */
   verticalPosition: number;
-  /** Axis jitter for messages: vertical in row mode, horizontal in drop mode. */
+  /** Random vertical variation around the configured anchor. */
   verticalJitter: number;
+  /** Horizontal anchor: the legal start column in row mode, or the column in drop mode. */
+  horizontalPosition: number;
+  /** Random horizontal variation around the configured anchor. */
+  horizontalJitter: number;
 }
 
 /** A compact, portable greyscale image used by the rain image-reveal effect. */

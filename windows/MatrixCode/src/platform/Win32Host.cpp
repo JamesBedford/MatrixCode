@@ -106,7 +106,9 @@ void SaveHudVisible(const bool visible) noexcept {
     left.disappearMilliseconds == right.disappearMilliseconds &&
     left.flickerOut == right.flickerOut && left.brightnessFade == right.brightnessFade &&
     left.layout == right.layout && left.direction == right.direction &&
-    left.position == right.position && left.jitter == right.jitter;
+    left.position == right.position && left.jitter == right.jitter &&
+    left.horizontalPosition == right.horizontalPosition &&
+    left.horizontalJitter == right.horizontalJitter;
 }
 
 [[nodiscard]] bool SameImages(

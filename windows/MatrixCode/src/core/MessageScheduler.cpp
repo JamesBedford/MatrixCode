@@ -123,18 +123,23 @@ double MessageScheduler::Gap() {
     (kJitterMinimum + kJitterSpan * rng_.Next());
 }
 
-std::size_t MessageScheduler::PickAxisIndex(const std::size_t size) {
-  const std::size_t maximumIndex = size == 0 ? 0 : size - 1;
-  if (maximumIndex == 0) return 0;
-  const auto& configuration = *configuration_;
+std::size_t MessageScheduler::PickAxisStart(
+    const std::size_t size,
+    const std::size_t extent,
+    const double position,
+    const double jitter,
+    const double sample) {
+  const std::size_t maximumStart = size > extent ? size - extent : 0;
+  if (maximumStart == 0) return 0;
   const auto anchor = static_cast<long long>(std::floor(
-    configuration.position * static_cast<double>(maximumIndex) + 0.5));
+    position * static_cast<double>(maximumStart) + 0.5));
   const auto halfSpan = static_cast<long long>(std::floor(
-    configuration.jitter * static_cast<double>(maximumIndex) / 2.0 + 0.5));
+    jitter * static_cast<double>(maximumStart) / 2.0 + 0.5));
   const auto low = std::max(0LL, anchor - halfSpan);
-  const auto high = std::min(static_cast<long long>(maximumIndex), anchor + halfSpan);
+  const auto high = std::min(static_cast<long long>(maximumStart), anchor + halfSpan);
   const auto count = static_cast<double>(high - low + 1);
-  return static_cast<std::size_t>(low + static_cast<long long>(std::floor(rng_.Next() * count)));
+  return static_cast<std::size_t>(
+    low + static_cast<long long>(std::floor(sample * count)));
 }
 
 std::vector<MessageScheduler::NormalizedRegion> MessageScheduler::NormalizeRegions(
@@ -183,13 +188,12 @@ std::string MessageScheduler::KeyForRegions(
 }
 
 void MessageScheduler::ChoosePlacements(const std::span<const NormalizedRegion> regions) {
-  const bool drop = configuration_->layout == MessageLayout::Drop;
   activePlacements_.clear();
   activePlacements_.reserve(regions.size());
   for (const auto& region : regions) {
-    activePlacements_.push_back(drop
-      ? ActivePlacement{region, region.rowStart, region.columnStart + PickAxisIndex(region.columns)}
-      : ActivePlacement{region, region.rowStart + PickAxisIndex(region.rows), region.columnStart});
+    const double verticalSample = configuration_->jitter > 0.0 ? rng_.Next() : 0.0;
+    const double horizontalSample = configuration_->horizontalJitter > 0.0 ? rng_.Next() : 0.0;
+    activePlacements_.push_back({region, verticalSample, horizontalSample});
   }
 }
 
@@ -231,19 +235,43 @@ bool MessageScheduler::ApplyMessage(
   for (const auto& placement : activePlacements_) {
     if (drop) {
       const std::size_t startRow = placement.region.rowStart +
-        (placement.region.rows - layout.width) / 2;
+        PickAxisStart(
+          placement.region.rows,
+          layout.width,
+          configuration_->position,
+          configuration_->jitter,
+          placement.verticalSample);
+      const std::size_t column = placement.region.columnStart +
+        PickAxisStart(
+          placement.region.columns,
+          1,
+          configuration_->horizontalPosition,
+          configuration_->horizontalJitter,
+          placement.horizontalSample);
       const bool bottomToTop = configuration_->direction == MessageDirection::BottomToTop;
       for (const auto& glyph : layout.glyphs) {
         const std::size_t targetRow = bottomToTop
           ? startRow + layout.width - 1 - glyph.offset
           : startRow + glyph.offset;
-        uniqueTargets[targetRow * sink.Columns() + placement.column] = glyph.glyph;
+        uniqueTargets[targetRow * sink.Columns() + column] = glyph.glyph;
       }
     } else {
       const std::size_t startColumn = placement.region.columnStart +
-        (placement.region.columns - layout.width) / 2;
+        PickAxisStart(
+          placement.region.columns,
+          layout.width,
+          configuration_->horizontalPosition,
+          configuration_->horizontalJitter,
+          placement.horizontalSample);
+      const std::size_t row = placement.region.rowStart +
+        PickAxisStart(
+          placement.region.rows,
+          1,
+          configuration_->position,
+          configuration_->jitter,
+          placement.verticalSample);
       for (const auto& glyph : layout.glyphs) {
-        uniqueTargets[placement.row * sink.Columns() + startColumn + glyph.offset] = glyph.glyph;
+        uniqueTargets[row * sink.Columns() + startColumn + glyph.offset] = glyph.glyph;
       }
     }
   }

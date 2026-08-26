@@ -54,6 +54,8 @@ const doc = (over: Partial<MessagesDoc> = {}): MessagesDoc => ({
   messageDirection: "topToBottom",
   verticalPosition: 0.5,
   verticalJitter: 0.25,
+  horizontalPosition: 0.5,
+  horizontalJitter: 0,
   ...over,
 });
 const sched = (seed = 1): MessageScheduler => new MessageScheduler({ glyphSet, rng: createRng(seed) });
@@ -81,6 +83,29 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     const row = rowOf(sim.last!, 90);
     expect(sim.last!.get(row * 90 + 44)).toBe(glyphSet.charToGlyphIndex("A"));
     expect(sim.last!.get(row * 90 + 45)).toBe(glyphSet.charToGlyphIndex("B"));
+  });
+
+  it("anchors a row's legal start across the full horizontal range", () => {
+    const left = sched();
+    const leftSim = new FakeSim(20, 40);
+    left.previewOne(0, leftSim, doc({
+      messages: ["AB"],
+      verticalJitter: 0,
+      horizontalPosition: 0,
+    }));
+    const leftRow = rowOf(leftSim.last!, 20);
+    expect(leftSim.last!.get(leftRow * 20)).toBe(glyphSet.charToGlyphIndex("A"));
+
+    const right = sched();
+    const rightSim = new FakeSim(20, 40);
+    right.previewOne(0, rightSim, doc({
+      messages: ["AB"],
+      verticalJitter: 0,
+      horizontalPosition: 1,
+    }));
+    const rightRow = rowOf(rightSim.last!, 20);
+    expect(rightSim.last!.get(rightRow * 20 + 18)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(rightSim.last!.get(rightRow * 20 + 19)).toBe(glyphSet.charToGlyphIndex("B"));
   });
 
   it("centers a copy within every display region when regions are supplied", () => {
@@ -112,6 +137,53 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     expect(rows[0]).toBeLessThanOrEqual(22);
     expect(rows[1]).toBeGreaterThanOrEqual(49);
     expect(rows[1]).toBeLessThanOrEqual(70);
+  });
+
+  it("applies horizontal position and jitter to the legal start range in every display region", () => {
+    const s = sched(8);
+    const sim = new FakeSim(60, 40);
+    const regions = [
+      { colStart: 0, rowStart: 0, cols: 30, rows: 40 },
+      { colStart: 30, rowStart: 0, cols: 30, rows: 40 },
+    ];
+    s.previewOne(0, sim, doc({
+      messages: ["ABC"],
+      verticalJitter: 0,
+      horizontalPosition: 0.5,
+      horizontalJitter: 0.5,
+    }), regions);
+    const starts = [...sim.last!.keys()]
+      .filter((index) => sim.last!.get(index) === glyphSet.charToGlyphIndex("A"))
+      .map((index) => index % sim.cols);
+    expect(starts[0]).toBeGreaterThanOrEqual(7);
+    expect(starts[0]).toBeLessThanOrEqual(21);
+    expect(starts[1]).toBeGreaterThanOrEqual(37);
+    expect(starts[1]).toBeLessThanOrEqual(51);
+  });
+
+  it("draws vertical then horizontal placement randomness for each region", () => {
+    const samples = [0, 0, 0.999, 0.25, 0.75];
+    const s = new MessageScheduler({ glyphSet, rng: () => samples.shift() ?? 0 });
+    const sim = new FakeSim(20, 20);
+    const regions = [
+      { colStart: 0, rowStart: 0, cols: 10, rows: 10 },
+      { colStart: 10, rowStart: 10, cols: 10, rows: 10 },
+    ];
+    s.previewOne(0, sim, doc({
+      messages: ["AB"],
+      verticalPosition: 0.5,
+      verticalJitter: 1,
+      horizontalPosition: 0.5,
+      horizontalJitter: 1,
+    }), regions);
+    const starts = [...sim.last!.entries()]
+      .filter(([, glyph]) => glyph === glyphSet.charToGlyphIndex("A"))
+      .map(([index]) => index);
+    expect(starts).toEqual([
+      8,
+      12 * sim.cols + 16,
+    ]);
+    expect(samples).toEqual([]);
   });
 
   it("places the row within the middle vertical band", () => {
@@ -148,10 +220,10 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     expect(sim.last!.size).toBe(3);
     const col = colOf(sim.last!, 21);
     expect(col).toBe(10);
-    // height 3 in 20 rows -> startRow = floor((20 - 3) / 2) = 8
-    expect(sim.last!.get(8 * 21 + col)).toBe(glyphSet.charToGlyphIndex("A"));
-    expect(sim.last!.get(9 * 21 + col)).toBe(glyphSet.charToGlyphIndex("B"));
-    expect(sim.last!.get(10 * 21 + col)).toBe(glyphSet.charToGlyphIndex("C"));
+    // height 3 in 20 rows -> legal max start 17; round(50% × 17) = 9
+    expect(sim.last!.get(9 * 21 + col)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(10 * 21 + col)).toBe(glyphSet.charToGlyphIndex("B"));
+    expect(sim.last!.get(11 * 21 + col)).toBe(glyphSet.charToGlyphIndex("C"));
   });
 
   it("can lay out a single-drop message from bottom to top", () => {
@@ -165,12 +237,12 @@ describe("MessageScheduler.fire (via previewOne)", () => {
       verticalJitter: 0,
     }));
     const col = colOf(sim.last!, 21);
-    expect(sim.last!.get(8 * 21 + col)).toBe(glyphSet.charToGlyphIndex("C"));
-    expect(sim.last!.get(9 * 21 + col)).toBe(glyphSet.charToGlyphIndex("B"));
-    expect(sim.last!.get(10 * 21 + col)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(9 * 21 + col)).toBe(glyphSet.charToGlyphIndex("C"));
+    expect(sim.last!.get(10 * 21 + col)).toBe(glyphSet.charToGlyphIndex("B"));
+    expect(sim.last!.get(11 * 21 + col)).toBe(glyphSet.charToGlyphIndex("A"));
   });
 
-  it("uses the position and jitter as a horizontal band in single-drop mode", () => {
+  it("uses horizontal position and jitter as a column band in single-drop mode", () => {
     const s = sched(8);
     const sim = new FakeSim(60, 30);
     const regions = [
@@ -180,8 +252,8 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     s.previewOne(0, sim, doc({
       messages: ["A"],
       messageLayout: "drop",
-      verticalPosition: 0.5,
-      verticalJitter: 0.5,
+      horizontalPosition: 0.5,
+      horizontalJitter: 0.5,
     }), regions);
     const cols = [...sim.last!.keys()].map((idx) => idx % sim.cols);
     expect(cols[0]).toBeGreaterThanOrEqual(7);
@@ -192,12 +264,63 @@ describe("MessageScheduler.fire (via previewOne)", () => {
 
   it("honours the horizontal anchor in single-drop mode with no jitter", () => {
     const left = sched(); const simLeft = new FakeSim(20, 40);
-    left.previewOne(0, simLeft, doc({ messages: ["AB"], messageLayout: "drop", verticalPosition: 0, verticalJitter: 0 }));
+    left.previewOne(0, simLeft, doc({ messages: ["AB"], messageLayout: "drop", horizontalPosition: 0, horizontalJitter: 0 }));
     expect(colOf(simLeft.last!, 20)).toBe(0);
 
     const right = sched(); const simRight = new FakeSim(20, 40);
-    right.previewOne(0, simRight, doc({ messages: ["AB"], messageLayout: "drop", verticalPosition: 1, verticalJitter: 0 }));
+    right.previewOne(0, simRight, doc({ messages: ["AB"], messageLayout: "drop", horizontalPosition: 1, horizontalJitter: 0 }));
     expect(colOf(simRight.last!, 20)).toBe(19);
+  });
+
+  it("anchors a drop's legal top row and preserves its reading direction", () => {
+    const top = sched();
+    const topSim = new FakeSim(20, 10);
+    top.previewOne(0, topSim, doc({
+      messages: ["ABC"],
+      messageLayout: "drop",
+      messageDirection: "topToBottom",
+      verticalPosition: 0,
+      verticalJitter: 0,
+      horizontalJitter: 0,
+    }));
+    const topCol = colOf(topSim.last!, 20);
+    expect(topSim.last!.get(topCol)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(topSim.last!.get(2 * 20 + topCol)).toBe(glyphSet.charToGlyphIndex("C"));
+
+    const bottom = sched();
+    const bottomSim = new FakeSim(20, 10);
+    bottom.previewOne(0, bottomSim, doc({
+      messages: ["ABC"],
+      messageLayout: "drop",
+      messageDirection: "bottomToTop",
+      verticalPosition: 1,
+      verticalJitter: 0,
+      horizontalJitter: 0,
+    }));
+    const bottomCol = colOf(bottomSim.last!, 20);
+    expect(bottomSim.last!.get(7 * 20 + bottomCol)).toBe(glyphSet.charToGlyphIndex("C"));
+    expect(bottomSim.last!.get(9 * 20 + bottomCol)).toBe(glyphSet.charToGlyphIndex("A"));
+  });
+
+  it("applies both drop axes within each display region", () => {
+    const s = sched();
+    const sim = new FakeSim(20, 20);
+    const regions = [
+      { colStart: 0, rowStart: 0, cols: 10, rows: 10 },
+      { colStart: 10, rowStart: 10, cols: 10, rows: 10 },
+    ];
+    s.previewOne(0, sim, doc({
+      messages: ["ABC"],
+      messageLayout: "drop",
+      verticalPosition: 1,
+      verticalJitter: 0,
+      horizontalPosition: 1,
+      horizontalJitter: 0,
+    }), regions);
+    expect(sim.last!.get(7 * sim.cols + 9)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(9 * sim.cols + 9)).toBe(glyphSet.charToGlyphIndex("C"));
+    expect(sim.last!.get(17 * sim.cols + 19)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(19 * sim.cols + 19)).toBe(glyphSet.charToGlyphIndex("C"));
   });
 
   it("leaves vertical gaps for spaces in single-drop mode", () => {
@@ -232,15 +355,32 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     }
   });
 
+  it("keeps row messages horizontally inside their legal start range with full jitter", () => {
+    for (const horizontalPosition of [0, 0.5, 1]) {
+      for (let seed = 1; seed <= 12; seed++) {
+        const s = sched(seed);
+        const sim = new FakeSim(20, 40);
+        s.previewOne(0, sim, doc({
+          messages: ["AB"],
+          horizontalPosition,
+          horizontalJitter: 1,
+        }));
+        const columns = [...sim.last!.keys()].map((index) => index % sim.cols);
+        expect(Math.min(...columns)).toBeGreaterThanOrEqual(0);
+        expect(Math.max(...columns)).toBeLessThanOrEqual(19);
+      }
+    }
+  });
+
   it("leaves a gap for internal spaces, keeping later letters aligned", () => {
     const s = sched();
     const sim = new FakeSim(20, 40);
-    s.previewOne(0, sim, doc({ messages: ["A B"] })); // width 3 → startCol 8
+    s.previewOne(0, sim, doc({ messages: ["A B"] })); // width 3 → round(50% × maxStart 17) = 9
     const row = rowOf(sim.last!, 20);
     expect(sim.last!.size).toBe(2);
-    expect(sim.last!.get(row * 20 + 8)).toBe(glyphSet.charToGlyphIndex("A"));
-    expect(sim.last!.get(row * 20 + 9)).toBeUndefined(); // space → no target
-    expect(sim.last!.get(row * 20 + 10)).toBe(glyphSet.charToGlyphIndex("B"));
+    expect(sim.last!.get(row * 20 + 9)).toBe(glyphSet.charToGlyphIndex("A"));
+    expect(sim.last!.get(row * 20 + 10)).toBeUndefined(); // space → no target
+    expect(sim.last!.get(row * 20 + 11)).toBe(glyphSet.charToGlyphIndex("B"));
   });
 
   it("renders lowercase and punctuation (message-only glyphs)", () => {
@@ -440,6 +580,30 @@ describe("MessageScheduler token resolution + live ticking", () => {
     expect(rowOf(sim.last!, 20)).toBe(rowBefore);
   });
 
+  it("reuses the horizontal randomness sample when a live token changes width", () => {
+    let display = "AB";
+    const samples = [0, 0.25];
+    const s = new MessageScheduler({
+      glyphSet,
+      rng: () => samples.shift() ?? 0,
+      resolveText: () => display,
+    });
+    const sim = new FakeSim(10, 10);
+    s.previewOne(0, sim, doc({
+      messages: ["{live}"],
+      persistenceMs: 100000,
+      verticalJitter: 0,
+      horizontalPosition: 0.5,
+      horizontalJitter: 1,
+    }));
+    expect(colOf(sim.last!, sim.cols)).toBe(2);
+
+    display = "ABCD";
+    s.update(1000, sim);
+    expect(colOf(sim.last!, sim.cols)).toBe(1);
+    expect(samples).toEqual([]);
+  });
+
   it("with the default identity resolver, an active message never re-lays-out", () => {
     const s = sched();
     const sim = new FakeSim(20, 40);
@@ -581,6 +745,8 @@ describe("MessageScheduler cross-language golden", () => {
       brightnessFade: true,
       verticalPosition: 0.42,
       verticalJitter: 0.6,
+      horizontalPosition: 0.68,
+      horizontalJitter: 0.4,
     }));
 
     let hash = 0x811c9dc5;
@@ -621,7 +787,7 @@ describe("MessageScheduler cross-language golden", () => {
       }
     }
 
-    expect(hash).toBe(2931333020);
+    expect(hash).toBe(539469798);
     expect({
       sets: sim.sets,
       updates: sim.updates,
@@ -634,8 +800,8 @@ describe("MessageScheduler cross-language golden", () => {
       updates: 3,
       clears: 6,
       targets: [
-        [738, 121], [739, 99], [740, 109], [741, 103], [743, 157],
-        [816, 121], [817, 99], [818, 109], [819, 103], [821, 157],
+        [380, 121], [381, 99], [382, 109], [383, 103], [385, 157],
+        [562, 121], [563, 99], [564, 109], [565, 103], [567, 157],
       ],
     });
   });

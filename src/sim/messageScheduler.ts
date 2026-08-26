@@ -18,7 +18,7 @@ export interface MessageSink {
   setMessageScramble(p: number): void;
 }
 
-/** A rectangular part of the simulation grid in which a copy of the message should be centered. */
+/** A rectangular part of the simulation grid in which a copy of the message should be placed. */
 export interface MessageRegion {
   colStart: number;
   rowStart: number;
@@ -42,8 +42,8 @@ interface PlacedGlyph {
 
 interface ActivePlacement {
   region: MessageRegion;
-  row: number;
-  col: number;
+  verticalSample: number;
+  horizontalSample: number;
 }
 
 /**
@@ -68,7 +68,7 @@ export class MessageScheduler {
   private lastRows = -1;
   // The active message, tracked so a ticking placeholder ({time}/{countdown}) can re-lay-out live:
   // `activeRaw` is the unresolved template, `activeDisplay` its last resolved+rendered value, and
-  // `activePlacements` holds the independently-jittered row/column chosen inside each target region.
+  // `activePlacements` holds the independently-jittered axis samples chosen inside each target region.
   private activeRaw: string | null = null;
   private activePlacements: ActivePlacement[] = [];
   private activeDisplay = "";
@@ -94,8 +94,8 @@ export class MessageScheduler {
 
   /**
    * Per-frame heartbeat: expire/clear an active message, or fire a new one when due. When `regions`
-   * is supplied, the same message is centered independently in every region; otherwise it is centered
-   * once across the whole grid.
+   * is supplied, the same message is positioned independently in every region; otherwise it is
+   * positioned once across the whole grid.
    */
   update(nowMs: number, sim: MessageSink, regions?: readonly MessageRegion[]): void {
     const placementRegions = this.normalizeRegions(sim, regions);
@@ -204,16 +204,15 @@ export class MessageScheduler {
     return this.cfg!.frequencyMs * (JITTER_MIN + JITTER_SPAN * this.rng());
   }
 
-  /** Pick a row/column from the configured axis anchor plus random jitter, clamped on-screen. */
-  private pickAxisIndex(size: number): number {
-    const maxIndex = size - 1;
-    if (maxIndex <= 0) return 0;
-    const cfg = this.cfg!;
-    const anchor = Math.round(cfg.verticalPosition * maxIndex);
-    const halfSpan = Math.round((cfg.verticalJitter * maxIndex) / 2);
+  /** Pick a legal start from an axis anchor plus random jitter, clamped to the region. */
+  private pickAxisIndex(maxStart: number, position: number, jitter: number, sample: number): number {
+    if (maxStart <= 0) return 0;
+    const anchor = Math.round(position * maxStart);
+    const halfSpan = Math.round((jitter * maxStart) / 2);
+    if (halfSpan === 0) return anchor;
     const lo = Math.max(0, anchor - halfSpan);
-    const hi = Math.min(maxIndex, anchor + halfSpan);
-    return lo + Math.floor(this.rng() * (hi - lo + 1));
+    const hi = Math.min(maxStart, anchor + halfSpan);
+    return lo + Math.floor(sample * (hi - lo + 1));
   }
 
   /** Clamp caller-provided regions to the simulation; an absent/empty list means the full grid. */
@@ -242,12 +241,12 @@ export class MessageScheduler {
 
   /** Pick placement independently inside every target region. */
   private choosePlacements(regions: readonly MessageRegion[]): void {
-    const dropLayout = this.cfg?.messageLayout === "drop";
-    this.activePlacements = regions.map((region) => (
-      dropLayout
-        ? { region, row: region.rowStart, col: region.colStart + this.pickAxisIndex(region.cols) }
-        : { region, row: region.rowStart + this.pickAxisIndex(region.rows), col: region.colStart }
-    ));
+    const cfg = this.cfg!;
+    this.activePlacements = regions.map((region) => ({
+      region,
+      verticalSample: cfg.verticalJitter > 0 ? this.rng() : 0,
+      horizontalSample: cfg.horizontalJitter > 0 ? this.rng() : 0,
+    }));
   }
 
   private computeHasRenderable(cfg: MessagesDoc): boolean {
@@ -266,7 +265,7 @@ export class MessageScheduler {
   }
 
   /**
-   * Lay out `display` centered in every active placement and hand its cells to the sim: from-scratch
+   * Lay out `display` at every active placement and hand its cells to the sim: from-scratch
    * on the initial appearance (`isUpdate === false` → setMessageTargets), or in place on a live tick
    * (`isUpdate === true` → updateMessageTargets, preserving unchanged reveals). Returns false and
    * leaves the sim untouched when nothing is renderable or it cannot fit every requested region.
@@ -281,19 +280,32 @@ export class MessageScheduler {
     ) return false;
 
     const targets = new Map<number, number>();
-    for (const { region, row, col } of this.activePlacements) {
+    const cfg = this.cfg!;
+    for (const { region, verticalSample, horizontalSample } of this.activePlacements) {
+      const messageRows = dropLayout ? width : 1;
+      const messageCols = dropLayout ? 1 : width;
+      const startRow = region.rowStart + this.pickAxisIndex(
+        region.rows - messageRows,
+        cfg.verticalPosition,
+        cfg.verticalJitter,
+        verticalSample,
+      );
+      const startCol = region.colStart + this.pickAxisIndex(
+        region.cols - messageCols,
+        cfg.horizontalPosition,
+        cfg.horizontalJitter,
+        horizontalSample,
+      );
       if (dropLayout) {
-        const startRow = region.rowStart + Math.floor((region.rows - width) / 2);
-        const bottomToTop = this.cfg?.messageDirection === "bottomToTop";
+        const bottomToTop = cfg.messageDirection === "bottomToTop";
         for (const { offset, glyph } of glyphs) {
           const targetRow = bottomToTop ? startRow + width - 1 - offset : startRow + offset;
-          targets.set(targetRow * sim.cols + col, glyph);
+          targets.set(targetRow * sim.cols + startCol, glyph);
         }
       } else {
-        const startCol = region.colStart + Math.floor((region.cols - width) / 2);
         for (const { offset, glyph } of glyphs) {
           const targetCol = startCol + offset;
-          targets.set(row * sim.cols + targetCol, glyph);
+          targets.set(startRow * sim.cols + targetCol, glyph);
         }
       }
     }

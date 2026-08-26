@@ -272,6 +272,8 @@ static NSDictionary<NSString *, id> *MatrixCodeDefaultMessages(void) {
         @"messageDirection": @"topToBottom",
         @"verticalPosition": @0.5,
         @"verticalJitter": @0.25,
+        @"horizontalPosition": @0.5,
+        @"horizontalJitter": @0,
     };
 }
 

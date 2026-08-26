@@ -52,8 +52,8 @@ static const NSInteger MatrixCodeMessageGlyphStart = 99;
 
 @interface MatrixCodeMessagePlacement : NSObject
 @property(nonatomic, strong) MatrixCodeNormalizedMessageRegion *region;
-@property(nonatomic) NSInteger row;
-@property(nonatomic) NSInteger column;
+@property(nonatomic) double verticalSample;
+@property(nonatomic) double horizontalSample;
 @end
 
 @implementation MatrixCodeMessagePlacement
@@ -285,6 +285,10 @@ NSDictionary<NSString *, id> *MatrixCodeSanitizeMessagesDocument(id rawDocument)
             document, @"verticalPosition", 0, 1, 0.5)),
         @"verticalJitter": @(MatrixCodeSanitizedMessageNumber(
             document, @"verticalJitter", 0, 1, 0.25)),
+        @"horizontalPosition": @(MatrixCodeSanitizedMessageNumber(
+            document, @"horizontalPosition", 0, 1, 0.5)),
+        @"horizontalJitter": @(MatrixCodeSanitizedMessageNumber(
+            document, @"horizontalJitter", 0, 1, 0)),
     };
 }
 
@@ -422,18 +426,22 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
                         MatrixCodeMessageJitterSpan * MatrixCodeMessageNextRandom(&_rngState));
 }
 
-- (NSInteger)pickAxisIndexForSize:(NSInteger)size {
-    NSInteger maximumIndex = size - 1;
-    if (maximumIndex <= 0) return 0;
+- (NSInteger)pickAxisStartForSize:(NSInteger)size
+                           extent:(NSInteger)extent
+                      positionKey:(NSString *)positionKey
+                        jitterKey:(NSString *)jitterKey
+                           sample:(double)sample {
+    NSInteger maximumStart = size - extent;
+    if (maximumStart <= 0) return 0;
     NSDictionary *configuration = self.schedulerState.configuration;
-    double position = MatrixCodeMessageNumber(configuration, @"verticalPosition", 0.5);
-    double jitter = MatrixCodeMessageNumber(configuration, @"verticalJitter", 0.25);
-    NSInteger anchor = (NSInteger)floor(position * maximumIndex + 0.5);
-    NSInteger halfSpan = (NSInteger)floor((jitter * maximumIndex) / 2 + 0.5);
+    double position = MatrixCodeMessageNumber(configuration, positionKey, 0.5);
+    double jitter = MatrixCodeMessageNumber(configuration, jitterKey, 0);
+    NSInteger anchor = (NSInteger)floor(position * maximumStart + 0.5);
+    if (jitter <= 0) return anchor;
+    NSInteger halfSpan = (NSInteger)floor((jitter * maximumStart) / 2 + 0.5);
     NSInteger low = MAX(0, anchor - halfSpan);
-    NSInteger high = MIN(maximumIndex, anchor + halfSpan);
-    return low + (NSInteger)floor(
-        MatrixCodeMessageNextRandom(&_rngState) * (double)(high - low + 1));
+    NSInteger high = MIN(maximumStart, anchor + halfSpan);
+    return low + (NSInteger)floor(sample * (double)(high - low + 1));
 }
 
 - (NSArray<MatrixCodeNormalizedMessageRegion *> *)normalizeRegionsForSink:
@@ -494,20 +502,21 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
 }
 
 - (void)choosePlacements:(NSArray<MatrixCodeNormalizedMessageRegion *> *)regions {
-    BOOL dropLayout = MatrixCodeMessageUsesDropLayout(
-        self.schedulerState.configuration);
+    NSDictionary *configuration = self.schedulerState.configuration;
+    double verticalJitter = MatrixCodeMessageNumber(
+        configuration, @"verticalJitter", 0.25);
+    double horizontalJitter = MatrixCodeMessageNumber(
+        configuration, @"horizontalJitter", 0);
     NSMutableArray<MatrixCodeMessagePlacement *> *placements =
         [NSMutableArray arrayWithCapacity:regions.count];
     for (MatrixCodeNormalizedMessageRegion *region in regions) {
         MatrixCodeMessagePlacement *placement = [[MatrixCodeMessagePlacement alloc] init];
         placement.region = region;
-        if (dropLayout) {
-            placement.row = region.rowStart;
-            placement.column = region.columnStart +
-                [self pickAxisIndexForSize:region.columns];
-        } else {
-            placement.row = region.rowStart + [self pickAxisIndexForSize:region.rows];
-            placement.column = region.columnStart;
+        if (verticalJitter > 0) {
+            placement.verticalSample = MatrixCodeMessageNextRandom(&_rngState);
+        }
+        if (horizontalJitter > 0) {
+            placement.horizontalSample = MatrixCodeMessageNextRandom(&_rngState);
         }
         [placements addObject:placement];
     }
@@ -551,22 +560,30 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
     NSMutableDictionary<NSNumber *, NSNumber *> *targets = [NSMutableDictionary dictionary];
     for (MatrixCodeMessagePlacement *placement in state.activePlacements) {
         MatrixCodeNormalizedMessageRegion *region = placement.region;
+        NSInteger verticalExtent = dropLayout ? layout.width : 1;
+        NSInteger horizontalExtent = dropLayout ? 1 : layout.width;
+        NSInteger startRow = region.rowStart + [self pickAxisStartForSize:region.rows
+                                                                   extent:verticalExtent
+                                                              positionKey:@"verticalPosition"
+                                                                jitterKey:@"verticalJitter"
+                                                                   sample:placement.verticalSample];
+        NSInteger startColumn = region.columnStart + [self pickAxisStartForSize:region.columns
+                                                                          extent:horizontalExtent
+                                                                     positionKey:@"horizontalPosition"
+                                                                       jitterKey:@"horizontalJitter"
+                                                                          sample:placement.horizontalSample];
         if (dropLayout) {
-            NSInteger startRow = region.rowStart + (NSInteger)floor(
-                (double)(region.rows - layout.width) / 2);
             BOOL bottomToTop = MatrixCodeMessageReadsBottomToTop(state.configuration);
             for (MatrixCodePlacedGlyph *placed in layout.glyphs) {
                 NSInteger targetRow = bottomToTop
                     ? startRow + layout.width - 1 - placed.offset
                     : startRow + placed.offset;
-                targets[@(targetRow * sink.columns + placement.column)] = @(placed.glyph);
+                targets[@(targetRow * sink.columns + startColumn)] = @(placed.glyph);
             }
         } else {
-            NSInteger startColumn = region.columnStart + (NSInteger)floor(
-                (double)(region.columns - layout.width) / 2);
             for (MatrixCodePlacedGlyph *placed in layout.glyphs) {
                 NSInteger targetColumn = startColumn + placed.offset;
-                targets[@(placement.row * sink.columns + targetColumn)] = @(placed.glyph);
+                targets[@(startRow * sink.columns + targetColumn)] = @(placed.glyph);
             }
         }
     }

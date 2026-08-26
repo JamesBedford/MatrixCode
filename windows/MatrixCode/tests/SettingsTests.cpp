@@ -12,6 +12,8 @@ void RunSettingsTests() {
   MX_EXPECT_EQ(defaults.intro.lines.size(), static_cast<std::size_t>(4));
   MX_EXPECT_EQ(defaults.messages.messages.size(), static_cast<std::size_t>(4));
   MX_EXPECT_EQ(defaults.messages.position, 0.5);
+  MX_EXPECT_EQ(defaults.messages.horizontalPosition, 0.5);
+  MX_EXPECT_EQ(defaults.messages.horizontalJitter, 0.0);
 
   const std::string malformed = R"({
     "mx-controls":{"speed":999,"density":-5,"vignette":true,"quality":"bad"},
@@ -27,6 +29,8 @@ void RunSettingsTests() {
   MX_EXPECT_EQ(decoded->controls.quality, QualityTier::High);
   MX_EXPECT_EQ(decoded->messages.frequencyMilliseconds, 500.0);
   MX_EXPECT_EQ(decoded->messages.position, 0.5);
+  MX_EXPECT_EQ(decoded->messages.horizontalPosition, 0.5);
+  MX_EXPECT_EQ(decoded->messages.horizontalJitter, 0.0);
   MX_EXPECT_EQ(decoded->messages.messages.size(), static_cast<std::size_t>(1));
   MX_EXPECT_EQ(decoded->countdown.moments.front().name, std::string("bad"));
   MX_EXPECT_EQ(*decoded->countdown.moments.front().targetMilliseconds, 0.0);
@@ -67,12 +71,22 @@ void RunSettingsTests() {
   }));
   MX_EXPECT(missingMessagesArray.messages.messages.empty());
   MX_EXPECT_EQ(missingMessagesArray.messages.position, 0.5);
+  MX_EXPECT_EQ(missingMessagesArray.messages.horizontalPosition, 0.5);
+  MX_EXPECT_EQ(missingMessagesArray.messages.horizontalJitter, 0.0);
   MX_EXPECT_EQ(missingMessagesArray.countdown.moments.front().name, std::string("launch"));
 
-  const auto explicitMessagePosition = SanitizeSettings(json::Value(json::Object{
-    {"mx-messages", json::Value(json::Object{{"verticalPosition", 0.375}})},
+  const auto explicitMessagePlacement = SanitizeSettings(json::Value(json::Object{
+    {"mx-messages", json::Value(json::Object{
+      {"verticalPosition", 0.375},
+      {"verticalJitter", 0.125},
+      {"horizontalPosition", 0.625},
+      {"horizontalJitter", 0.75},
+    })},
   }));
-  MX_EXPECT_EQ(explicitMessagePosition.messages.position, 0.375);
+  MX_EXPECT_EQ(explicitMessagePlacement.messages.position, 0.375);
+  MX_EXPECT_EQ(explicitMessagePlacement.messages.jitter, 0.125);
+  MX_EXPECT_EQ(explicitMessagePlacement.messages.horizontalPosition, 0.625);
+  MX_EXPECT_EQ(explicitMessagePlacement.messages.horizontalJitter, 0.75);
 
   const auto surrogateJson = json::Parse(R"({"value":"\uD800A\uDC00/\uD83D\uDE00"})");
   MX_EXPECT(surrogateJson.value.has_value());
@@ -94,6 +108,17 @@ void RunSettingsTests() {
   MX_EXPECT(roundTrip.has_value());
   MX_EXPECT_EQ(roundTrip->controls.customColor, std::string("#00FF41"));
   MX_EXPECT_EQ(roundTrip->intro.lines.front().text, std::string("Wake up, {name}..."));
+  MX_EXPECT_EQ(roundTrip->messages.horizontalPosition, 0.5);
+  MX_EXPECT_EQ(roundTrip->messages.horizontalJitter, 0.0);
+
+  auto customPlacement = defaults;
+  customPlacement.messages.horizontalPosition = 0.625;
+  customPlacement.messages.horizontalJitter = 0.75;
+  const auto customPlacementRoundTrip = DecodeSettings(
+    EncodeSettingsUtf8(customPlacement, false), &error);
+  MX_EXPECT(customPlacementRoundTrip.has_value());
+  MX_EXPECT_EQ(customPlacementRoundTrip->messages.horizontalPosition, 0.625);
+  MX_EXPECT_EQ(customPlacementRoundTrip->messages.horizontalJitter, 0.75);
 
   const std::vector<std::uint8_t> bytes{0, 1, 2, 127, 128, 255};
   const auto base64 = EncodeBase64(bytes);

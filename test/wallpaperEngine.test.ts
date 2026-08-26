@@ -31,7 +31,7 @@ describe("Wallpaper Engine property contract", () => {
   it("expands every fixed slot with unique alphanumeric keys and orders", () => {
     const keys = WALLPAPER_ENGINE_PROPERTY_DEFINITIONS.map(({ key }) => key);
     const orders = WALLPAPER_ENGINE_PROPERTY_DEFINITIONS.map(({ order }) => order);
-    expect(keys).toHaveLength(155);
+    expect(keys).toHaveLength(157);
     expect(new Set(keys).size).toBe(keys.length);
     expect(new Set(orders).size).toBe(orders.length);
     expect(keys.every((key) => /^[a-z0-9]+$/.test(key))).toBe(true);
@@ -124,6 +124,8 @@ describe("Wallpaper Engine property contract", () => {
       message01text: property("   "),
       message12enabled: property(true),
       message12text: property("TWELVE"),
+      messageshorizontalposition: property(0.75),
+      messageshorizontaljitter: property(0.5),
       countdowntargetlocal: property("2030-06-01T12:30:15"),
       moment01enabled: property(true),
       moment01name: property(" launch:{} "),
@@ -137,6 +139,10 @@ describe("Wallpaper Engine property contract", () => {
       "{countup}",
       "TWELVE",
     ]);
+    expect(config.messages).toMatchObject({
+      horizontalPosition: 0.75,
+      horizontalJitter: 0.5,
+    });
     expect(config.countdown.targetMs).toBe(parseWallpaperEngineLocalDate("2030-06-01T12:30:15"));
     expect(config.countdown.moments).toEqual([
       { name: "launch", targetMs: parseWallpaperEngineLocalDate("2030-06-02T09:00") },

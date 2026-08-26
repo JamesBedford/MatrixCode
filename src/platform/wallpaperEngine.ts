@@ -565,6 +565,8 @@ export function wallpaperEngineConfigurationFromSnapshot(
     messageDirection: snapshotValue<string>(snapshot, "messagesdirection"),
     verticalPosition: snapshotValue<number>(snapshot, "messagesposition"),
     verticalJitter: snapshotValue<number>(snapshot, "messagesjitter"),
+    horizontalPosition: snapshotValue<number>(snapshot, "messageshorizontalposition"),
+    horizontalJitter: snapshotValue<number>(snapshot, "messageshorizontaljitter"),
   });
 
   const moments = Array.from({ length: 12 }, (_, index) => {

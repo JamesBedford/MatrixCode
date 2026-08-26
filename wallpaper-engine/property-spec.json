@@ -191,8 +191,8 @@
         { "key": "messagesholdseconds", "order": 4030, "text": "Hold (seconds)", "type": "slider", "value": 10, "min": 0.5, "max": 600, "precision": 2, "condition": "messagesenabled.value == true" },
         { "key": "messagesappearseconds", "order": 4040, "text": "Appear (seconds)", "type": "slider", "value": 4, "min": 0, "max": 600, "precision": 2, "condition": "messagesenabled.value == true" },
         { "key": "messagesdisappearseconds", "order": 4050, "text": "Disappear (seconds)", "type": "slider", "value": 4, "min": 0, "max": 600, "precision": 2, "condition": "messagesenabled.value == true" },
-        { "key": "messagesflicker", "order": 4060, "text": "Flicker resolve", "type": "bool", "value": true, "condition": "messagesenabled.value == true" },
-        { "key": "messagesbrightnessfade", "order": 4070, "text": "Brightness fade", "type": "bool", "value": false, "condition": "messagesenabled.value == true" },
+        { "key": "messagesflicker", "order": 4095, "text": "Flicker dissolve", "type": "bool", "value": true, "condition": "messagesenabled.value == true" },
+        { "key": "messagesbrightnessfade", "order": 4096, "text": "Brightness fade", "type": "bool", "value": false, "condition": "messagesenabled.value == true" },
         {
           "key": "messageslayout",
           "order": 4080,
@@ -217,8 +217,10 @@
           ],
           "condition": "messagesenabled.value == true && messageslayout.value == 'drop'"
         },
-        { "key": "messagesposition", "order": 4091, "text": "Position", "type": "slider", "value": 0.5, "min": 0, "max": 1, "precision": 3, "condition": "messagesenabled.value == true" },
-        { "key": "messagesjitter", "order": 4092, "text": "Position jitter", "type": "slider", "value": 0.25, "min": 0, "max": 1, "precision": 2, "condition": "messagesenabled.value == true" }
+        { "key": "messagesposition", "order": 4091, "text": "Vertical position", "type": "slider", "value": 0.5, "min": 0, "max": 1, "precision": 3, "condition": "messagesenabled.value == true" },
+        { "key": "messagesjitter", "order": 4092, "text": "Vertical randomness", "type": "slider", "value": 0.25, "min": 0, "max": 1, "precision": 2, "condition": "messagesenabled.value == true" },
+        { "key": "messageshorizontalposition", "order": 4093, "text": "Horizontal position", "type": "slider", "value": 0.5, "min": 0, "max": 1, "precision": 3, "condition": "messagesenabled.value == true" },
+        { "key": "messageshorizontaljitter", "order": 4094, "text": "Horizontal randomness", "type": "slider", "value": 0, "min": 0, "max": 1, "precision": 2, "condition": "messagesenabled.value == true" }
       ],
       "slots": {
         "count": 12,

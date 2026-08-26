@@ -145,20 +145,36 @@ export class MessagesEditor extends ModalEditor {
     behaviour.appendChild(this.secondsField("Each stays for (s)", this.draft.persistenceMs, (ms) => (this.draft.persistenceMs = ms)));
     behaviour.appendChild(this.secondsField("Appear over (s)", this.draft.appearMs, (ms) => (this.draft.appearMs = ms)));
     behaviour.appendChild(this.secondsField("Disappear over (s)", this.draft.disappearMs, (ms) => (this.draft.disappearMs = ms)));
-    const dropLayout = this.draft.messageLayout === "drop";
     behaviour.appendChild(this.percentField(
-      dropLayout ? "Horizontal position (0 left–100 right)" : "Vertical position (0 top–100 bottom)",
+      "Vertical position (0 top–100 bottom)",
       this.draft.verticalPosition,
       (f) => (this.draft.verticalPosition = f),
     ));
     behaviour.appendChild(this.percentField(
-      dropLayout ? "Horizontal randomness (%)" : "Vertical randomness (%)",
+      "Vertical randomness (%)",
       this.draft.verticalJitter,
       (f) => (this.draft.verticalJitter = f),
     ));
-    behaviour.appendChild(this.toggleField("Flicker dissolve", this.draft.flickerOut, (v) => (this.draft.flickerOut = v)));
-    behaviour.appendChild(this.toggleField("Brightness fade", this.draft.brightnessFade, (v) => (this.draft.brightnessFade = v)));
+    behaviour.appendChild(this.percentField(
+      "Horizontal position (0 left–100 right)",
+      this.draft.horizontalPosition,
+      (f) => (this.draft.horizontalPosition = f),
+    ));
+    behaviour.appendChild(this.percentField(
+      "Horizontal randomness (%)",
+      this.draft.horizontalJitter,
+      (f) => (this.draft.horizontalJitter = f),
+    ));
     this.dialog.appendChild(behaviour);
+
+    const appendToggleRow = (label: string, value: boolean, onChange: (v: boolean) => void): void => {
+      const row = document.createElement("div");
+      row.className = "mx-line-timings";
+      row.appendChild(this.toggleField(label, value, onChange));
+      this.dialog.appendChild(row);
+    };
+    appendToggleRow("Flicker dissolve", this.draft.flickerOut, (v) => (this.draft.flickerOut = v));
+    appendToggleRow("Brightness fade", this.draft.brightnessFade, (v) => (this.draft.brightnessFade = v));
 
     this.dialog.appendChild(this.footer([
       { label: "Reset to default", className: "mx-btn mx-reset", onClick: () => { this.draft = cloneMessages(DEFAULT_MESSAGES); this.build(); } },

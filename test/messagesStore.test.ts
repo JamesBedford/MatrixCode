@@ -63,6 +63,33 @@ describe("sanitizeMessages", () => {
     expect(s.brightnessFade).toBe(DEFAULT_MESSAGES.brightnessFade);
     expect(s.messageLayout).toBe(DEFAULT_MESSAGES.messageLayout);
     expect(s.messageDirection).toBe(DEFAULT_MESSAGES.messageDirection);
+    expect(s.verticalPosition).toBe(DEFAULT_MESSAGES.verticalPosition);
+    expect(s.verticalJitter).toBe(DEFAULT_MESSAGES.verticalJitter);
+    expect(s.horizontalPosition).toBe(0.5);
+    expect(s.horizontalJitter).toBe(0);
+  });
+
+  it("adds default horizontal placement to saved documents from older versions", () => {
+    const s = sanitizeMessages({
+      messages: ["NEO"],
+      verticalPosition: 0.2,
+      verticalJitter: 0.4,
+    });
+    expect(s.horizontalPosition).toBe(0.5);
+    expect(s.horizontalJitter).toBe(0);
+  });
+
+  it("clamps both placement axes and their randomness", () => {
+    const s = sanitizeMessages({
+      verticalPosition: -1,
+      verticalJitter: 2,
+      horizontalPosition: 2,
+      horizontalJitter: -1,
+    });
+    expect(s.verticalPosition).toBe(0);
+    expect(s.verticalJitter).toBe(1);
+    expect(s.horizontalPosition).toBe(1);
+    expect(s.horizontalJitter).toBe(0);
   });
 
   it("coerces flickerOut to a boolean", () => {
@@ -100,18 +127,20 @@ describe("MessagesStore", () => {
     const messages = new MessagesStore().get();
     expect(messages.messages).toEqual(DEFAULT_MESSAGES.messages);
     expect(messages.verticalPosition).toBe(0.5);
+    expect(messages.horizontalPosition).toBe(0.5);
+    expect(messages.horizontalJitter).toBe(0);
   });
 
   it("persists across instances (round-trip)", () => {
     const a = new MessagesStore();
-    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "bottomToTop", verticalPosition: 0.2, verticalJitter: 0.4 });
+    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "bottomToTop", verticalPosition: 0.2, verticalJitter: 0.4, horizontalPosition: 0.7, horizontalJitter: 0.3 });
     const b = new MessagesStore();
-    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "bottomToTop", verticalPosition: 0.2, verticalJitter: 0.4 });
+    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "bottomToTop", verticalPosition: 0.2, verticalJitter: 0.4, horizontalPosition: 0.7, horizontalJitter: 0.3 });
   });
 
   it("reset clears storage and returns defaults", () => {
     const s = new MessagesStore();
-    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "topToBottom", verticalPosition: 0.5, verticalJitter: 0 });
+    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "topToBottom", verticalPosition: 0.5, verticalJitter: 0, horizontalPosition: 0.5, horizontalJitter: 0 });
     const after = s.reset();
     expect(after.messages).toEqual(DEFAULT_MESSAGES.messages);
     expect(new MessagesStore().get().messages).toEqual(DEFAULT_MESSAGES.messages);

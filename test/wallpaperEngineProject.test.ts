@@ -10,6 +10,8 @@ interface ManifestProperty {
   type: string;
   order: number;
   mode?: string;
+  text?: string;
+  value?: unknown;
 }
 
 function project() {
@@ -34,7 +36,7 @@ describe("Wallpaper Engine generated project", () => {
     const manifest = project();
     const properties = manifest.general.properties;
     expect(manifest).toMatchObject({ type: "web", file: "index.html", preview: "preview.png" });
-    expect(Object.keys(properties)).toHaveLength(163);
+    expect(Object.keys(properties)).toHaveLength(165);
     expect(Object.keys(properties).every((key) => /^[a-z0-9]+$/.test(key))).toBe(true);
     expect(Object.values(properties).filter(({ type }) => type === "group")).toHaveLength(8);
     expect(Object.keys(properties).filter((key) => /^intro\d{2}/.test(key))).toHaveLength(48);
@@ -42,6 +44,30 @@ describe("Wallpaper Engine generated project", () => {
     expect(Object.keys(properties).filter((key) => /^moment\d{2}/.test(key))).toHaveLength(36);
     expect(properties.imagesinglefile).toBeUndefined();
     expect(properties.imagesdirectory).toMatchObject({ type: "directory", mode: "fetchall" });
+    expect(properties.messagesposition).toMatchObject({
+      order: 4091,
+      text: "Vertical position",
+      value: 0.5,
+    });
+    expect(properties.messagesjitter).toMatchObject({
+      order: 4092,
+      text: "Vertical randomness",
+      value: 0.25,
+    });
+    expect(properties.messageshorizontalposition).toMatchObject({
+      order: 4093,
+      text: "Horizontal position",
+      value: 0.5,
+    });
+    expect(properties.messageshorizontaljitter).toMatchObject({
+      order: 4094,
+      text: "Horizontal randomness",
+      value: 0,
+    });
+    expect(properties.messagesflicker).toMatchObject({
+      order: 4095,
+      text: "Flicker dissolve",
+    });
   });
 
   it("keeps every order stable and unique", () => {

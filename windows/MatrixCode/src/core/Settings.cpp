@@ -188,6 +188,8 @@ SettingsSnapshot SanitizeSettings(const json::Value& root) {
   output.messages.brightnessFade = Boolean(messages, "brightnessFade", false);
   output.messages.position = Number(messages, "verticalPosition", 0.5, 0.0, 1.0);
   output.messages.jitter = Number(messages, "verticalJitter", 0.25, 0.0, 1.0);
+  output.messages.horizontalPosition = Number(messages, "horizontalPosition", 0.5, 0.0, 1.0);
+  output.messages.horizontalJitter = Number(messages, "horizontalJitter", 0.0, 0.0, 1.0);
   output.messages.layout = Text(messages, "messageLayout", "row", 20) == "drop"
     ? MessageLayout::Drop : MessageLayout::Row;
   output.messages.direction = Text(messages, "messageDirection", "topToBottom", 20) == "bottomToTop"
@@ -301,6 +303,8 @@ json::Value EncodeSettings(const SettingsSnapshot& settings) {
     {"messageDirection", settings.messages.direction == MessageDirection::BottomToTop
       ? "bottomToTop" : "topToBottom"},
     {"verticalPosition", settings.messages.position}, {"verticalJitter", settings.messages.jitter},
+    {"horizontalPosition", settings.messages.horizontalPosition},
+    {"horizontalJitter", settings.messages.horizontalJitter},
   };
   json::Array images;
   for (const auto& image : settings.images.images) {

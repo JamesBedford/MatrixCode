@@ -97,6 +97,8 @@ struct MessagesDocument {
   MessageDirection direction = MessageDirection::TopToBottom;
   double position = 0.5;
   double jitter = 0.25;
+  double horizontalPosition = 0.5;
+  double horizontalJitter = 0.0;
 };
 
 struct ImageMask {

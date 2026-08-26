@@ -110,13 +110,18 @@ class MessageScheduler final {
   };
   struct ActivePlacement {
     NormalizedRegion region;
-    std::size_t row = 0;
-    std::size_t column = 0;
+    double verticalSample = 0.0;
+    double horizontalSample = 0.0;
   };
 
   [[nodiscard]] std::string Resolve(std::string_view raw) const;
   [[nodiscard]] double Gap();
-  [[nodiscard]] std::size_t PickAxisIndex(std::size_t size);
+  [[nodiscard]] static std::size_t PickAxisStart(
+    std::size_t size,
+    std::size_t extent,
+    double position,
+    double jitter,
+    double sample);
   [[nodiscard]] std::vector<NormalizedRegion> NormalizeRegions(
     const MessageSink& sink,
     std::span<const MessageRegion> regions) const;

@@ -23,6 +23,8 @@ export const DEFAULT_MESSAGES: MessagesDoc = {
   messageDirection: "topToBottom",
   verticalPosition: 0.5,
   verticalJitter: 0.25,
+  horizontalPosition: 0.5,
+  horizontalJitter: 0,
 };
 
 /** Deep copy so callers can mutate a working draft without touching shared state. */
@@ -53,6 +55,8 @@ export function sanitizeMessages(raw: unknown): MessagesDoc {
     messageDirection: choice(r.messageDirection, MESSAGE_DIRECTIONS, DEFAULT_MESSAGES.messageDirection),
     verticalPosition: num(r.verticalPosition, 0, 1, DEFAULT_MESSAGES.verticalPosition),
     verticalJitter: num(r.verticalJitter, 0, 1, DEFAULT_MESSAGES.verticalJitter),
+    horizontalPosition: num(r.horizontalPosition, 0, 1, DEFAULT_MESSAGES.horizontalPosition),
+    horizontalJitter: num(r.horizontalJitter, 0, 1, DEFAULT_MESSAGES.horizontalJitter),
   };
 }
 

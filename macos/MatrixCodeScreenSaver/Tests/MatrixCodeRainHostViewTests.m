@@ -1384,6 +1384,8 @@ suppressesIntroOverlay:YES];
     XCTAssertTrue([messages[@"enabled"] boolValue]);
     XCTAssertEqual([messages[@"messages"] count], 4);
     XCTAssertEqualObjects(messages[@"verticalPosition"], @0.5);
+    XCTAssertEqualObjects(messages[@"horizontalPosition"], @0.5);
+    XCTAssertEqualObjects(messages[@"horizontalJitter"], @0);
     XCTAssertEqualObjects(MatrixCodeHostShortcutToastText(hostView), @"MESSAGES ENABLED");
     XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
 
@@ -1399,6 +1401,7 @@ suppressesIntroOverlay:YES];
             @"enabled": @1,
             @"messages": @[@"NEO"],
             @"verticalPosition": @0.375,
+            @"horizontalPosition": @0.125,
         }),
     }];
     MatrixCodeRainHostView *hostView =
@@ -1413,6 +1416,8 @@ suppressesIntroOverlay:YES];
     XCTAssertEqualObjects(messages[@"enabled"], @YES);
     XCTAssertEqualObjects(messages[@"messages"], @[@"NEO"]);
     XCTAssertEqualObjects(messages[@"verticalPosition"], @0.375);
+    XCTAssertEqualObjects(messages[@"horizontalPosition"], @0.125);
+    XCTAssertEqualObjects(messages[@"horizontalJitter"], @0);
 }
 
 - (void)testShiftMKeyTogglesMessagesWithoutOpeningSettingsOverlay {

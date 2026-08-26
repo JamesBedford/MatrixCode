@@ -454,6 +454,8 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     MatrixCodeMessageScheduler *scheduler = [view valueForKey:@"messageScheduler"];
     NSDictionary *initialMessages = [view valueForKey:@"messages"];
     XCTAssertEqualObjects(initialMessages[@"verticalPosition"], @0.5);
+    XCTAssertEqualObjects(initialMessages[@"horizontalPosition"], @0.5);
+    XCTAssertEqualObjects(initialMessages[@"horizontalJitter"], @0);
     NSDictionary *activeImage = @{ @"id": @"active-image" };
     NSData *activeImageMask = [@"active-mask" dataUsingEncoding:NSUTF8StringEncoding];
     [view setValue:activeImage forKey:@"activeImage"];

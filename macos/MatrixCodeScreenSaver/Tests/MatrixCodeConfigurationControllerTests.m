@@ -985,7 +985,7 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertEqualObjects(messagesHint.toolTip, introHint.toolTip);
 }
 
-- (void)testMessagesEditorPersistsDropLayoutAndRelabelsAxisControls {
+- (void)testMessagesEditorPersistsDropLayoutAndKeepsBothAxisControls {
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
     NSButton *messages = (NSButton *)MatrixCodeDescendantWithIdentifier(
@@ -999,13 +999,45 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertTrue([direction isKindOfClass:NSPopUpButton.class]);
     XCTAssertEqualObjects([layout.itemArray valueForKey:@"representedObject"], (@[@"row", @"drop"]));
     XCTAssertFalse(direction.enabled);
-    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (%)"));
-    NSTextField *position = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (0 top–100 bottom)"));
+    NSTextField *verticalPosition = (NSTextField *)MatrixCodeDescendantWithIdentifier(
         card, @"verticalPosition-percent");
-    XCTAssertEqualWithAccuracy(position.doubleValue, 50, 0.001);
+    NSTextField *verticalJitter = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        card, @"verticalJitter-percent");
+    NSTextField *horizontalPosition = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        card, @"horizontalPosition-percent");
+    NSTextField *horizontalJitter = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        card, @"horizontalJitter-percent");
+    NSButton *flicker = (NSButton *)MatrixCodeDescendantWithIdentifier(card, @"flickerOut");
+    XCTAssertEqualWithAccuracy(verticalPosition.doubleValue, 50, 0.001);
+    XCTAssertEqualWithAccuracy(verticalJitter.doubleValue, 25, 0.001);
+    XCTAssertEqualWithAccuracy(horizontalPosition.doubleValue, 50, 0.001);
+    XCTAssertEqualWithAccuracy(horizontalJitter.doubleValue, 0, 0.001);
+    NSStackView *fieldsStack = (NSStackView *)verticalPosition.superview.superview;
+    NSUInteger verticalPositionIndex = [fieldsStack.arrangedSubviews
+        indexOfObject:verticalPosition.superview];
+    NSUInteger verticalJitterIndex = [fieldsStack.arrangedSubviews
+        indexOfObject:verticalJitter.superview];
+    NSUInteger horizontalPositionIndex = [fieldsStack.arrangedSubviews
+        indexOfObject:horizontalPosition.superview];
+    NSUInteger horizontalJitterIndex = [fieldsStack.arrangedSubviews
+        indexOfObject:horizontalJitter.superview];
+    NSUInteger flickerIndex = [fieldsStack.arrangedSubviews indexOfObject:flicker];
+    for (NSNumber *index in @[@(verticalPositionIndex), @(verticalJitterIndex),
+                               @(horizontalPositionIndex), @(horizontalJitterIndex),
+                               @(flickerIndex)]) {
+        XCTAssertNotEqual(index.unsignedIntegerValue, NSNotFound);
+    }
+    XCTAssertLessThan(verticalPositionIndex, verticalJitterIndex);
+    XCTAssertLessThan(verticalJitterIndex, horizontalPositionIndex);
+    XCTAssertLessThan(horizontalPositionIndex, horizontalJitterIndex);
+    XCTAssertLessThan(horizontalJitterIndex, flickerIndex);
+    XCTAssertEqual(flicker.superview, fieldsStack);
     NSDictionary *defaults = MatrixCodeJSONDictionary(
         [controller serializedValues][@"mx-messages"]);
     XCTAssertEqualObjects(defaults[@"verticalPosition"], @0.5);
+    XCTAssertEqualObjects(defaults[@"horizontalPosition"], @0.5);
+    XCTAssertEqualObjects(defaults[@"horizontalJitter"], @0);
 
     MatrixCodeSelectRepresentedValue(layout, @"drop");
     [controller messageChoiceChanged:layout];
@@ -1013,7 +1045,9 @@ restrictedToMultiMonitorControls:YES];
         controller.window.contentView, @"settings-editor-card-messages");
     direction = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(card, @"messageDirection");
     XCTAssertTrue(direction.enabled);
-    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Horizontal position (%)"));
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (0 top–100 bottom)"));
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical randomness (%)"));
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Horizontal position (0 left–100 right)"));
     XCTAssertTrue(MatrixCodeContainsLabel(card, @"Horizontal randomness (%)"));
 
     MatrixCodeSelectRepresentedValue(direction, @"bottomToTop");
@@ -1023,11 +1057,13 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertEqualObjects(stored[@"messageDirection"], @"bottomToTop");
 }
 
-- (void)testMessagesEditorPreservesExplicitSavedVerticalPosition {
+- (void)testMessagesEditorPreservesExplicitSavedAxisValues {
     [self.preferences commitValues:@{
         @"mx-messages": MatrixCodeJSONString(@{
             @"messages": @[@"NEO"],
             @"verticalPosition": @0.375,
+            @"horizontalPosition": @0.125,
+            @"horizontalJitter": @0.75,
         }),
     }];
 
@@ -1036,11 +1072,19 @@ restrictedToMultiMonitorControls:YES];
     NSDictionary *stored = MatrixCodeJSONDictionary(
         [controller serializedValues][@"mx-messages"]);
     XCTAssertEqualObjects(stored[@"verticalPosition"], @0.375);
+    XCTAssertEqualObjects(stored[@"horizontalPosition"], @0.125);
+    XCTAssertEqualObjects(stored[@"horizontalJitter"], @0.75);
 
     [controller openEditorKind:@"messages"];
     NSTextField *position = (NSTextField *)MatrixCodeDescendantWithIdentifier(
         controller.window.contentView, @"verticalPosition-percent");
+    NSTextField *horizontalPosition = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"horizontalPosition-percent");
+    NSTextField *horizontalJitter = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"horizontalJitter-percent");
     XCTAssertEqualWithAccuracy(position.doubleValue, 37.5, 0.001);
+    XCTAssertEqualWithAccuracy(horizontalPosition.doubleValue, 12.5, 0.001);
+    XCTAssertEqualWithAccuracy(horizontalJitter.doubleValue, 75, 0.001);
 }
 
 - (void)testMessagesEditorSanitizesInvalidLayoutChoicesToWebDefaults {

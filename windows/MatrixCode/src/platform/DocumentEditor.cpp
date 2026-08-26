@@ -45,6 +45,8 @@ enum ControlId : int {
   IdField4,
   IdField5,
   IdField6,
+  IdField7,
+  IdField8,
   IdText,
   IdName,
   IdCombo1,
@@ -333,6 +335,10 @@ void SetNumber(const HWND control, const double value, const int decimals = 0) {
   SetWindowTextW(control, buffer.data());
 }
 
+void SetPercent(const HWND control, const double value) {
+  SetNumber(control, value * 100.0);
+}
+
 [[nodiscard]] std::wstring WindowText(const HWND control) {
   if (control == nullptr) return {};
   const int length = GetWindowTextLengthW(control);
@@ -357,6 +363,10 @@ void SetNumber(const HWND control, const double value, const int decimals = 0) {
   const double parsed = std::wcstod(text.c_str(), &end);
   if (end == text.c_str() || !std::isfinite(parsed)) return fallback;
   return std::clamp(parsed, minimum, maximum);
+}
+
+[[nodiscard]] double PercentValue(const HWND control, const double fallback) {
+  return NumberValue(control, fallback * 100.0, 0.0, 100.0) / 100.0;
 }
 
 void SetChecked(const HWND control, const bool checked) {
@@ -639,10 +649,14 @@ void SaveGlobals(EditorState& state) {
         GetDlgItem(state.window, IdField3), state.draft.messages.appearMilliseconds, 0.0, 600000.0);
       state.draft.messages.disappearMilliseconds = NumberValue(
         GetDlgItem(state.window, IdField4), state.draft.messages.disappearMilliseconds, 0.0, 600000.0);
-      state.draft.messages.position = NumberValue(
-        GetDlgItem(state.window, IdField5), state.draft.messages.position, 0.0, 1.0);
-      state.draft.messages.jitter = NumberValue(
-        GetDlgItem(state.window, IdField6), state.draft.messages.jitter, 0.0, 1.0);
+      state.draft.messages.position = PercentValue(
+        GetDlgItem(state.window, IdField5), state.draft.messages.position);
+      state.draft.messages.jitter = PercentValue(
+        GetDlgItem(state.window, IdField6), state.draft.messages.jitter);
+      state.draft.messages.horizontalPosition = PercentValue(
+        GetDlgItem(state.window, IdField7), state.draft.messages.horizontalPosition);
+      state.draft.messages.horizontalJitter = PercentValue(
+        GetDlgItem(state.window, IdField8), state.draft.messages.horizontalJitter);
       state.draft.messages.layout = SendDlgItemMessageW(
         state.window, IdCombo1, CB_GETCURSEL, 0, 0) == 1 ? MessageLayout::Drop : MessageLayout::Row;
       state.draft.messages.direction = SendDlgItemMessageW(
@@ -722,19 +736,24 @@ void BuildMessagesPage(EditorState& state) {
   Label(state, L"Appear / disappear (ms)", 315, 137, 200);
   SetNumber(Edit(state, IdField3, 520, 134, 100, 10), state.draft.messages.appearMilliseconds);
   SetNumber(Edit(state, IdField4, 630, 134, 100, 10), state.draft.messages.disappearMilliseconds);
-  Label(state, L"Vertical position / jitter", 315, 171, 200);
-  SetNumber(Edit(state, IdField5, 520, 168, 100, 10), state.draft.messages.position, 3);
-  SetNumber(Edit(state, IdField6, 630, 168, 100, 10), state.draft.messages.jitter, 3);
-  Label(state, L"Layout", 315, 205, 85);
-  AddComboItems(Combo(state, IdCombo1, 405, 202, 130), {L"Row", L"Drop"},
+  Label(state, L"Vertical position (0 top–100 bottom)", 315, 171, 325);
+  SetPercent(Edit(state, IdField5, 650, 168, 80, 10), state.draft.messages.position);
+  Label(state, L"Vertical randomness (%)", 315, 200, 325);
+  SetPercent(Edit(state, IdField6, 650, 197, 80, 10), state.draft.messages.jitter);
+  Label(state, L"Horizontal position (0 left–100 right)", 315, 229, 325);
+  SetPercent(Edit(state, IdField7, 650, 226, 80, 10), state.draft.messages.horizontalPosition);
+  Label(state, L"Horizontal randomness (%)", 315, 258, 325);
+  SetPercent(Edit(state, IdField8, 650, 255, 80, 10), state.draft.messages.horizontalJitter);
+  Label(state, L"Layout", 315, 291, 85);
+  AddComboItems(Combo(state, IdCombo1, 405, 288, 130), {L"Row", L"Drop"},
     state.draft.messages.layout == MessageLayout::Drop ? 1 : 0);
-  Label(state, L"Direction", 550, 205, 75);
-  AddComboItems(Combo(state, IdCombo2, 625, 202, 120), {L"Top to bottom", L"Bottom to top"},
+  Label(state, L"Direction", 550, 291, 75);
+  AddComboItems(Combo(state, IdCombo2, 625, 288, 120), {L"Top to bottom", L"Bottom to top"},
     state.draft.messages.direction == MessageDirection::BottomToTop ? 1 : 0);
-  SetChecked(Check(state, IdCheck2, L"Flicker out", 315, 242, 150), state.draft.messages.flickerOut);
-  SetChecked(Check(state, IdCheck3, L"Brightness fade", 490, 242, 170), state.draft.messages.brightnessFade);
-  Label(state, L"Selected message", 315, 285);
-  Edit(state, IdText, 315, 308, 430, 120, true);
+  SetChecked(Check(state, IdCheck2, L"Flicker dissolve", 315, 324, 180), state.draft.messages.flickerOut);
+  SetChecked(Check(state, IdCheck3, L"Brightness fade", 315, 353, 180), state.draft.messages.brightnessFade);
+  Label(state, L"Selected message", 315, 386);
+  Edit(state, IdText, 315, 409, 430, 120, true);
 }
 
 void BuildImagesPage(EditorState& state) {
