@@ -1,0 +1,8 @@
+#pragma once
+
+namespace matrixcode::version {
+
+inline constexpr wchar_t kSemanticVersion[] =
+  L"@MATRIXCODE_VERSION_MAJOR@.@MATRIXCODE_VERSION_MINOR@.@MATRIXCODE_VERSION_PATCH@";
+
+}  // namespace matrixcode::version

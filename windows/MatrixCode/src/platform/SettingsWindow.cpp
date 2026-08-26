@@ -12,6 +12,7 @@
 #include "matrixcode/core/Settings.h"
 #include "matrixcode/core/Utf8.h"
 #include "matrixcode/platform/DocumentEditor.h"
+#include "Version.h"
 #include "resource.h"
 
 namespace matrixcode::platform {
@@ -404,6 +405,10 @@ void Populate(HWND window, const SettingsSnapshot& settings) {
     176, 430, 112, 30, IdRawJson);
   CreateScaledChild(window, 0, L"BUTTON", L"Reset all", WS_TABSTOP | BS_PUSHBUTTON,
     296, 430, 92, 30, IdReset);
+  std::wstring versionLabel = L"Version ";
+  versionLabel += version::kSemanticVersion;
+  CreateScaledChild(window, 0, L"STATIC", versionLabel.c_str(),
+    SS_CENTER | SS_CENTERIMAGE | SS_NOPREFIX, 468, 430, 148, 30);
   CreateScaledChild(window, 0, L"BUTTON", L"Cancel", WS_TABSTOP | BS_PUSHBUTTON,
     628, 430, 82, 30, IdCancel);
   CreateScaledChild(window, 0, L"BUTTON", L"Save", WS_TABSTOP | BS_DEFPUSHBUTTON,

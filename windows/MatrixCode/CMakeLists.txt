@@ -52,6 +52,11 @@ configure_file(
   "${CMAKE_CURRENT_BINARY_DIR}/generated/EmbeddedShader.h"
   @ONLY
 )
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/Version.h"
+  @ONLY
+)
 
 add_library(MatrixCodeRenderD3D11 STATIC
   src/render/D3D11Renderer.cpp
@@ -78,7 +83,7 @@ add_library(MatrixCodeWin32 STATIC
 )
 target_include_directories(MatrixCodeWin32
   PUBLIC include
-  PRIVATE resources
+  PRIVATE resources "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
 target_link_libraries(MatrixCodeWin32
   PUBLIC MatrixCodeCore MatrixCodeRenderD3D11
