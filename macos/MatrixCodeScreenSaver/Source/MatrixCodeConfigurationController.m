@@ -860,7 +860,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                                   @[@"row", @"drop"], @"row"),
         @"messageDirection": MatrixCodeSettingChoice(storedMessageDoc, @"messageDirection",
                                                      @[@"topToBottom", @"bottomToTop"], @"topToBottom"),
-        @"verticalPosition": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalPosition", 0.475, 0, 1)),
+        @"verticalPosition": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalPosition", 0.5, 0, 1)),
         @"verticalJitter": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalJitter", 0.25, 0, 1)),
     } mutableCopy];
     NSArray *storedMessages = [storedMessageDoc[@"messages"] isKindOfClass:NSArray.class]

@@ -68,7 +68,7 @@ static NSDictionary<NSString *, id> *MatrixCodeMessageDocument(NSDictionary *ove
         @"brightnessFade": @YES,
         @"messageLayout": @"row",
         @"messageDirection": @"topToBottom",
-        @"verticalPosition": @0.475,
+        @"verticalPosition": @0.5,
         @"verticalJitter": @0.25,
     } mutableCopy];
     [document addEntriesFromDictionary:overrides ?: @{}];
@@ -137,6 +137,16 @@ static void MatrixCodeFixtureFeed(uint32_t *hash, uint32_t value) {
     XCTAssertEqualObjects(sanitized[@"messageDirection"], @"bottomToTop");
     XCTAssertEqualObjects(sanitized[@"verticalPosition"], @0);
     XCTAssertEqualObjects(sanitized[@"verticalJitter"], @1);
+}
+
+- (void)testMessageDocumentVerticalPositionDefaultsToMiddleAndPreservesSavedValue {
+    NSDictionary *defaults = MatrixCodeSanitizeMessagesDocument(@{});
+    XCTAssertEqualObjects(defaults[@"verticalPosition"], @0.5);
+
+    NSDictionary *saved = MatrixCodeSanitizeMessagesDocument(@{
+        @"verticalPosition": @0.475,
+    });
+    XCTAssertEqualObjects(saved[@"verticalPosition"], @0.475);
 }
 
 - (void)testRowLayoutCentersOneCopyInEveryRegion {

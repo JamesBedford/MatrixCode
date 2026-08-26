@@ -1000,6 +1000,12 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertEqualObjects([layout.itemArray valueForKey:@"representedObject"], (@[@"row", @"drop"]));
     XCTAssertFalse(direction.enabled);
     XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (%)"));
+    NSTextField *position = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        card, @"verticalPosition-percent");
+    XCTAssertEqualWithAccuracy(position.doubleValue, 50, 0.001);
+    NSDictionary *defaults = MatrixCodeJSONDictionary(
+        [controller serializedValues][@"mx-messages"]);
+    XCTAssertEqualObjects(defaults[@"verticalPosition"], @0.5);
 
     MatrixCodeSelectRepresentedValue(layout, @"drop");
     [controller messageChoiceChanged:layout];
@@ -1015,6 +1021,26 @@ restrictedToMultiMonitorControls:YES];
     NSDictionary *stored = MatrixCodeJSONDictionary([controller serializedValues][@"mx-messages"]);
     XCTAssertEqualObjects(stored[@"messageLayout"], @"drop");
     XCTAssertEqualObjects(stored[@"messageDirection"], @"bottomToTop");
+}
+
+- (void)testMessagesEditorPreservesExplicitSavedVerticalPosition {
+    [self.preferences commitValues:@{
+        @"mx-messages": MatrixCodeJSONString(@{
+            @"messages": @[@"NEO"],
+            @"verticalPosition": @0.375,
+        }),
+    }];
+
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSDictionary *stored = MatrixCodeJSONDictionary(
+        [controller serializedValues][@"mx-messages"]);
+    XCTAssertEqualObjects(stored[@"verticalPosition"], @0.375);
+
+    [controller openEditorKind:@"messages"];
+    NSTextField *position = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"verticalPosition-percent");
+    XCTAssertEqualWithAccuracy(position.doubleValue, 37.5, 0.001);
 }
 
 - (void)testMessagesEditorSanitizesInvalidLayoutChoicesToWebDefaults {

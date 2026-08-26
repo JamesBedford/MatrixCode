@@ -1383,6 +1383,7 @@ suppressesIntroOverlay:YES];
     NSDictionary *messages = MatrixCodeHostStoredMessages(hostView);
     XCTAssertTrue([messages[@"enabled"] boolValue]);
     XCTAssertEqual([messages[@"messages"] count], 4);
+    XCTAssertEqualObjects(messages[@"verticalPosition"], @0.5);
     XCTAssertEqualObjects(MatrixCodeHostShortcutToastText(hostView), @"MESSAGES ENABLED");
     XCTAssertNil(MatrixCodeHostDescendantWithIdentifier(hostView, @"settings-hover-overlay"));
 
@@ -1397,6 +1398,7 @@ suppressesIntroOverlay:YES];
         @"mx-messages": MatrixCodeJSONString(@{
             @"enabled": @1,
             @"messages": @[@"NEO"],
+            @"verticalPosition": @0.375,
         }),
     }];
     MatrixCodeRainHostView *hostView =
@@ -1410,6 +1412,7 @@ suppressesIntroOverlay:YES];
     NSDictionary *messages = MatrixCodeHostStoredMessages(hostView);
     XCTAssertEqualObjects(messages[@"enabled"], @YES);
     XCTAssertEqualObjects(messages[@"messages"], @[@"NEO"]);
+    XCTAssertEqualObjects(messages[@"verticalPosition"], @0.375);
 }
 
 - (void)testShiftMKeyTogglesMessagesWithoutOpeningSettingsOverlay {

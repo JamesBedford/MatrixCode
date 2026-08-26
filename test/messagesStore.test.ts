@@ -97,7 +97,9 @@ describe("cloneMessages", () => {
 
 describe("MessagesStore", () => {
   it("returns defaults with no stored value", () => {
-    expect(new MessagesStore().get().messages).toEqual(DEFAULT_MESSAGES.messages);
+    const messages = new MessagesStore().get();
+    expect(messages.messages).toEqual(DEFAULT_MESSAGES.messages);
+    expect(messages.verticalPosition).toBe(0.5);
   });
 
   it("persists across instances (round-trip)", () => {

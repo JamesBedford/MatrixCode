@@ -453,6 +453,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
          storedValues:@{ @"mx-controls": MatrixCodeJSONString(@{ @"speed": @1 }) }];
     MatrixCodeMessageScheduler *scheduler = [view valueForKey:@"messageScheduler"];
     NSDictionary *initialMessages = [view valueForKey:@"messages"];
+    XCTAssertEqualObjects(initialMessages[@"verticalPosition"], @0.5);
     NSDictionary *activeImage = @{ @"id": @"active-image" };
     NSData *activeImageMask = [@"active-mask" dataUsingEncoding:NSUTF8StringEncoding];
     [view setValue:activeImage forKey:@"activeImage"];

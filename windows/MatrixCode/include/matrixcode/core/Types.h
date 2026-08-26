@@ -95,7 +95,7 @@ struct MessagesDocument {
   bool brightnessFade = false;
   MessageLayout layout = MessageLayout::Row;
   MessageDirection direction = MessageDirection::TopToBottom;
-  double position = 0.475;
+  double position = 0.5;
   double jitter = 0.25;
 };
 

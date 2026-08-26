@@ -52,7 +52,7 @@ const doc = (over: Partial<MessagesDoc> = {}): MessagesDoc => ({
   brightnessFade: true,
   messageLayout: "row",
   messageDirection: "topToBottom",
-  verticalPosition: 0.475,
+  verticalPosition: 0.5,
   verticalJitter: 0.25,
   ...over,
 });

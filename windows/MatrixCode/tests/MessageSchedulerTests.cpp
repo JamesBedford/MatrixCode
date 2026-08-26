@@ -73,7 +73,7 @@ matrixcode::MessagesDocument Document() {
   document.brightnessFade = true;
   document.layout = matrixcode::MessageLayout::Row;
   document.direction = matrixcode::MessageDirection::TopToBottom;
-  document.position = 0.475;
+  document.position = 0.5;
   document.jitter = 0.25;
   return document;
 }

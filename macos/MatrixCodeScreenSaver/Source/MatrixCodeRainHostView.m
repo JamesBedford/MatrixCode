@@ -223,7 +223,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
         @"brightnessFade": @NO,
         @"messageLayout": @"row",
         @"messageDirection": @"topToBottom",
-        @"verticalPosition": @0.475,
+        @"verticalPosition": @0.5,
         @"verticalJitter": @0.25,
     } mutableCopy];
 }

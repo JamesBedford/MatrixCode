@@ -282,7 +282,7 @@ NSDictionary<NSString *, id> *MatrixCodeSanitizeMessagesDocument(id rawDocument)
         @"messageDirection": MatrixCodeSanitizedMessageChoice(
             document, @"messageDirection", directions, @"topToBottom"),
         @"verticalPosition": @(MatrixCodeSanitizedMessageNumber(
-            document, @"verticalPosition", 0, 1, 0.475)),
+            document, @"verticalPosition", 0, 1, 0.5)),
         @"verticalJitter": @(MatrixCodeSanitizedMessageNumber(
             document, @"verticalJitter", 0, 1, 0.25)),
     };
@@ -426,7 +426,7 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
     NSInteger maximumIndex = size - 1;
     if (maximumIndex <= 0) return 0;
     NSDictionary *configuration = self.schedulerState.configuration;
-    double position = MatrixCodeMessageNumber(configuration, @"verticalPosition", 0.475);
+    double position = MatrixCodeMessageNumber(configuration, @"verticalPosition", 0.5);
     double jitter = MatrixCodeMessageNumber(configuration, @"verticalJitter", 0.25);
     NSInteger anchor = (NSInteger)floor(position * maximumIndex + 0.5);
     NSInteger halfSpan = (NSInteger)floor((jitter * maximumIndex) / 2 + 0.5);

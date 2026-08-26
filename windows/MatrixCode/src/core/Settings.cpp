@@ -186,7 +186,7 @@ SettingsSnapshot SanitizeSettings(const json::Value& root) {
   output.messages.disappearMilliseconds = Number(messages, "disappearMs", 4000.0, 0.0, 600000.0);
   output.messages.flickerOut = Boolean(messages, "flickerOut", true);
   output.messages.brightnessFade = Boolean(messages, "brightnessFade", false);
-  output.messages.position = Number(messages, "verticalPosition", 0.475, 0.0, 1.0);
+  output.messages.position = Number(messages, "verticalPosition", 0.5, 0.0, 1.0);
   output.messages.jitter = Number(messages, "verticalJitter", 0.25, 0.0, 1.0);
   output.messages.layout = Text(messages, "messageLayout", "row", 20) == "drop"
     ? MessageLayout::Drop : MessageLayout::Row;
