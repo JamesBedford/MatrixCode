@@ -15,6 +15,8 @@ struct SimulationStepPlan {
 
 [[nodiscard]] SimulationStepPlan PlanSimulationSteps(double elapsedSeconds) noexcept;
 [[nodiscard]] double RainRampEase(double progress, double edge = 0.2) noexcept;
+[[nodiscard]] std::uint32_t FramePacingWaitMilliseconds(
+  double frameWorkSeconds, double targetFramesPerSecond = 60.0) noexcept;
 
 enum class PresentationMode { Synchronized, NonBlocking };
 [[nodiscard]] PresentationMode PresentationModeForWindowCount(std::size_t windows) noexcept;

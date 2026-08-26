@@ -30,6 +30,16 @@ double RainRampEase(const double progress, const double edge) noexcept {
   return peakRate * clampedEdge / 2.0 + peakRate * (progress - clampedEdge);
 }
 
+std::uint32_t FramePacingWaitMilliseconds(
+    const double frameWorkSeconds, const double targetFramesPerSecond) noexcept {
+  if (!std::isfinite(frameWorkSeconds) || !std::isfinite(targetFramesPerSecond) ||
+      frameWorkSeconds < 0.0 || targetFramesPerSecond <= 0.0) return 0;
+  const double remainingSeconds = 1.0 / targetFramesPerSecond - frameWorkSeconds;
+  return remainingSeconds > 0.0
+    ? static_cast<std::uint32_t>(std::max(1.0, std::ceil(remainingSeconds * 1000.0)))
+    : 0u;
+}
+
 PresentationMode PresentationModeForWindowCount(const std::size_t windows) noexcept {
   return windows > 1 ? PresentationMode::NonBlocking : PresentationMode::Synchronized;
 }

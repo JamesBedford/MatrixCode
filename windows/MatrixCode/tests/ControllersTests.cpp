@@ -1,4 +1,5 @@
 #include <cmath>
+#include <limits>
 
 #include "TestHarness.h"
 #include "matrixcode/core/Controllers.h"
@@ -24,6 +25,17 @@ void RunControllersTests() {
   MX_EXPECT(std::abs(RainRampEase(0.9) - 0.96875) < 1e-12);
   MX_EXPECT_EQ(RainRampEase(1.0), 1.0);
   MX_EXPECT(std::abs(RainRampEase(0.25, 0.0) - 0.25) < 1e-12);
+
+  // Both synchronized single-window presentation and nonblocking multi-window presentation use
+  // this budget, keeping startup on high-refresh displays at the same cadence as settled rain.
+  MX_EXPECT_EQ(FramePacingWaitMilliseconds(0.0), std::uint32_t{17});
+  MX_EXPECT_EQ(FramePacingWaitMilliseconds(1.0 / 120.0), std::uint32_t{9});
+  MX_EXPECT_EQ(FramePacingWaitMilliseconds(1.0 / 60.0), std::uint32_t{0});
+  MX_EXPECT_EQ(FramePacingWaitMilliseconds(1.0 / 30.0), std::uint32_t{0});
+  MX_EXPECT_EQ(FramePacingWaitMilliseconds(0.005, 100.0), std::uint32_t{5});
+  MX_EXPECT_EQ(FramePacingWaitMilliseconds(-0.001), std::uint32_t{0});
+  MX_EXPECT_EQ(FramePacingWaitMilliseconds(
+    std::numeric_limits<double>::quiet_NaN()), std::uint32_t{0});
 
   MX_EXPECT(std::abs(VanDerCorput(0) - 0.0) < 1e-12);
   MX_EXPECT(std::abs(VanDerCorput(1) - 0.5) < 1e-12);

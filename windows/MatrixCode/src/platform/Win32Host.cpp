@@ -1394,16 +1394,17 @@ int NativeHost::Run() {
     const bool toastAnimating = !reducedMotion_ && !shortcutToastText_.empty();
     DWORD waitMilliseconds = reducedMotion_ || userPaused_
       ? (toastAnimating ? 16u : 100u)
-      : 1u;
-    if (!reducedMotion_ && !userPaused_ && windows_.size() > 1) {
+      : 0u;
+    if (!reducedMotion_ && !userPaused_) {
       LARGE_INTEGER afterRender{};
       QueryPerformanceCounter(&afterRender);
-      const double remainingSeconds = 1.0 / 60.0 -
+      const double frameWorkSeconds =
         static_cast<double>(afterRender.QuadPart - previousCounter_.QuadPart) /
-          static_cast<double>(frequency_.QuadPart);
-      waitMilliseconds = remainingSeconds > 0.0
-        ? static_cast<DWORD>(std::max(1.0, std::ceil(remainingSeconds * 1000.0)))
-        : 0u;
+        static_cast<double>(frequency_.QuadPart);
+      // Present(1) follows the monitor refresh rate. Without the same 60 Hz budget used by the
+      // nonblocking multi-window path, a high-refresh single display can begin at 120/144 FPS and
+      // then fall to 60 FPS as the rain fills in and rendering gets more expensive.
+      waitMilliseconds = FramePacingWaitMilliseconds(frameWorkSeconds);
     }
     MsgWaitForMultipleObjectsEx(
       0, nullptr, waitMilliseconds, QS_ALLINPUT, MWMO_INPUTAVAILABLE);

@@ -46,7 +46,9 @@ multi-monitor launch. All monitor slices use one per-display logical topology so
 grid seams remain anchored when display scale factors differ. A fresh shared
 session seed keeps each multi-display launch continuous without repeating the
 same rain, message RNG remains independent, and swap chains present without
-serially blocking one another.
+serially blocking one another. Animated Windows playback is paced to 60 FPS on
+both standard and high-refresh displays so startup and settled rain keep the same
+presentation cadence.
 
 Standalone keyboard and pointer controls follow the browser contract:
 
