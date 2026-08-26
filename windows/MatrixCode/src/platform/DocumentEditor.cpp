@@ -1009,8 +1009,9 @@ LRESULT CALLBACK WindowProcedure(
       state->dpi = std::max(96u, GetDpiForWindow(window));
       state->font = CreateUiFont(state->dpi);
       state->previewBackground = CreateSolidBrush(RGB(0, 0, 0));
+      // Page controls are tab siblings; clipping keeps tab repaints from covering them.
       state->tab = CreateWindowExW(
-        0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS,
         Scale(12, state->dpi), Scale(12, state->dpi),
         Scale(780, state->dpi), Scale(492, state->dpi), window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(IdTab)), GetModuleHandleW(nullptr), nullptr);
@@ -1212,7 +1213,8 @@ INT_PTR DocumentEditor::ShowModal(
   HWND window = CreateWindowExW(
     WS_EX_DLGMODALFRAME | WS_EX_CONTROLPARENT, kClassName,
     L"Matrix Code - Intro, messages, images, and countdown",
-    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_HSCROLL | WS_VSCROLL | WS_VISIBLE,
+    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_HSCROLL | WS_VSCROLL |
+      WS_CLIPSIBLINGS | WS_VISIBLE,
     workArea.left + std::max<LONG>(0L, ((workArea.right - workArea.left) - width) / 2),
     workArea.top + std::max<LONG>(0L, ((workArea.bottom - workArea.top) - height) / 2),
     width, height,
