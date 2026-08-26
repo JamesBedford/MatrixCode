@@ -16,7 +16,9 @@ if (mode === "--write") {
   writeFileSync(checkedInProjectPath, generated, "utf8");
   console.log(`Wrote ${checkedInProjectPath}`);
 } else if (mode === "--check") {
-  const existing = readFileSync(checkedInProjectPath, "utf8");
+  // Git may materialize this generated JSON with CRLF on Windows. Keep checking the canonical
+  // formatting and final newline while treating the platform's line-ending conversion as equal.
+  const existing = readFileSync(checkedInProjectPath, "utf8").replaceAll("\r\n", "\n");
   if (existing !== generated) {
     throw new Error("wallpaper-engine/project.json is stale; run generate-project.mjs --write");
   }
