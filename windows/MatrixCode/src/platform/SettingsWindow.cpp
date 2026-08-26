@@ -715,7 +715,7 @@ INT_PTR SettingsWindow::ShowModal(HWND owner, SettingsStoreWin32& store) {
   windowClass.hIcon = LoadIconW(windowClass.hInstance, MAKEINTRESOURCEW(IDI_MATRIXCODE_ICON));
   windowClass.hIconSm = windowClass.hIcon;
   windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-  windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+  windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
   windowClass.lpszClassName = kClassName;
   RegisterClassExW(&windowClass);
 

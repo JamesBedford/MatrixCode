@@ -272,6 +272,12 @@ HWND AddControl(
     GetModuleHandleW(nullptr), nullptr);
   if (control != nullptr) {
     ApplyFont(control, state.font);
+    // Passive static controls do not reliably repaint over a themed tab sibling.
+    // Keep labels and preview surfaces explicitly above the tab in the child Z-order.
+    if (std::wcscmp(className, L"STATIC") == 0) {
+      SetWindowPos(control, HWND_TOP, 0, 0, 0, 0,
+        SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
+    }
     state.pageControls.push_back(control);
   }
   return control;
