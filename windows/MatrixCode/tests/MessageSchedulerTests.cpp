@@ -330,8 +330,11 @@ void RunMessageSchedulerTests() {
     MX_EXPECT_EQ(sink.updates, 3u);
     MX_EXPECT_EQ(sink.clears, 6u);
     const std::map<std::size_t, std::uint8_t> expectedTargets{
-      {380, 121}, {381, 99}, {382, 109}, {383, 103}, {385, 157},
-      {562, 121}, {563, 99}, {564, 109}, {565, 103}, {567, 157},
+      {std::size_t{380}, std::uint8_t{121}}, {std::size_t{381}, std::uint8_t{99}},
+      {std::size_t{382}, std::uint8_t{109}}, {std::size_t{383}, std::uint8_t{103}},
+      {std::size_t{385}, std::uint8_t{157}}, {std::size_t{562}, std::uint8_t{121}},
+      {std::size_t{563}, std::uint8_t{99}}, {std::size_t{564}, std::uint8_t{109}},
+      {std::size_t{565}, std::uint8_t{103}}, {std::size_t{567}, std::uint8_t{157}},
     };
     MX_EXPECT_EQ(sink.targets, expectedTargets);
   }
