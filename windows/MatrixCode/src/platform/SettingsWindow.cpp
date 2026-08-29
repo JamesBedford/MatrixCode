@@ -12,6 +12,7 @@
 #include "matrixcode/core/Settings.h"
 #include "matrixcode/core/Utf8.h"
 #include "matrixcode/platform/DocumentEditor.h"
+#include "matrixcode/platform/Win32Utf.h"
 #include "Version.h"
 #include "resource.h"
 
@@ -71,31 +72,6 @@ struct JsonWindowState {
   UINT dpi = 96;
   HFONT font = nullptr;
 };
-
-[[nodiscard]] std::wstring Wide(const std::string& value) {
-  if (value.empty()) return {};
-  const int size = MultiByteToWideChar(
-    CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
-  if (size <= 0) return {};
-  std::wstring result(static_cast<std::size_t>(size), L'\0');
-  MultiByteToWideChar(
-    CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    result.data(), size);
-  return result;
-}
-
-[[nodiscard]] std::string Utf8(const std::wstring& value) {
-  if (value.empty()) return {};
-  const int size = WideCharToMultiByte(
-    CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    nullptr, 0, nullptr, nullptr);
-  if (size <= 0) return {};
-  std::string result(static_cast<std::size_t>(size), '\0');
-  WideCharToMultiByte(
-    CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    result.data(), size, nullptr, nullptr);
-  return result;
-}
 
 [[nodiscard]] int Scale(const int value, const UINT dpi) noexcept {
   return MulDiv(value, static_cast<int>(dpi), 96);
@@ -294,7 +270,7 @@ HWND Combo(HWND parent, int id, int x, int y, int width = 220) {
 }
 
 HWND TextEdit(HWND parent, int id, int x, int y, int width, int limit, const std::string& value) {
-  const auto text = Wide(value);
+  const auto text = WideFromUtf8(value);
   HWND control = CreateScaledChild(
     parent, WS_EX_CLIENTEDGE, L"EDIT", text.c_str(), WS_TABSTOP | ES_AUTOHSCROLL,
     x, y, width, 24, id);
@@ -308,7 +284,7 @@ HWND TextEdit(HWND parent, int id, int x, int y, int width, int limit, const std
   std::wstring value(static_cast<std::size_t>(length) + 1, L'\0');
   GetWindowTextW(control, value.data(), length + 1);
   value.resize(static_cast<std::size_t>(length));
-  return TruncateUtf8(Utf8(value), maximum);
+  return TruncateUtf8(Utf8FromWide(value), maximum);
 }
 
 void AddComboItems(HWND combo, std::initializer_list<const wchar_t*> values, int selected) {
@@ -426,7 +402,7 @@ LRESULT CALLBACK JsonWindowProcedure(
   switch (message) {
     case WM_CREATE: {
       state->dpi = std::max(96u, GetDpiForWindow(window));
-      const auto encoded = Wide(EncodeSettingsUtf8(*state->settings, true));
+      const auto encoded = WideFromUtf8(EncodeSettingsUtf8(*state->settings, true));
       state->edit = CreateScaledChild(
         window, WS_EX_CLIENTEDGE, L"EDIT", encoded.c_str(),
         WS_TABSTOP | WS_VSCROLL | WS_HSCROLL |
@@ -467,9 +443,9 @@ LRESULT CALLBACK JsonWindowProcedure(
         GetWindowTextW(state->edit, value.data(), length + 1);
         value.resize(static_cast<std::size_t>(length));
         std::string error;
-        auto decoded = DecodeSettings(Utf8(value), &error);
+        auto decoded = DecodeSettings(Utf8FromWide(value), &error);
         if (!decoded.has_value()) {
-          const auto messageText = Wide(error);
+          const auto messageText = WideFromUtf8(error);
           MessageBoxW(window, messageText.c_str(), L"Invalid settings JSON", MB_OK | MB_ICONERROR);
           return 0;
         }

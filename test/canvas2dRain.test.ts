@@ -10,6 +10,7 @@ afterEach(() => {
 
 function canvasHarness(): {
   canvas: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
   fillRect: ReturnType<typeof vi.fn>;
   fillText: ReturnType<typeof vi.fn>;
   requestFrame: ReturnType<typeof vi.fn>;
@@ -37,6 +38,8 @@ function canvasHarness(): {
   const canvas = {
     width: 180,
     height: 180,
+    clientWidth: 180,
+    clientHeight: 180,
     getContext: vi.fn((kind: string) => kind === "2d" ? context : null),
   } as unknown as HTMLCanvasElement;
 
@@ -55,6 +58,7 @@ function canvasHarness(): {
 
   return {
     canvas,
+    context,
     fillRect,
     fillText,
     requestFrame,
@@ -87,6 +91,20 @@ describe("Canvas2D gold sparkle", () => {
 });
 
 describe("Canvas2D host lifecycle", () => {
+  it("scales glyph geometry to the backing-store ratio on high-density displays", () => {
+    const harness = canvasHarness();
+    Object.defineProperties(harness.canvas, {
+      clientWidth: { value: 90 },
+      clientHeight: { value: 90 },
+    });
+
+    const rain = startCanvas2dRain(harness.canvas, "classic", 1);
+    harness.runNextFrame(0);
+
+    expect(harness.context.font).toBe("36px monospace");
+    rain.stop();
+  });
+
   it("keeps requesting RAF while Wallpaper Engine gates skipped frames", () => {
     const harness = canvasHarness();
     const limiter = new WallpaperEngineFpsLimiter();

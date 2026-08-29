@@ -184,7 +184,7 @@ static uint32_t MatrixCodeFNV1aChecksum(NSData *data) {
     }
 
     [simulation setMessageTargets:@{@10: @101}];
-    [simulation resizeToColumns:16 rows:11];
+    XCTAssertTrue([simulation resizeToColumns:16 rows:11]);
 
     XCTAssertEqual(simulation.columns, 16);
     XCTAssertEqual(simulation.rows, 11);

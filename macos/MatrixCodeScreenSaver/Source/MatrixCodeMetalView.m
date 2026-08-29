@@ -2,6 +2,7 @@
 
 #import <CoreText/CoreText.h>
 #import <CoreVideo/CoreVideo.h>
+#import <dispatch/dispatch.h>
 #import <float.h>
 #import <simd/simd.h>
 #import <stddef.h>
@@ -88,6 +89,7 @@ static const size_t MatrixCodeAtlasCellPixels = 64;
 static const uint32_t MatrixCodeNormalRainSeed = 0x1a2b3cU;
 static const uint32_t MatrixCodeRainLaneSeedMultiplier = 0x9e3779b9U;
 static const NSInteger MatrixCodeMaximumRainLanes = 8;
+static const NSUInteger MatrixCodeInFlightFrameCount = 3;
 // Covers more than 15 hours even at the shortest legal reveal+gap cadence; the guard is therefore
 // reserved for genuinely stale/hostile epochs rather than ordinary frame stalls or overnight sleep.
 static const NSUInteger MatrixCodeMaximumSynchronizedImageFastForwardSteps = 65536;
@@ -714,10 +716,12 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 @property(nonatomic, strong) id<MTLBuffer> instanceBuffer;
 @property(nonatomic, copy) NSArray<id<MTLBuffer>> *instanceBuffers;
 @property(nonatomic) NSUInteger instanceBufferIndex;
+@property(nonatomic, strong) dispatch_semaphore_t inFlightFrameSemaphore;
 @property(nonatomic) NSUInteger instanceCapacity;
 @property(nonatomic) NSUInteger instanceCount;
 @property(nonatomic) MatrixCodeUniforms uniforms;
 @property(nonatomic, copy) NSDictionary<NSString *, id> *controls;
+@property(nonatomic, copy) NSDictionary<NSString *, id> *overlapLaneControls;
 @property(nonatomic, copy) NSDictionary<NSString *, id> *session;
 @property(nonatomic) uint32_t seed;
 @property(nonatomic) NSTimeInterval epochSeconds;
@@ -796,6 +800,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 - (void)updateActiveImageFrameStateAtTime:(NSTimeInterval)now;
 - (void)updateDrawableSizeForCurrentRenderScale;
 - (MatrixCodeMessageScheduler *)newMessageScheduler;
+- (void)resetActiveImageState;
 - (void)previewMessageDocument:(NSDictionary<NSString *, id> *)document
                          atDate:(NSDate *)date;
 @end
@@ -882,6 +887,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.renderScale = 1;
     self.activeOverlapLaneIndexes = [NSMutableIndexSet indexSet];
     self.localSimulationStateData = [NSMutableData data];
+    self.inFlightFrameSemaphore = dispatch_semaphore_create(MatrixCodeInFlightFrameCount);
     self.session = session ?: @{};
     self.seed = [session[@"seed"] respondsToSelector:@selector(unsignedIntValue)]
         ? [session[@"seed"] unsignedIntValue]
@@ -1016,16 +1022,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     // tokenRunStartSeconds first, so use the same origin for deterministic image
     // scheduling instead of retaining the preceding screen-saver activation.
     self.imageEpochSeconds = self.tokenRunStartSeconds;
-    self.activeImage = nil;
-    self.activeImageMaskData = nil;
-    self.activeImageWidth = 0;
-    self.activeImageHeight = 0;
-    self.activeImageStart = 0;
-    self.activeImageEnd = 0;
-    self.activeImageFrameIntensity = 1;
-    self.activeImageFrameScramble = 0;
-    self.activeImagePlacementX = 0.5;
-    self.activeImagePlacementY = 0.5;
+    [self resetActiveImageState];
     double imageFrequency = MatrixCodeNumber(
         self.images, @"frequencyMs", 14000, 500, 600000) / 1000.0;
     self.nextImageFire = self.imageEpochSeconds + imageFrequency *
@@ -1151,6 +1148,8 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         if ([object isKindOfClass:NSDictionary.class]) controls = object;
     }
     self.controls = MatrixCodeSanitizeControlsDocument(controls);
+    self.overlapLaneControls = MatrixCodeRainControlsWithDensity(
+        self.controls, MatrixCodeOverlapOnsetDensity);
     self.messages = MatrixCodeStoredMessagesDocument(storedValues) ?:
         MatrixCodeDefaultMessages();
     NSDictionary *images = nil;
@@ -1180,16 +1179,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         [self.messageScheduler configureWithDocument:self.messages];
     }
     if (!previousImages || ![previousImages isEqual:self.images]) {
-        self.activeImage = nil;
-        self.activeImageMaskData = nil;
-        self.activeImageWidth = 0;
-        self.activeImageHeight = 0;
-        self.activeImageStart = 0;
-        self.activeImageEnd = 0;
-        self.activeImageFrameIntensity = 1;
-        self.activeImageFrameScramble = 0;
-        self.activeImagePlacementX = 0.5f;
-        self.activeImagePlacementY = 0.5f;
+        [self resetActiveImageState];
         double imageFrequency = MatrixCodeNumber(self.images, @"frequencyMs", 14000, 500,
                                                   600000) / 1000.0;
         self.nextImageFire = scheduleBase + imageFrequency *
@@ -1494,19 +1484,21 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                                                           height:height
                                                        mipmapped:YES];
     descriptor.usage = MTLTextureUsageShaderRead;
-    self.atlas = [self.device newTextureWithDescriptor:descriptor];
-    [self.atlas replaceRegion:MTLRegionMake2D(0, 0, width, height)
-                  mipmapLevel:0
-                    withBytes:pixels.bytes
-                  bytesPerRow:width];
+    id<MTLTexture> atlas = [self.device newTextureWithDescriptor:descriptor];
+    if (!atlas) return NO;
+    [atlas replaceRegion:MTLRegionMake2D(0, 0, width, height)
+             mipmapLevel:0
+               withBytes:pixels.bytes
+             bytesPerRow:width];
     id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
-    if (commandBuffer) {
-        id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
-        [blit generateMipmapsForTexture:self.atlas];
-        [blit endEncoding];
-        [commandBuffer commit];
-    }
-    return self.atlas != nil;
+    if (!commandBuffer) return NO;
+    id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
+    if (!blit) return NO;
+    [blit generateMipmapsForTexture:atlas];
+    [blit endEncoding];
+    [commandBuffer commit];
+    self.atlas = atlas;
+    return YES;
 }
 
 - (BOOL)ensureRenderTargetsForWidth:(NSUInteger)width
@@ -1526,6 +1518,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 
     id<MTLTexture> scene = MatrixCodeCreateRenderTarget(
         self.device, MTLPixelFormatRGBA16Float, width, height);
+    if (!scene) return NO;
     NSMutableArray<id<MTLTexture>> *mainTextures =
         [NSMutableArray arrayWithCapacity:(NSUInteger)bloomLevelCount];
     NSMutableArray<id<MTLTexture>> *temporaryTextures =
@@ -1541,8 +1534,6 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         [mainTextures addObject:main];
         [temporaryTextures addObject:temporary];
     }
-    if (!scene) return NO;
-
     self.sceneTexture = scene;
     self.bloomMainTextures = mainTextures;
     self.bloomTemporaryTextures = temporaryTextures;
@@ -1827,7 +1818,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     [self.activeOverlapLaneIndexes removeAllIndexes];
 }
 
-- (void)ensureRainSimulationsForSharedDisplayGrid:(BOOL)sharedDisplayGrid
+- (BOOL)ensureRainSimulationsForSharedDisplayGrid:(BOOL)sharedDisplayGrid
                                       localColumns:(NSInteger)localColumns
                                            localRows:(NSInteger)localRows
                                       virtualColumns:(NSInteger)virtualColumns
@@ -1840,15 +1831,17 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             self.rainSimulation.columns != virtualColumns ||
             self.rainSimulation.rows != virtualRows;
         if (reconstruct) {
-            self.rainSimulation = [[MatrixCodeRainSimulation alloc]
+            MatrixCodeRainSimulation *simulation = [[MatrixCodeRainSimulation alloc]
                 initWithColumns:virtualColumns
                            rows:virtualRows
                          config:MatrixCodeRainSimulationDefaultConfig()
                       glyphMode:glyphMode
                            seed:self.seed];
-            [self.rainSimulation warmUpDistributedWithControls:self.controls
-                                                       seconds:MatrixCodeRainWarmupSeconds
-                                                          step:MatrixCodeRainFixedStepSeconds];
+            if (!simulation) return NO;
+            [simulation warmUpDistributedWithControls:self.controls
+                                              seconds:MatrixCodeRainWarmupSeconds
+                                                 step:MatrixCodeRainFixedStepSeconds];
+            self.rainSimulation = simulation;
             self.simulationClockSeconds = MatrixCodeRainWarmupSeconds;
             self.overlapSimulations = @[];
             [self.activeOverlapLaneIndexes removeAllIndexes];
@@ -1862,19 +1855,21 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         if (self.localSimulationStateData.length != localLength) {
             self.localSimulationStateData = [NSMutableData dataWithLength:localLength];
         }
-        return;
+        return YES;
     }
 
-    BOOL construct = !self.rainSimulation || self.simulationUsesSharedDisplayGrid;
+    BOOL construct = !self.rainSimulation || self.simulationUsesSharedDisplayGrid ||
+        self.overlapSimulations.count != (NSUInteger)(MatrixCodeMaximumRainLanes - 1);
     if (construct) {
-        self.rainSimulation = [[MatrixCodeRainSimulation alloc]
+        MatrixCodeRainSimulation *baseSimulation = [[MatrixCodeRainSimulation alloc]
             initWithColumns:localColumns
                        rows:localRows
                      config:MatrixCodeRainSimulationDefaultConfig()
                   glyphMode:glyphMode
                        seed:MatrixCodeNormalRainSeed];
-        self.rainSimulation.spawnRateScale = lanes[0].weight;
-        [self.rainSimulation
+        if (!baseSimulation) return NO;
+        baseSimulation.spawnRateScale = lanes[0].weight;
+        [baseSimulation
             warmUpWithControls:MatrixCodeRainControlsWithDensity(self.controls, lanes[0].density)
                          seconds:MatrixCodeRainWarmupSeconds
                             step:MatrixCodeRainFixedStepSeconds];
@@ -1888,32 +1883,36 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                          config:MatrixCodeRainSimulationDefaultConfig()
                       glyphMode:glyphMode
                            seed:MatrixCodeRainSeedForLane(MatrixCodeNormalRainSeed, laneIndex)];
+            if (!simulation) return NO;
             [overlap addObject:simulation];
         }
-        self.overlapSimulations = overlap;
-        [self.activeOverlapLaneIndexes removeAllIndexes];
+        NSMutableIndexSet *activeOverlapLaneIndexes = [NSMutableIndexSet indexSet];
         for (NSInteger position = 1; position < laneCount; position++) {
             MatrixCodeRainLane lane = lanes[position];
             MatrixCodeRainSimulation *simulation =
-                self.overlapSimulations[(NSUInteger)(lane.index - 1)];
+                overlap[(NSUInteger)(lane.index - 1)];
             simulation.spawnRateScale = lane.weight;
             [simulation
                 warmUpWithControls:MatrixCodeRainControlsWithDensity(self.controls, lane.density)
                              seconds:MatrixCodeRainWarmupSeconds
                                 step:MatrixCodeRainFixedStepSeconds];
-            [self.activeOverlapLaneIndexes addIndex:(NSUInteger)lane.index];
+            [activeOverlapLaneIndexes addIndex:(NSUInteger)lane.index];
         }
+        self.rainSimulation = baseSimulation;
+        self.overlapSimulations = overlap;
+        self.activeOverlapLaneIndexes = activeOverlapLaneIndexes;
         self.hasLastNormalSimulationTime = NO;
         self.externalRampFromEmpty = NO;
     } else {
-        [self.rainSimulation resizeToColumns:localColumns rows:localRows];
+        if (![self.rainSimulation resizeToColumns:localColumns rows:localRows]) return NO;
         self.rainSimulation.glyphMode = glyphMode;
         for (MatrixCodeRainSimulation *simulation in self.overlapSimulations) {
-            [simulation resizeToColumns:localColumns rows:localRows];
+            if (![simulation resizeToColumns:localColumns rows:localRows]) return NO;
             simulation.glyphMode = glyphMode;
         }
     }
     self.simulationUsesSharedDisplayGrid = NO;
+    return YES;
 }
 
 - (NSArray<MatrixCodeMessageRegion *> *)messageRegionsForSharedDisplayGrid:(BOOL)sharedDisplayGrid
@@ -1963,20 +1962,29 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     return self.localSimulationStateData;
 }
 
-- (void)ensureInstanceCapacity:(NSUInteger)capacity {
-    if (capacity <= self.instanceCapacity) return;
-    self.instanceCapacity = MAX(capacity, MAX((NSUInteger)4096, self.instanceCapacity * 2));
-    NSMutableArray<id<MTLBuffer>> *buffers = [NSMutableArray arrayWithCapacity:3];
-    for (NSUInteger index = 0; index < 3; index++) {
+- (BOOL)ensureInstanceCapacity:(NSUInteger)capacity {
+    if (capacity <= self.instanceCapacity &&
+        self.instanceBuffers.count == MatrixCodeInFlightFrameCount) {
+        return YES;
+    }
+    NSUInteger nextCapacity = MAX(
+        capacity,
+        MAX((NSUInteger)4096, self.instanceCapacity * 2));
+    NSMutableArray<id<MTLBuffer>> *buffers =
+        [NSMutableArray arrayWithCapacity:MatrixCodeInFlightFrameCount];
+    for (NSUInteger index = 0; index < MatrixCodeInFlightFrameCount; index++) {
         id<MTLBuffer> buffer =
-            [self.device newBufferWithLength:self.instanceCapacity * sizeof(MatrixCodeGlyphInstance)
+            [self.device newBufferWithLength:nextCapacity * sizeof(MatrixCodeGlyphInstance)
                                      options:MTLResourceStorageModeShared |
                                              MTLResourceCPUCacheModeWriteCombined];
-        if (buffer) [buffers addObject:buffer];
+        if (!buffer) return NO;
+        [buffers addObject:buffer];
     }
+    self.instanceCapacity = nextCapacity;
     self.instanceBuffers = buffers;
     self.instanceBufferIndex = 0;
     self.instanceBuffer = buffers.firstObject;
+    return YES;
 }
 
 - (void)updateInstancesForDrawableSize:(CGSize)drawableSize {
@@ -2037,13 +2045,16 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             .index = 0, .offset = 0, .density = configuredDensity, .weight = 1,
         };
     }
-    [self ensureRainSimulationsForSharedDisplayGrid:usesSharedDisplayGrid
-                                       localColumns:columns
-                                           localRows:rows
-                                      virtualColumns:virtualColumns
-                                           virtualRows:virtualRows
-                                                 lanes:lanes
-                                             laneCount:laneCount];
+    if (![self ensureRainSimulationsForSharedDisplayGrid:usesSharedDisplayGrid
+                                            localColumns:columns
+                                                localRows:rows
+                                           virtualColumns:virtualColumns
+                                                virtualRows:virtualRows
+                                                      lanes:lanes
+                                                  laneCount:laneCount]) {
+        self.instanceCount = 0;
+        return;
+    }
 
     if (self.needsDeterministicRestartFromEmpty && !usesSharedDisplayGrid) {
         if (self.deterministicRestartStartsEmpty) {
@@ -2084,7 +2095,12 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     }
 
     NSInteger wrapColumns = usesSharedDisplayGrid ? 0 : 1;
-    [self ensureInstanceCapacity:(NSUInteger)((columns + wrapColumns) * rows * laneCount)];
+    NSUInteger requiredInstanceCapacity =
+        (NSUInteger)(columns + wrapColumns) * (NSUInteger)rows * (NSUInteger)laneCount;
+    if (![self ensureInstanceCapacity:requiredInstanceCapacity]) {
+        self.instanceCount = 0;
+        return;
+    }
     if (self.instanceBuffers.count > 0) {
         self.instanceBufferIndex = (self.instanceBufferIndex + 1) % self.instanceBuffers.count;
         self.instanceBuffer = self.instanceBuffers[self.instanceBufferIndex];
@@ -2169,19 +2185,16 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             NSTimeInterval stepDelta = 0;
             NSInteger steps = MatrixCodeSimulationStepPlan(frameElapsed, &stepDelta);
             NSDictionary<NSString *, id> *baseControls =
-                MatrixCodeRainControlsWithDensity(self.controls, lanes[0].density);
-            NSDictionary<NSString *, id> *laneControls[8] = {};
-            for (NSInteger position = 1; position < laneCount; position++) {
-                laneControls[position] = MatrixCodeRainControlsWithDensity(
-                    self.controls, lanes[position].density);
-            }
+                lanes[0].density == configuredDensity
+                    ? self.controls
+                    : self.overlapLaneControls;
             for (NSInteger step = 0; step < steps; step++) {
                 [self.rainSimulation updateWithDeltaTime:stepDelta controls:baseControls];
                 for (NSInteger position = 1; position < laneCount; position++) {
                     MatrixCodeRainSimulation *simulation =
                         self.overlapSimulations[(NSUInteger)(lanes[position].index - 1)];
-                    [simulation updateWithDeltaTime:stepDelta
-                                           controls:laneControls[position]];
+                    // Every overlap lane uses the same onset density as the base lane.
+                    [simulation updateWithDeltaTime:stepDelta controls:baseControls];
                 }
             }
             self.activeOverlapLaneIndexes = nextActiveOverlapLanes;
@@ -2433,12 +2446,25 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             self.frameHandler(self, frameDate, framesPerSecond);
         }
     }
+    dispatch_semaphore_wait(self.inFlightFrameSemaphore, DISPATCH_TIME_FOREVER);
+    id<CAMetalDrawable> drawable = view.currentDrawable;
+    if (!drawable) {
+        dispatch_semaphore_signal(self.inFlightFrameSemaphore);
+        self.hasCurrentFrameTime = NO;
+        return;
+    }
     [self updateInstancesForDrawableSize:view.drawableSize];
     self.hasCurrentFrameTime = NO;
-    id<CAMetalDrawable> drawable = view.currentDrawable;
-    if (!drawable) return;
     id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
-    if (![self encodeFrameToTexture:drawable.texture commandBuffer:commandBuffer]) return;
+    if (![self encodeFrameToTexture:drawable.texture commandBuffer:commandBuffer]) {
+        dispatch_semaphore_signal(self.inFlightFrameSemaphore);
+        return;
+    }
+    dispatch_semaphore_t semaphore = self.inFlightFrameSemaphore;
+    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
+        (void)completedCommandBuffer;
+        dispatch_semaphore_signal(semaphore);
+    }];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];
 }

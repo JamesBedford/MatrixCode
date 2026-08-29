@@ -16,7 +16,7 @@ cbuffer GlyphConstants : register(b0) {
   float leadBrightness;
   float goldSparkle;
   float elapsedSeconds;
-  float2 _padGlyphAlignment;
+  float2 atlasGrid;
   float3 backgroundColor;
   float _pad0;
   float3 tailColor;
@@ -76,21 +76,20 @@ float4 GlyphPs(FullscreenOutput input) : SV_Target {
   float phase = (flags & 63) / 63.0;
   bool isHead = (flags & 128) != 0;
   bool whiteHead = (flags & 64) != 0;
-  const float atlasColumns = 14.0;
-  const float atlasRows = 13.0;
-  const float2 atlasGrid = float2(atlasColumns, atlasRows);
-  float2 newTile = float2(newGlyph % 14, newGlyph / 14);
-  float2 oldTile = float2(oldGlyph % 14, oldGlyph / 14);
+  const float2 safeAtlasGrid = max(atlasGrid, float2(1.0, 1.0));
+  const uint atlasColumns = (uint)safeAtlasGrid.x;
+  float2 newTile = float2(newGlyph % atlasColumns, newGlyph / atlasColumns);
+  float2 oldTile = float2(oldGlyph % atlasColumns, oldGlyph / atlasColumns);
   // Derive the mip LOD from the continuous cell coordinate. Using the
   // discontinuous withinCell value here makes the derivatives spike at each
   // frac() seam, selecting a coarse, cell-averaged mip that bloom exposes as
   // a bright rectangular outline around intense glyphs.
-  float2 atlasDdx = ddx(cellCoordinate) / atlasGrid;
-  float2 atlasDdy = ddy(cellCoordinate) / atlasGrid;
+  float2 atlasDdx = ddx(cellCoordinate) / safeAtlasGrid;
+  float2 atlasDdy = ddy(cellCoordinate) / safeAtlasGrid;
   float newCoverage = texture1.SampleGrad(
-    linearSampler, (newTile + withinCell) / atlasGrid, atlasDdx, atlasDdy).a;
+    linearSampler, (newTile + withinCell) / safeAtlasGrid, atlasDdx, atlasDdy).a;
   float oldCoverage = texture1.SampleGrad(
-    linearSampler, (oldTile + withinCell) / atlasGrid, atlasDdx, atlasDdy).a;
+    linearSampler, (oldTile + withinCell) / safeAtlasGrid, atlasDdx, atlasDdy).a;
   float coverage = lerp(oldCoverage, newCoverage, phase);
   float sparklePulse = max(isHead ? 0.45 : 0.0, 4.0 * phase * (1.0 - phase));
   float sparkle = goldSparkle * sparklePulse * smoothstep(0.45, 0.95, brightness);

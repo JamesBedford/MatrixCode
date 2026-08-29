@@ -11,6 +11,14 @@ export function createFullscreenTri(gl: WebGL2RenderingContext): twgl.BufferInfo
   });
 }
 
+/** Release every WebGL buffer owned by a fullscreen triangle. */
+export function disposeFullscreenTri(gl: WebGL2RenderingContext, bufferInfo: twgl.BufferInfo): void {
+  const buffers = new Set<WebGLBuffer>();
+  if (bufferInfo.indices) buffers.add(bufferInfo.indices);
+  for (const attribute of Object.values(bufferInfo.attribs ?? {})) buffers.add(attribute.buffer);
+  for (const buffer of buffers) gl.deleteBuffer(buffer);
+}
+
 /** Draw the full-screen triangle with the given program + uniforms. */
 export function drawFullscreen(
   gl: WebGL2RenderingContext,

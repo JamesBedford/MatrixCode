@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <sstream>
 #include <string_view>
@@ -44,7 +45,7 @@ struct alignas(16) GlyphConstants {
   float leadBrightness = 1.6f;
   float goldSparkle = 0.0f;
   float elapsedSeconds = 0.0f;
-  float padAlignment[2]{};
+  float atlasGrid[2]{1.0f, 1.0f};
   float background[3]{};
   float pad0 = 0.0f;
   float tail[3]{};
@@ -74,6 +75,12 @@ struct alignas(16) OverlayConstants {
   float opacity = 0.0f;
   float padding[3]{};
 };
+
+static_assert(offsetof(GlyphConstants, atlasGrid) == 56);
+static_assert(offsetof(GlyphConstants, background) == 64);
+static_assert(sizeof(GlyphConstants) == 144);
+static_assert(sizeof(PostConstants) == 48);
+static_assert(sizeof(OverlayConstants) == 32);
 
 [[nodiscard]] bool CreateTarget(
     ID3D11Device* device,
@@ -213,6 +220,8 @@ struct D3D11Renderer::Impl {
   GlyphMode atlasMode = GlyphMode::Matrix;
   GlyphFont atlasFont = GlyphFont::Matrix;
   bool atlasMirror = true;
+  std::uint32_t atlasColumns = 1;
+  std::uint32_t atlasRows = 1;
   ComPtr<ID3D11Texture2D> overlayTexture;
   ComPtr<ID3D11ShaderResourceView> overlayResource;
   std::string overlayText;
@@ -249,6 +258,7 @@ struct D3D11Renderer::Impl {
   Target scene;
   std::array<Target, 3> bloomA;
   std::array<Target, 3> bloomB;
+  std::size_t bloomLevelsAllocated = 0;
 
   [[nodiscard]] bool CreateDevice(const bool forceWarp) {
     constexpr std::array<D3D_FEATURE_LEVEL, 4> levels{
@@ -600,17 +610,27 @@ struct D3D11Renderer::Impl {
     atlasMode = controls.glyphMode;
     atlasFont = controls.glyphFont;
     atlasMirror = controls.mirror;
+    atlasColumns = bitmap.columns;
+    atlasRows = bitmap.rows;
     return true;
   }
 
-  [[nodiscard]] bool EnsureTargets(const std::uint32_t nextWidth, const std::uint32_t nextHeight) {
-    const bool complete = scene.texture != nullptr &&
-      std::all_of(bloomA.begin(), bloomA.end(), [](const Target& target) {
+  [[nodiscard]] bool EnsureTargets(
+      const std::uint32_t nextWidth,
+      const std::uint32_t nextHeight,
+      const std::size_t requiredBloomLevels) {
+    const auto levelCount = std::clamp<std::size_t>(requiredBloomLevels, 1, bloomA.size());
+    const bool complete = scene.texture != nullptr && std::all_of(
+      bloomA.begin(), bloomA.begin() + static_cast<std::ptrdiff_t>(levelCount),
+      [](const Target& target) {
         return target.texture != nullptr;
-      }) && std::all_of(bloomB.begin(), bloomB.end(), [](const Target& target) {
+      }) && std::all_of(
+      bloomB.begin(), bloomB.begin() + static_cast<std::ptrdiff_t>(levelCount),
+      [](const Target& target) {
         return target.texture != nullptr;
       });
-    if (complete && sceneWidth == nextWidth && sceneHeight == nextHeight) return true;
+    if (complete && sceneWidth == nextWidth && sceneHeight == nextHeight &&
+        bloomLevelsAllocated == levelCount) return true;
     const auto targetWidth = std::max(1u, nextWidth);
     const auto targetHeight = std::max(1u, nextHeight);
     Target nextScene;
@@ -622,7 +642,7 @@ struct D3D11Renderer::Impl {
     }
     std::uint32_t levelWidth = std::max(1u, targetWidth / 2);
     std::uint32_t levelHeight = std::max(1u, targetHeight / 2);
-    for (std::size_t level = 0; level < nextBloomA.size(); ++level) {
+    for (std::size_t level = 0; level < levelCount; ++level) {
       if (!CreateTarget(device.Get(), levelWidth, levelHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, nextBloomA[level]) ||
           !CreateTarget(device.Get(), levelWidth, levelHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, nextBloomB[level])) {
         return false;
@@ -635,6 +655,7 @@ struct D3D11Renderer::Impl {
     bloomB = std::move(nextBloomB);
     sceneWidth = targetWidth;
     sceneHeight = targetHeight;
+    bloomLevelsAllocated = levelCount;
     return true;
   }
 
@@ -720,7 +741,10 @@ bool D3D11Renderer::Render(
     std::floor(static_cast<float>(impl_->width) * std::clamp(parameters.adaptiveScale, 0.5f, 1.0f))));
   const auto sceneHeight = std::max(1u, static_cast<std::uint32_t>(
     std::floor(static_cast<float>(impl_->height) * std::clamp(parameters.adaptiveScale, 0.5f, 1.0f))));
-  if (!impl_->EnsureTargets(sceneWidth, sceneHeight)) return false;
+  const auto bloomLevels = static_cast<std::size_t>(
+    parameters.controls.quality == QualityTier::Low ? 1 :
+    parameters.controls.quality == QualityTier::Medium ? 2 : 3);
+  if (!impl_->EnsureTargets(sceneWidth, sceneHeight, bloomLevels)) return false;
 
   constexpr float clearBlack[4]{0, 0, 0, 0};
   impl_->context->ClearRenderTargetView(impl_->scene.target.Get(), clearBlack);
@@ -736,9 +760,7 @@ bool D3D11Renderer::Render(
   post.glow = static_cast<float>(parameters.controls.glow);
   post.vignette = static_cast<float>(parameters.controls.vignette);
   post.scanlines = parameters.controls.scanlines ? 0.12f : 0.0f;
-  post.bloomLevels = static_cast<float>(
-    parameters.controls.quality == QualityTier::Low ? 1 :
-    parameters.controls.quality == QualityTier::Medium ? 2 : 3);
+  post.bloomLevels = static_cast<float>(bloomLevels);
   std::copy(parameters.palette.background.begin(), parameters.palette.background.end(), post.background);
   UpdateConstant(impl_->context.Get(), impl_->postConstants.Get(), post);
   ID3D11Buffer* postBuffer = impl_->postConstants.Get();
@@ -757,6 +779,8 @@ bool D3D11Renderer::Render(
     glyph.logicalPerPixel[1] = parameters.logicalPerPixelY;
     glyph.gridSize[0] = static_cast<float>(layer.columns);
     glyph.gridSize[1] = static_cast<float>(layer.rows);
+    glyph.atlasGrid[0] = static_cast<float>(impl_->atlasColumns);
+    glyph.atlasGrid[1] = static_cast<float>(impl_->atlasRows);
     glyph.cellPixels = parameters.cellPixels;
     glyph.laneOffset = layer.offsetCells;
     glyph.laneWeight = layer.weight;

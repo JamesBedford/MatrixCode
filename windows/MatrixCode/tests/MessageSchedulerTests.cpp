@@ -133,6 +133,22 @@ void RunMessageSchedulerTests() {
   }
 
   {
+    auto document = Document();
+    document.messages = {std::string("A\xF0\x9F\x98\x80" "B")};
+    document.position = 0.5;
+    document.jitter = 0.0;
+    document.horizontalPosition = 0.5;
+    document.horizontalJitter = 0.0;
+    FakeMessageSink sink(20, 11);
+    MessageScheduler scheduler(1u);
+    scheduler.PreviewOne(0.0, sink, document);
+    MX_EXPECT_EQ(sink.targets.size(), static_cast<std::size_t>(2));
+    const std::size_t row = sink.targets.begin()->first / sink.Columns();
+    MX_EXPECT(sink.targets.contains(row * sink.Columns() + 9));
+    MX_EXPECT(sink.targets.contains(row * sink.Columns() + 11));
+  }
+
+  {
     const std::array<MessageRegion, 1> region{{{3.0, 2.0, 10.0, 5.0}}};
     auto left = Document();
     left.messages = {"ABC"};

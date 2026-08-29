@@ -1,4 +1,13 @@
-import type { ColorPreset, Controls, Grid, RenderParams, MessagesDoc, ImagesDoc, ImageMask } from "./types.ts";
+import type {
+  ColorPreset,
+  Controls,
+  CountdownDoc,
+  Grid,
+  RenderParams,
+  MessagesDoc,
+  ImagesDoc,
+  ImageMask,
+} from "./types.ts";
 import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
 import { MessageScheduler } from "./sim/messageScheduler.ts";
@@ -200,6 +209,15 @@ export async function mountMatrixRain(
   const imagesStore = wallpaperInitial
     ? new ImagesStore(null, wallpaperImagesDoc(wallpaperInitial.images))
     : new ImagesStore();
+  // ImagesStore.get() deliberately deep-clones its document for editor callers. Rendering only reads
+  // the document, so retain one snapshot and replace it whenever the store is updated instead of
+  // cloning as many as 64 image records on every animation frame.
+  let currentImagesDoc = imagesStore.get();
+  const storeImages = (doc: ImagesDoc): ImagesDoc => {
+    imagesStore.set(doc);
+    currentImagesDoc = imagesStore.get();
+    return currentImagesDoc;
+  };
   if (options && !wallpaperHosted) controls.set(options);
   applyChromeAccent(getPreset(controls.get().preset, controls.get().customColor));
   applyFavicon(getPreset(controls.get().preset, controls.get().customColor));
@@ -221,7 +239,7 @@ export async function mountMatrixRain(
     let fallbackPauseStartedAtMs = fallbackPaused ? performance.now() : null;
     const imageEpoch = performance.now();
     const fallbackImages = new ImageScheduler({ seed: BASE_SEED, epochMs: imageEpoch });
-    fallbackImages.configure(imagesStore.get(), imageEpoch);
+    fallbackImages.configure(currentImagesDoc, imageEpoch);
     let fallback: Canvas2dRainHandle | null = null;
     let imageGeneration = 0;
     let imageSources = "";
@@ -248,7 +266,7 @@ export async function mountMatrixRain(
             : nowMs;
           return {
             frame: reduceMotion.matches ? null : fallbackImages.update(imageNowMs),
-            doc: imagesStore.get(),
+            doc: currentImagesDoc,
             seed: BASE_SEED,
           };
         },
@@ -275,7 +293,7 @@ export async function mountMatrixRain(
 
     const commitImages = (config: WallpaperEngineImagesConfiguration): void => {
       const doc = wallpaperImagesDoc(config, imageMasks);
-      imagesStore.set(doc);
+      storeImages(doc);
       fallbackImages.configure(doc, performance.now(), true);
       if (fallbackPaused) fallbackPauseStartedAtMs = performance.now();
     };
@@ -379,6 +397,7 @@ export async function mountMatrixRain(
   let extraSims: RainSim[] = [];
   let extraTexs: StateTexture[] = [];
   const extraActive = new Array<boolean>(MAX_LANES - 1).fill(false);
+  const nextExtraActive = new Array<boolean>(MAX_LANES - 1).fill(false);
   let grid: Grid = { cols: 1, rows: 1 };
   let cssW = 1;
   let cssH = 1;
@@ -397,6 +416,7 @@ export async function mountMatrixRain(
     ? createHud(container)
     : null;
   let pending: { w: number; h: number } | null = null;
+  let destroyed = false;
   let running = false;
   let hostActive = true;
   let raf = 0;
@@ -416,6 +436,9 @@ export async function mountMatrixRain(
   let pendingPostIntroDelayMs = 0;
   // Debounce so the live Ramp-up slider replays the build-up once the drag settles, not every step.
   let rampPreviewTimer = 0;
+  let atlasBuildGeneration = 0;
+  let restoringGpu = false;
+  let rebuildAtlasAfterRestore = false;
 
   // Multi-monitor mode: this window is a panel iff the URL carries a slice config.
   const nativeHosted = isNativeHosted();
@@ -426,6 +449,7 @@ export async function mountMatrixRain(
   const hasSettingsUi = !wallpaperHosted && (!panelConfig || panelShowsControls);
   const hasIntroUi = !panelConfig;
   let multiMonitorState: MultiMonitorState | null = null;
+  let enteringMultiMonitor = false;
   let exitChan: ReturnType<typeof openExitChannel> | null = null;
   let controlsChan: ReturnType<typeof openControlsChannel> | null = null;
   let applyingRemoteControls = false;
@@ -487,8 +511,13 @@ export async function mountMatrixRain(
     };
   };
 
-  const buildGpu = async (): Promise<void> => {
-    atlas = await buildGlyphAtlas(gl, atlasOptions());
+  const buildGpu = async (): Promise<boolean> => {
+    const nextAtlas = await buildGlyphAtlas(gl, atlasOptions());
+    if (destroyed || gl.isContextLost()) {
+      gl.deleteTexture(nextAtlas.texture);
+      return false;
+    }
+    atlas = nextAtlas;
     sim = new RainSim({ cols: grid.cols, rows: grid.rows, config: DEFAULT_SIM_CONFIG, glyphSet, seed: BASE_SEED });
     stateTex = new StateTexture(gl, grid.cols, grid.rows);
     // Pre-allocate the overlap-layer pool (memory is tiny; each is a cols×rows sim + state texture).
@@ -511,6 +540,7 @@ export async function mountMatrixRain(
       s.warmUp({ ...c, density: lane.density }, WARMUP_SECONDS);
       extraActive[lane.index - 1] = true;
     }
+    return true;
   };
 
   // Initial size before building GPU resources (sim needs grid dimensions).
@@ -527,7 +557,7 @@ export async function mountMatrixRain(
   }
 
   try {
-    await buildGpu();
+    if (!(await buildGpu())) throw new Error("WebGL context became unavailable during initialization");
   } catch (err) {
     console.error("Matrix GPU init failed, using fallback:", err);
     // A canvas cannot switch context types after WebGL creation; replace it before requesting 2D.
@@ -550,6 +580,17 @@ export async function mountMatrixRain(
   const countdownStore = wallpaperInitial
     ? new CountdownStore(null, wallpaperInitial.countdown)
     : new CountdownStore();
+  // Token resolution runs for every active intro/message frame. Keep its immutable countdown inputs
+  // current at write time instead of deep-cloning the store and rebuilding the moment map per frame.
+  const momentTargets = (doc: CountdownDoc): Record<string, number | null> =>
+    Object.fromEntries(doc.moments.map((moment) => [moment.name, moment.targetMs]));
+  let currentCountdownDoc = countdownStore.get();
+  let currentMomentTargets = momentTargets(currentCountdownDoc);
+  const storeCountdown = (doc: CountdownDoc): void => {
+    countdownStore.set(doc);
+    currentCountdownDoc = countdownStore.get();
+    currentMomentTargets = momentTargets(currentCountdownDoc);
+  };
   let wallpaperUserName = wallpaperInitial?.userName ?? null;
   // When this run began — drives {uptime} and bare {countup} (see resolveTokens / countTarget).
   let runStartMs = Date.now();
@@ -559,20 +600,19 @@ export async function mountMatrixRain(
   // One pure resolver for every surface (intro + in-rain messages). Reads the clock, the default
   // target, and the named moments live, so {time}/{countdown}/{countup} tick without any reconfigure.
   const resolveMessageText = (raw: string): string => {
-    const doc = countdownStore?.get();
     return resolveTokens(raw, {
       // Resolve lazily so an active intro or rain message reflects a viewer-name
       // edit immediately, matching the native host without a page reload.
       name: wallpaperUserName ?? resolveUserName(),
       nowMs: tokenClockMs ?? Date.now(),
-      countdownTargetMs: doc?.targetMs ?? null,
-      moments: Object.fromEntries((doc?.moments ?? []).map((m) => [m.name, m.targetMs])),
+      countdownTargetMs: currentCountdownDoc.targetMs,
+      moments: currentMomentTargets,
       runStartMs: multiMonitorState?.config.epoch ?? runStartMs,
       fps: currentFps,
     });
   };
   // Current moment names, for the intro/messages editors' token hover.
-  const getMomentNames = (): string[] => (countdownStore?.get().moments ?? []).map((m) => m.name);
+  const getMomentNames = (): string[] => currentCountdownDoc.moments.map((moment) => moment.name);
 
   const createMessageScheduler = (doc: MessagesDoc = messagesStore.get()): MessageScheduler => {
     const scheduler = new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED), resolveText: resolveMessageText });
@@ -582,7 +622,7 @@ export async function mountMatrixRain(
   let messageScheduler = createMessageScheduler();
   const initialImageEpoch = panelConfig?.epoch ?? performance.now();
   const createImageScheduler = (
-    doc: ImagesDoc = imagesStore.get(),
+    doc: ImagesDoc = currentImagesDoc,
     config: MultiMonitorConfig | null = multiMonitorState?.config ?? panelConfig,
     nowMs = config?.epoch ?? performance.now(),
   ): ImageScheduler => {
@@ -685,8 +725,8 @@ export async function mountMatrixRain(
 
   const saveImages = (draft: ImagesDoc): void => {
     imageDraftPreviewActive = false;
-    imagesStore.set(draft);
-    imageScheduler.configure(imagesStore.get(), performance.now(), true);
+    const doc = storeImages(draft);
+    imageScheduler.configure(doc, performance.now(), true);
     activeImageFrame = null;
   };
 
@@ -700,7 +740,7 @@ export async function mountMatrixRain(
   const cancelImagePreview = (): void => {
     if (!imageDraftPreviewActive) return;
     imageDraftPreviewActive = false;
-    imageScheduler.configure(imagesStore.get(), performance.now(), true);
+    imageScheduler.configure(currentImagesDoc, performance.now(), true);
     activeImageFrame = null;
   };
 
@@ -747,7 +787,7 @@ export async function mountMatrixRain(
   if (hasSettingsUi && !panelConfig && countdownStore) {
     // No scheduler/overlay reconfigure needed — both surfaces read the store live via resolveMessageText.
     countdownEditor = new CountdownEditor(container, countdownStore, {
-      onSave: (d) => countdownStore.set(d),
+      onSave: storeCountdown,
       onCancel: () => {},
     });
   }
@@ -805,10 +845,14 @@ export async function mountMatrixRain(
 
   const reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  const activeExtraLayers = (): ExtraLayer[] => {
+  const activeExtraLayers = (requestedLanes?: Lane[]): ExtraLayer[] => {
+    let lanes = requestedLanes;
+    if (lanes === undefined) {
+      const current = controls.get();
+      lanes = computeLanes(current.density, current.allowOverlap, tierCap(current.quality));
+    }
     const layers: ExtraLayer[] = [];
-    const c = controls.get();
-    for (const lane of computeLanes(c.density, c.allowOverlap, tierCap(c.quality))) {
+    for (const lane of lanes) {
       if (lane.index === 0) continue;
       const j = lane.index - 1;
       const s = extraSims[j];
@@ -841,7 +885,7 @@ export async function mountMatrixRain(
           height: cssH,
         }
       : undefined;
-    const imageDoc = imagesStore.get();
+    const imageDoc = currentImagesDoc;
     const image = buildImageRenderState({
       frame: activeImageFrame,
       doc: imageDoc,
@@ -867,27 +911,21 @@ export async function mountMatrixRain(
   const laneControls = (c: Controls, density: number): Controls =>
     density === c.density ? c : { ...c, density };
 
-  // Step, upload, and collect the active overlap layers for this frame. Idle lanes are skipped (zero
-  // cost); a lane reactivating after being idle is reset first so it fades in from empty rather than
-  // resuming stale rain. Returns the layer list for the renderer's additive pass.
-  const updateExtraLayers = (lanes: Lane[], dt: number, c: Controls, intro: number): ExtraLayer[] => {
-    const layers: ExtraLayer[] = [];
-    const activeNow = new Array<boolean>(extraSims.length).fill(false);
+  // Step the active overlap layers. Texture uploads happen once after all catch-up substeps, rather
+  // than once per substep, because only the final state can be rendered.
+  const updateExtraLayers = (lanes: Lane[], dt: number, c: Controls, intro: number): void => {
+    nextExtraActive.fill(false);
     for (const lane of lanes) {
       if (lane.index === 0) continue; // index 0 is the base sim, handled separately
       const j = lane.index - 1;
       const s = extraSims[j];
-      const t = extraTexs[j];
-      if (!s || !t) continue;
+      if (!s) continue;
       if (!extraActive[j]) s.reset();
       s.spawnRateScale = intro * lane.weight;
       s.update(dt, laneControls(c, lane.density));
-      t.upload(s.state);
-      activeNow[j] = true;
-      layers.push({ texture: t.texture, colOffset: lane.offset });
+      nextExtraActive[j] = true;
     }
-    for (let j = 0; j < extraActive.length; j++) extraActive[j] = activeNow[j]!;
-    return layers;
+    for (let j = 0; j < extraActive.length; j++) extraActive[j] = nextExtraActive[j]!;
   };
 
   const loop = (now: number): void => {
@@ -964,14 +1002,15 @@ export async function mountMatrixRain(
         sim.update(stepPlan.dt, laneControls(c, lanes[0]!.density));
         // Overlap layers (index >= 1): independent sims at fractional offsets, composited additively.
         // On a slow render frame, bounded substeps preserve wall-clock speed instead of dropping time.
-        extraLayers = updateExtraLayers(lanes, stepPlan.dt, c, intro);
+        updateExtraLayers(lanes, stepPlan.dt, c, intro);
       }
+      extraLayers = activeExtraLayers(lanes);
     }
     // Before rainStartAtMs (after-mode, pre-start): don't advance — the empty grid renders black.
     stateTex.upload(sim.state);
     const image = buildImageRenderState({
       frame: activeImageFrame,
-      doc: imagesStore.get(),
+      doc: currentImagesDoc,
       virtualCols: grid.cols,
       virtualRows: grid.rows,
       seed: BASE_SEED,
@@ -1147,8 +1186,7 @@ export async function mountMatrixRain(
     // cannot retain a stale document while newly opened panel windows use the latest one.
     messageScheduler = createMessageScheduler(new MessagesStore().get());
     const freshImages = new ImagesStore().get();
-    imagesStore.set(freshImages);
-    imageScheduler = createImageScheduler(freshImages, config, config.epoch);
+    imageScheduler = createImageScheduler(storeImages(freshImages), config, config.epoch);
     activeImageFrame = null;
     const lc = config.slice.cols;
     const lr = config.slice.rows;
@@ -1202,7 +1240,7 @@ export async function mountMatrixRain(
       // Multi-monitor images use a synchronized Date.now() epoch. Normal mode is driven by
       // performance.now(), so replace that scheduler when returning instead of feeding it a
       // different clock domain (which would leave every reveal indefinitely in the future).
-      imageScheduler = createImageScheduler(imagesStore.get(), null, performance.now());
+      imageScheduler = createImageScheduler(currentImagesDoc, null, performance.now());
       activeImageFrame = null;
       resetExtras(); // overlap is disabled in multi-monitor mode; start the overlap lanes clean on return
       renderStatic();
@@ -1217,9 +1255,17 @@ export async function mountMatrixRain(
 
   // A short-lived on-screen message (the show hides the normal overlays, so this
   // is how the user learns why a launch didn't go as expected).
+  const transientNotices = new Set<HTMLElement>();
+  const transientNoticeTimers = new Set<number>();
   const flashNotice = (text: string, ms = 6000): void => {
     const n = showNotice(container, text);
-    window.setTimeout(() => n.remove(), ms);
+    transientNotices.add(n);
+    const timer = window.setTimeout(() => {
+      transientNoticeTimers.delete(timer);
+      transientNotices.delete(n);
+      n.remove();
+    }, ms);
+    transientNoticeTimers.add(timer);
   };
 
   let shortcutToast: HTMLElement | null = null;
@@ -1239,13 +1285,39 @@ export async function mountMatrixRain(
 
   // Controller path: start multi-monitor mode across every available monitor.
   const enterMultiMonitor = async (): Promise<void> => {
-    if (nativeHosted || wallpaperHosted || multiMonitorState || panelConfig) return;
+    if (
+      destroyed ||
+      enteringMultiMonitor ||
+      nativeHosted ||
+      wallpaperHosted ||
+      multiMonitorState ||
+      panelConfig
+    ) return;
+    enteringMultiMonitor = true;
     const cell = DEFAULT_SIM_CONFIG.targetCellPx * controls.get().glyphScale;
     let res: MultiMonitorSessionResult;
     try {
       res = await startMultiMonitorSession(container, cell, WARMUP_SECONDS, controls.get().vignette > 0);
     } catch {
       res = { kind: "fallback" };
+    } finally {
+      enteringMultiMonitor = false;
+    }
+    if (destroyed) {
+      if (res.kind === "multiMonitor") {
+        for (const openedWindow of res.openedWindows) {
+          try {
+            openedWindow.close();
+          } catch {
+            /* the window may already have closed while the session request was pending */
+          }
+        }
+        // The fullscreen request is awaited inside startMultiMonitorSession. If teardown happened
+        // while that request was pending, undo a late successful transition as well as closing the
+        // panel windows so destroying the app cannot strand the document in fullscreen.
+        if (document.fullscreenElement === container) void document.exitFullscreen();
+      }
+      return;
     }
     switch (res.kind) {
       case "fallback":
@@ -1290,10 +1362,9 @@ export async function mountMatrixRain(
   };
 
   const toggleImages = (announce = false): void => {
-    const doc = imagesStore.get();
+    const doc = { ...currentImagesDoc, images: [...currentImagesDoc.images] };
     doc.enabled = !doc.enabled;
-    imagesStore.set(doc);
-    imageScheduler.configure(imagesStore.get(), performance.now());
+    imageScheduler.configure(storeImages(doc), performance.now());
     activeImageFrame = null;
     imagesEditor?.syncEnabled(doc.enabled);
     if (announce) showShortcutToast("Images", doc.enabled);
@@ -1437,11 +1508,23 @@ export async function mountMatrixRain(
   // ---------- Context loss / restore ----------
   const onLost = (e: Event): void => {
     e.preventDefault();
+    atlasBuildGeneration++;
+    rebuildAtlasAfterRestore = false;
     stop();
   };
   const onRestored = async (): Promise<void> => {
+    if (destroyed || restoringGpu) return;
+    restoringGpu = true;
     try {
-      await buildGpu();
+      if (!(await buildGpu()) || destroyed) return;
+      // buildGpu reconstructs resources from the current local render grid. Multi-monitor mode,
+      // however, simulates the full virtual grid and only uploads this window's slice. Re-enter its
+      // canonical setup path so a restored context cannot leave slice extraction reading a local sim.
+      if (multiMonitorState) {
+        const { config, isController, openedWindows } = multiMonitorState;
+        enterMultiMonitorRender(config, isController, openedWindows);
+        return;
+      }
       // If context loss happened before the choreographed rain start, the fresh sim is
       // warmed-up; empty it again so the black-then-build effect is preserved.
       if (performance.now() < rainStartAtMs) {
@@ -1452,11 +1535,47 @@ export async function mountMatrixRain(
       if (reduceMq.matches) renderStatic();
       else start();
     } catch (err) {
-      console.error("Context restore failed:", err);
+      if (!destroyed) console.error("Context restore failed:", err);
+    } finally {
+      restoringGpu = false;
+      if (rebuildAtlasAfterRestore && !destroyed) {
+        rebuildAtlasAfterRestore = false;
+        requestAtlasRebuild();
+      }
     }
   };
+  const onContextRestored = (): void => {
+    void onRestored();
+  };
   canvas.addEventListener("webglcontextlost", onLost, false);
-  canvas.addEventListener("webglcontextrestored", () => void onRestored(), false);
+  canvas.addEventListener("webglcontextrestored", onContextRestored, false);
+
+  const requestAtlasRebuild = (): void => {
+    if (restoringGpu || gl.isContextLost()) {
+      rebuildAtlasAfterRestore = true;
+      return;
+    }
+    const generation = ++atlasBuildGeneration;
+    const options = atlasOptions();
+    void buildGlyphAtlas(gl, options).then(
+      (nextAtlas) => {
+        if (destroyed || generation !== atlasBuildGeneration || gl.isContextLost()) {
+          gl.deleteTexture(nextAtlas.texture);
+          return;
+        }
+        const previous = atlas;
+        atlas = nextAtlas;
+        renderer.setAtlas(nextAtlas);
+        gl.deleteTexture(previous.texture);
+        if (!running) renderStatic();
+      },
+      (error: unknown) => {
+        if (!destroyed && generation === atlasBuildGeneration && !gl.isContextLost()) {
+          console.error("Glyph atlas rebuild failed:", error);
+        }
+      },
+    );
+  };
 
   // ---------- React to control changes ----------
   const unsubscribe = controls.subscribe((state, changed) => {
@@ -1476,15 +1595,7 @@ export async function mountMatrixRain(
       glyphSet.setGlyphMode(controls.get().glyphMode);
     }
     if (changed.has("mirror") || changed.has("glyphFont") || changed.has("glyphMode")) {
-      void buildGlyphAtlas(gl, atlasOptions()).then(
-        (a) => {
-          const previous = atlas;
-          atlas = a;
-          renderer.setAtlas(a);
-          gl.deleteTexture(previous.texture); // release the replaced atlas so toggling mirror doesn't leak VRAM
-          if (!running) renderStatic();
-        },
-      );
+      requestAtlasRebuild();
     }
     // Adjusting Ramp-up replays the build-up from an empty grid so the slider gives immediate
     // feedback instead of only applying on the next load. Debounced so a drag settles first, and
@@ -1506,7 +1617,7 @@ export async function mountMatrixRain(
 
   const commitWallpaperImages = (config: WallpaperEngineImagesConfiguration): void => {
     const doc = wallpaperImagesDoc(config, wallpaperMasks);
-    imagesStore.set(doc);
+    storeImages(doc);
     imageScheduler.configure(doc, performance.now(), true);
     if (wallpaperPaused) wallpaperImagePauseStartedAtMs = performance.now();
     activeImageFrame = null;
@@ -1557,7 +1668,7 @@ export async function mountMatrixRain(
       messageScheduler.configure(messagesStore.get());
       if (wallpaperPaused) wallpaperMessagePauseStartedAtMs = performance.now();
     }
-    if (changed("countdown")) countdownStore.set(config.countdown);
+    if (changed("countdown")) storeCountdown(config.countdown);
     if (changed("tokens")) wallpaperUserName = config.userName;
     if (changed("images")) applyWallpaperImages(config.images);
   };
@@ -1614,11 +1725,14 @@ export async function mountMatrixRain(
     if (!nativeHosted) {
       exitChan = openExitChannel(() => exitMultiMonitor(false));
       void enterPanelFullscreen(container).then(() => {
+        if (destroyed) return;
         // Without the AutomaticFullscreen policy a panel can't self-fullscreen; hint
         // that a click will do it (a click carries the activation requestFullscreen needs).
-        window.setTimeout(() => {
+        const timer = window.setTimeout(() => {
+          transientNoticeTimers.delete(timer);
           if (!document.fullscreenElement) flashNotice("Click anywhere for fullscreen.");
         }, 600);
+        transientNoticeTimers.add(timer);
       });
     }
   } else {
@@ -1640,11 +1754,19 @@ export async function mountMatrixRain(
       else stop();
     },
     destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
+      atlasBuildGeneration++;
       if (multiMonitorState) exitMultiMonitor(false);
       controlsChan?.close();
       stop();
       window.clearTimeout(shortcutToastTimer);
       window.clearTimeout(rampPreviewTimer);
+      window.clearTimeout(clickTimer);
+      for (const timer of transientNoticeTimers) window.clearTimeout(timer);
+      transientNoticeTimers.clear();
+      for (const notice of transientNotices) notice.remove();
+      transientNotices.clear();
       ro.disconnect();
       window.removeEventListener("resize", onWindowResize);
       reduceMq.removeEventListener("change", onReduceChange);
@@ -1659,6 +1781,7 @@ export async function mountMatrixRain(
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       window.removeEventListener("beforeunload", onBeforeUnload);
       canvas.removeEventListener("webglcontextlost", onLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
       unsubscribe();
       editor?.destroy();
       messagesEditor?.destroy();
@@ -1669,6 +1792,7 @@ export async function mountMatrixRain(
       message?.destroy();
       shortcutToast?.remove();
       renderer.dispose();
+      gl.deleteTexture(atlas.texture);
       stateTex.dispose();
       for (const t of extraTexs) t.dispose();
       canvas.remove();

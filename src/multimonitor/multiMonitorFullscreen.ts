@@ -50,6 +50,10 @@ const CHANNEL_NAME = "mx-multimonitor-fullscreen";
 const CONTROLS_CHANNEL_NAME = "mx-multimonitor-controls";
 const HASH_KEY = "multimonitor";
 const LEGACY_HASH_KEY = "superfs";
+const MAX_PANEL_GRID_AXIS = 32_768;
+const MAX_PANEL_GRID_CELLS = 4_194_304;
+const MAX_PANEL_WARMUP_SECONDS = 60;
+const MAX_PANEL_SCREENS = 64;
 
 // Minimal structural types for the Window Management API (absent from lib.dom).
 interface ScreenDetailed extends ScreenRect {
@@ -124,14 +128,80 @@ function buildPanelUrl(config: MultiMonitorConfig): string {
   return `${base}#${HASH_KEY}=${encodeURIComponent(JSON.stringify(config))}`;
 }
 
+function finiteInteger(value: unknown, min: number, max: number): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
+}
+
+/** URL hashes are shareable/untrusted; reject values that could create invalid or enormous buffers. */
+function isPanelConfig(value: unknown): value is MultiMonitorConfig {
+  if (typeof value !== "object" || value === null) return false;
+  const config = value as Record<string, unknown>;
+  if (!finiteInteger(config.seed, 0, 0xffffffff)) return false;
+  if (typeof config.epoch !== "number" || !Number.isFinite(config.epoch)) return false;
+  if (
+    typeof config.warmupSeconds !== "number" ||
+    !Number.isFinite(config.warmupSeconds) ||
+    config.warmupSeconds < 0 ||
+    config.warmupSeconds > MAX_PANEL_WARMUP_SECONDS
+  ) return false;
+  if (typeof config.cell !== "number" || !Number.isFinite(config.cell) || config.cell <= 0) return false;
+  if (!finiteInteger(config.vCols, 1, MAX_PANEL_GRID_AXIS)) return false;
+  if (!finiteInteger(config.vRows, 1, MAX_PANEL_GRID_AXIS)) return false;
+  if (config.vCols * config.vRows > MAX_PANEL_GRID_CELLS) return false;
+
+  if (typeof config.slice !== "object" || config.slice === null) return false;
+  const slice = config.slice as Record<string, unknown>;
+  if (!finiteInteger(slice.colStart, 0, config.vCols - 1)) return false;
+  if (!finiteInteger(slice.rowStart, 0, config.vRows - 1)) return false;
+  if (!finiteInteger(slice.cols, 1, config.vCols - slice.colStart)) return false;
+  if (!finiteInteger(slice.rows, 1, config.vRows - slice.rowStart)) return false;
+  for (const origin of [slice.originX, slice.originY]) {
+    if (origin !== undefined && (typeof origin !== "number" || !Number.isFinite(origin))) return false;
+  }
+
+  for (const flag of [config.perDisplayMessages, config.showControls]) {
+    if (flag !== undefined && typeof flag !== "boolean") return false;
+  }
+  if (config.screenId !== undefined && typeof config.screenId !== "string") return false;
+  if (config.screens !== undefined) {
+    if (!Array.isArray(config.screens) || config.screens.length === 0 || config.screens.length > MAX_PANEL_SCREENS) {
+      return false;
+    }
+    const ids = new Set<string>();
+    for (const value of config.screens) {
+      if (typeof value !== "object" || value === null) return false;
+      const screen = value as Record<string, unknown>;
+      if (typeof screen.id !== "string" || !screen.id || ids.has(screen.id)) return false;
+      ids.add(screen.id);
+      for (const coordinate of [screen.left, screen.top, screen.width, screen.height]) {
+        if (typeof coordinate !== "number" || !Number.isFinite(coordinate)) return false;
+      }
+      if ((screen.width as number) <= 0 || (screen.height as number) <= 0) return false;
+    }
+    if (typeof config.screenId !== "string" || !ids.has(config.screenId)) return false;
+    const geometry = computeVirtualGrid(config.screens as ScreenRect[], config.cell);
+    const expectedSlice = geometry.slices[config.screenId];
+    if (
+      geometry.vCols !== config.vCols ||
+      geometry.vRows !== config.vRows ||
+      !expectedSlice ||
+      expectedSlice.colStart !== slice.colStart ||
+      expectedSlice.rowStart !== slice.rowStart ||
+      expectedSlice.cols !== slice.cols ||
+      expectedSlice.rows !== slice.rows
+    ) return false;
+  }
+  return true;
+}
+
 /** Parse a panel config from a URL hash. Exported separately for compatibility tests. */
 export function parsePanelHash(hash: string): MultiMonitorConfig | null {
   // Keep accepting the old key so panel URLs produced before the feature rename still load.
   const m = new RegExp(`[#&](?:${HASH_KEY}|${LEGACY_HASH_KEY})=([^&]+)`).exec(hash);
   if (!m) return null;
   try {
-    const cfg = JSON.parse(decodeURIComponent(m[1]!)) as MultiMonitorConfig;
-    if (typeof cfg.vCols === "number" && typeof cfg.vRows === "number" && cfg.slice) return cfg;
+    const config = JSON.parse(decodeURIComponent(m[1]!)) as unknown;
+    if (isPanelConfig(config)) return config;
   } catch {
     /* malformed — treat as a normal window */
   }

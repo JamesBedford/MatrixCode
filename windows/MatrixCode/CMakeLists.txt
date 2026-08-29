@@ -79,6 +79,7 @@ add_library(MatrixCodeWin32 STATIC
   src/platform/ImageImportWin32.cpp
   src/platform/SettingsStoreWin32.cpp
   src/platform/SettingsWindow.cpp
+  src/platform/Win32Utf.cpp
   src/platform/Win32Host.cpp
 )
 target_include_directories(MatrixCodeWin32
@@ -135,6 +136,7 @@ if(BUILD_TESTING)
     tests/SettingsTests.cpp
     tests/TokenResolverTests.cpp
     tests/Utf8Tests.cpp
+    tests/Win32UtfTests.cpp
   )
   target_link_libraries(MatrixCodeNativeTests PRIVATE MatrixCodeWin32)
   target_compile_definitions(MatrixCodeNativeTests PRIVATE MATRIXCODE_SOURCE_DIR=L"${CMAKE_CURRENT_SOURCE_DIR}")

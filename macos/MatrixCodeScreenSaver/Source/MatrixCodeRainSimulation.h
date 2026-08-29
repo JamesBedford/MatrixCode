@@ -109,7 +109,7 @@ FOUNDATION_EXPORT double MatrixCodeRainEffectiveTrailLengthForControls(
                                  step:(double)step;
 
 /** Preserve stream/timer state for columns that survive the resize. */
-- (void)resizeToColumns:(NSInteger)columns rows:(NSInteger)rows;
+- (BOOL)resizeToColumns:(NSInteger)columns rows:(NSInteger)rows;
 
 /** Match RainSim.reset(): empty cells/streams without rewinding either PRNG. */
 - (void)reset;

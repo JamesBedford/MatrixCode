@@ -61,7 +61,8 @@ export function startCanvas2dRain(
 
   const rng = createRng(7);
   const sparkleRng = createRng(17);
-  const fontSize = 18 * glyphScale;
+  let pixelRatio = 1;
+  let fontSize = 18 * glyphScale;
   const staticWarmupFrames = 150;
   let cols = 0;
   let drops: number[] = [];
@@ -70,6 +71,12 @@ export function startCanvas2dRain(
   let raf = 0;
 
   function layout(): void {
+    const cssWidth = canvas.clientWidth || canvas.width;
+    const cssHeight = canvas.clientHeight || canvas.height;
+    const widthRatio = cssWidth > 0 ? canvas.width / cssWidth : 1;
+    const heightRatio = cssHeight > 0 ? canvas.height / cssHeight : widthRatio;
+    pixelRatio = Math.max(Number.EPSILON, Math.min(widthRatio, heightRatio));
+    fontSize = 18 * glyphScale * pixelRatio;
     cols = Math.max(1, Math.floor(canvas.width / fontSize));
     drops = new Array(cols);
     speeds = new Array(cols);
@@ -83,6 +90,9 @@ export function startCanvas2dRain(
   let lastH = canvas.height;
 
   const bg = rgb(colors.background, 1);
+  const standardFadeBackground = rgb(colors.background, 0.08);
+  const headColor = rgb(colors.head, 1);
+  const brightColor = rgb(colors.bright, 1);
 
   function drawImageReveal(nowMs: number, rows: number): void {
     const source = imageSource?.(nowMs);
@@ -97,9 +107,9 @@ export function startCanvas2dRain(
     ctx.font = `${fontSize}px monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = rgb(colors.bright, 1);
-    ctx.shadowColor = rgb(colors.bright, 1);
-    ctx.shadowBlur = 9;
+    ctx.fillStyle = brightColor;
+    ctx.shadowColor = brightColor;
+    ctx.shadowBlur = 9 * pixelRatio;
     for (let row = firstRow; row <= lastRow; row++) {
       for (let col = firstCol; col <= lastCol; col++) {
         const u = (col + 0.5 - geometry.originCol) / geometry.cols;
@@ -140,7 +150,7 @@ export function startCanvas2dRain(
 
     // Translucent fade leaves decaying trails.
     const fadeAlpha = frameGate ? 1 - Math.pow(1 - 0.08, frameScale) : 0.08;
-    ctx.fillStyle = rgb(colors.background, fadeAlpha);
+    ctx.fillStyle = frameGate ? rgb(colors.background, fadeAlpha) : standardFadeBackground;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.font = `${fontSize}px monospace`;
@@ -157,16 +167,16 @@ export function startCanvas2dRain(
         ctx.save();
         ctx.translate(px, py);
         ctx.scale(-1, 1); // mirror, as in the film
-        ctx.fillStyle = rgb(colors.head, 1);
-        ctx.shadowColor = rgb(colors.bright, 1);
+        ctx.fillStyle = headColor;
+        ctx.shadowColor = brightColor;
         const sparkling = shouldSparkleGoldHead(preset, sparkleRng);
         if (sparkling) {
           ctx.globalAlpha = 0.4;
-          ctx.shadowBlur = 18;
+          ctx.shadowBlur = 18 * pixelRatio;
           ctx.fillText(ch, 0, 0);
           ctx.globalAlpha = 1;
         }
-        ctx.shadowBlur = sparkling ? 12 : 8;
+        ctx.shadowBlur = (sparkling ? 12 : 8) * pixelRatio;
         ctx.fillText(ch, 0, 0);
         ctx.restore();
       }

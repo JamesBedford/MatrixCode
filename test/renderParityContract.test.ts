@@ -19,6 +19,10 @@ const nativeRenderer = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeMetalV
 const nativeShaders = read("macos/MatrixCodeScreenSaver/Resources/MatrixCodeShaders.metal");
 const nativeAdaptive = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeAdaptiveResolution.m");
 const nativeApp = read("macos/MatrixCodeScreenSaver/AppSource/MatrixCodeAppDelegate.m");
+const windowsControllers = read("windows/MatrixCode/include/matrixcode/core/Controllers.h");
+const windowsRenderer = read("windows/MatrixCode/src/render/D3D11Renderer.cpp");
+const windowsSettings = read("windows/MatrixCode/src/core/Settings.cpp");
+const windowsShader = read("windows/MatrixCode/shaders/MatrixCode.hlsl");
 
 function numericConstant(source: string, name: string): number {
   const match = source.match(new RegExp(`\\b${name}\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)f?\\b`));
@@ -34,9 +38,9 @@ function normalized(source: string): string {
   return source.replace(/\s+/g, " ");
 }
 
-function objcConfigNumber(source: string, name: string): number {
-  const match = source.match(new RegExp(`\\.${name}\\s*=\\s*([0-9.]+(?:\\s*/\\s*[0-9.]+)?)`));
-  if (!match?.[1]) throw new Error(`Missing Objective-C config value ${name}`);
+function configNumber(source: string, name: string): number {
+  const match = source.match(new RegExp(`(?:\\.|\\b)${name}\\s*=\\s*([0-9.]+(?:\\s*/\\s*[0-9.]+)?)`));
+  if (!match?.[1]) throw new Error(`Missing config value ${name}`);
   const factors = match[1].split("/").map((part) => Number(part.trim()));
   return factors.slice(1).reduce((value, divisor) => value / divisor, factors[0]!);
 }
@@ -175,7 +179,7 @@ describe("macOS/Web render parity source contract", () => {
       warmFrames: DEFAULT_ADAPTIVE_CONFIG.warmFrames,
     };
     for (const [name, expected] of Object.entries(mappings)) {
-      expect(objcConfigNumber(nativeAdaptive, name), name).toBeCloseTo(expected, 12);
+      expect(configNumber(nativeAdaptive, name), name).toBeCloseTo(expected, 12);
     }
   });
 
@@ -208,5 +212,97 @@ describe("macOS/Web render parity source contract", () => {
     expect(nativeApp).not.toContain(
       "[MatrixCodeSession sessionForScreen:screens.firstObject]",
     );
+  });
+});
+
+describe("Windows/Web render parity source contract", () => {
+  it("keeps the Gaussian kernel and bloom spread aligned", () => {
+    for (const name of ["w0", "w12", "w34", "o12", "o34"]) {
+      expect(numericConstant(windowsShader, name), name).toBeCloseTo(
+        numericConstant(webBlur, name),
+        6,
+      );
+    }
+    expect(numericConstant(windowsShader, "spread")).toBe(
+      numericConstant(webRenderer, "BLUR_SPREAD"),
+    );
+  });
+
+  it("keeps tone mapping, scanlines, and vignette math aligned", () => {
+    for (const name of ["a", "b", "c", "d", "e"]) {
+      expect(numericConstant(windowsShader, name)).toBe(numericConstant(webComposite, name));
+    }
+    for (const value of ["0.15", "0.95", "0.42", "2.8"]) {
+      expect(webComposite).toContain(value);
+      expect(windowsShader).toContain(value);
+    }
+    expect(windowsRenderer).toContain("parameters.controls.scanlines ? 0.12f : 0.0f");
+  });
+
+  it("keeps every fixed five-stop palette identical", () => {
+    for (const name of PRESET_NAMES) {
+      const match = windowsSettings.match(
+        new RegExp(`\\{"${name}", \\{([^}]+)\\}\\}`),
+      );
+      expect(match?.[1], `Windows ${name} palette`).toBeDefined();
+      const windowsColors = [...(match?.[1]?.matchAll(/0x([0-9A-Fa-f]{6})/g) ?? [])]
+        .map((entry) => Number.parseInt(entry[1]!, 16));
+      const preset = getPreset(name);
+      const webColors = [preset.background, preset.tail, preset.body, preset.bright, preset.head]
+        .map(hex);
+      expect(windowsColors, `${name} palette`).toEqual(webColors);
+    }
+  });
+
+  it("keeps adaptive-resolution defaults aligned", () => {
+    const mappings = {
+      targetMilliseconds: DEFAULT_ADAPTIVE_CONFIG.targetMs,
+      minimumScale: DEFAULT_ADAPTIVE_CONFIG.minScale,
+      step: DEFAULT_ADAPTIVE_CONFIG.step,
+      emaAlpha: DEFAULT_ADAPTIVE_CONFIG.emaAlpha,
+      upHeadroom: DEFAULT_ADAPTIVE_CONFIG.upHeadroom,
+      downThreshold: DEFAULT_ADAPTIVE_CONFIG.downThreshold,
+      cooldownFrames: DEFAULT_ADAPTIVE_CONFIG.cooldownFrames,
+      warmFrames: DEFAULT_ADAPTIVE_CONFIG.warmFrames,
+    };
+    for (const [name, expected] of Object.entries(mappings)) {
+      expect(configNumber(windowsControllers, name), name).toBeCloseTo(expected, 12);
+    }
+  });
+
+  it("keeps quality tiers and gold sparkle behavior aligned", () => {
+    const normalizedWebRenderer = normalized(webRenderer);
+    const normalizedWindowsRenderer = normalized(windowsRenderer);
+    expect(normalizedWebRenderer).toContain("{ low: 1, med: 2, high: 3 }");
+    expect(normalizedWindowsRenderer).toContain(
+      "parameters.controls.quality == QualityTier::Low ? 1 : parameters.controls.quality == QualityTier::Medium ? 2 : 3",
+    );
+    const goldSparkleStrength = numericConstant(webRenderer, "GOLD_SPARKLE_STRENGTH");
+    expect(normalizedWindowsRenderer).toContain(
+      `parameters.controls.preset == "gold" ? ${goldSparkleStrength.toFixed(2)}f : 0.0f`,
+    );
+    const normalizedWindowsShader = normalized(windowsShader);
+    for (const expression of [
+      "max(isHead ? 0.45 : 0.0, 4.0 * phase * (1.0 - phase))",
+      "goldSparkle * sparklePulse * smoothstep(0.45, 0.95, brightness)",
+      "baseIntensity * (headExtra + sparkle * 0.35)",
+    ]) {
+      expect(normalizedWindowsShader).toContain(expression);
+    }
+  });
+
+  it("requires every Windows render-graph shader entry point", () => {
+    for (const stage of [
+      "GlyphPs",
+      "BrightPassPs",
+      "CopyPs",
+      "BlurHPs",
+      "BlurVPs",
+      "CompositePs",
+      "OverlayPs",
+    ]) {
+      expect(windowsShader).toContain(stage);
+      expect(windowsRenderer).toContain(`CompileShader("${stage}"`);
+    }
   });
 });

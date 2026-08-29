@@ -89,6 +89,19 @@ describe("multi-monitor panel hash", () => {
     expect(parsePanelHash("#other=value")).toBeNull();
     expect(parsePanelHash("#multimonitor=not-json")).toBeNull();
   });
+
+  it("rejects panel hashes that could allocate invalid or hostile grid buffers", () => {
+    const hashFor = (overrides: Record<string, unknown>): string =>
+      `#multimonitor=${encodeURIComponent(JSON.stringify({ ...config, ...overrides }))}`;
+
+    expect(parsePanelHash(hashFor({ vCols: -1 }))).toBeNull();
+    expect(parsePanelHash(hashFor({ vRows: 2.5 }))).toBeNull();
+    expect(parsePanelHash(hashFor({ vCols: 32_768, vRows: 32_768 }))).toBeNull();
+    expect(parsePanelHash(hashFor({ warmupSeconds: 1_000_000 }))).toBeNull();
+    expect(parsePanelHash(hashFor({
+      slice: { colStart: 199, rowStart: 0, cols: 2, rows: 40 },
+    }))).toBeNull();
+  });
 });
 
 describe("multi-monitor session launch", () => {

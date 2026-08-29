@@ -10,6 +10,7 @@
 #include <shlobj.h>
 
 #include "matrixcode/core/Settings.h"
+#include "matrixcode/platform/Win32Utf.h"
 
 namespace matrixcode::platform {
 namespace {
@@ -54,18 +55,6 @@ class MutexLock final {
     : L"Windows error " + std::to_wstring(error);
   if (buffer != nullptr) LocalFree(buffer);
   return result;
-}
-
-[[nodiscard]] std::string Utf8(const std::wstring& value) {
-  if (value.empty()) return {};
-  const int size = WideCharToMultiByte(
-    CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
-  if (size <= 0) return {};
-  std::string output(static_cast<std::size_t>(size), '\0');
-  WideCharToMultiByte(
-    CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    output.data(), size, nullptr, nullptr);
-  return output;
 }
 
 }  // namespace
@@ -190,7 +179,7 @@ std::string SettingsStoreWin32::DefaultViewerName() {
       name.replace(0, static_cast<std::size_t>(scalarUnits), upper);
     }
   }
-  const auto result = Utf8(name);
+  const auto result = Utf8FromWide(name);
   return result.empty() ? "Neo" : result;
 }
 

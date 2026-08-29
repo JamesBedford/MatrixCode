@@ -315,6 +315,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     _metalView = [[MatrixCodeMetalView alloc] initWithFrame:window.contentView.bounds
                                                     session:[MatrixCodeSession singleDisplaySession]
                                                storedValues:previewValues];
+    if (!_metalView) return nil;
     [window.contentView addSubview:_metalView];
     if (showIntro && !reduceMotion) {
         [self configureIntroPreviewWithValues:previewValues atDate:_startDate];

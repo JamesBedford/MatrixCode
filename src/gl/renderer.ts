@@ -3,7 +3,7 @@ import type { Grid, QualityTier, RenderParams } from "../types.ts";
 import type { GlyphAtlas } from "./glyphAtlas.ts";
 import type { StateTexture } from "./stateTexture.ts";
 import type { ImageRenderState } from "../sim/imageReveal.ts";
-import { createFullscreenTri, drawFullscreen } from "./fullscreenTri.ts";
+import { createFullscreenTri, disposeFullscreenTri, drawFullscreen } from "./fullscreenTri.ts";
 
 import fullscreenVert from "./shaders/fullscreen.vert.glsl?raw";
 import glyphFrag from "./shaders/glyph.frag.glsl?raw";
@@ -313,6 +313,16 @@ export class Renderer {
   dispose(): void {
     this.disposeTargets();
     this.gl.deleteTexture(this.imageTexture);
+    disposeFullscreenTri(this.gl, this.tri);
+    for (const program of [
+      this.glyphProg,
+      this.brightProg,
+      this.blurProg,
+      this.copyProg,
+      this.compositeProg,
+    ]) {
+      this.gl.deleteProgram(program.program);
+    }
   }
 }
 

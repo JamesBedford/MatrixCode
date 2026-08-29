@@ -209,6 +209,27 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     XCTAssertNotNil([view valueForKey:@"compositePipeline"]);
 }
 
+- (void)testRendererMaintainsThreeCompleteSharedInstanceBuffers {
+    MatrixCodeMetalView *view =
+        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+                                           session:nil
+                                      storedValues:@{}];
+
+    NSData *state = [view diagnosticPackedStateWithWidth:640 height:360];
+    NSArray<id<MTLBuffer>> *buffers = [view valueForKey:@"instanceBuffers"];
+    id<MTLBuffer> activeBuffer = [view valueForKey:@"instanceBuffer"];
+    NSUInteger capacity = [[view valueForKey:@"instanceCapacity"] unsignedIntegerValue];
+
+    XCTAssertGreaterThan(state.length, (NSUInteger)0);
+    XCTAssertEqual(buffers.count, (NSUInteger)3);
+    XCTAssertTrue([buffers containsObject:activeBuffer]);
+    XCTAssertGreaterThanOrEqual(capacity, state.length / 4);
+    XCTAssertGreaterThan(buffers.firstObject.length, (NSUInteger)0);
+    for (id<MTLBuffer> buffer in buffers) {
+        XCTAssertEqual(buffer.length, buffers.firstObject.length);
+    }
+}
+
 - (void)testHighQualityRendererAllocatesWebParityHDRTargetHierarchy {
     MatrixCodeMetalView *view =
         [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)

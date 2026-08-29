@@ -14,45 +14,6 @@ namespace {
 constexpr double kJitterMinimum = 0.75;
 constexpr double kJitterSpan = 0.5;
 
-struct CodePoint {
-  std::uint32_t value = 0;
-  std::size_t bytes = 1;
-};
-
-[[nodiscard]] CodePoint DecodeCodePoint(
-    const std::string_view text, const std::size_t offset) noexcept {
-  const auto lead = static_cast<unsigned char>(text[offset]);
-  if (lead < 0x80u) return {lead, 1};
-  std::size_t length = 0;
-  std::uint32_t value = 0;
-  std::uint32_t minimum = 0;
-  if ((lead & 0xe0u) == 0xc0u) {
-    length = 2;
-    value = lead & 0x1fu;
-    minimum = 0x80u;
-  } else if ((lead & 0xf0u) == 0xe0u) {
-    length = 3;
-    value = lead & 0x0fu;
-    minimum = 0x800u;
-  } else if ((lead & 0xf8u) == 0xf0u) {
-    length = 4;
-    value = lead & 0x07u;
-    minimum = 0x10000u;
-  } else {
-    return {0xfffdu, 1};
-  }
-  if (offset + length > text.size()) return {0xfffdu, 1};
-  for (std::size_t index = 1; index < length; ++index) {
-    const auto continuation = static_cast<unsigned char>(text[offset + index]);
-    if ((continuation & 0xc0u) != 0x80u) return {0xfffdu, 1};
-    value = (value << 6u) | (continuation & 0x3fu);
-  }
-  if (value < minimum || value > 0x10ffffu || (value >= 0xd800u && value <= 0xdfffu)) {
-    return {0xfffdu, 1};
-  }
-  return {value, length};
-}
-
 [[nodiscard]] std::optional<std::size_t> ClampRoundedIndex(
     const double value, const double maximum, const bool roundUp) noexcept {
   if (std::isnan(value)) return std::nullopt;
@@ -207,7 +168,7 @@ MessageScheduler::Layout MessageScheduler::LayOut(const std::string_view message
   const std::string_view trimmed = TrimUtf8(message);
   Layout result;
   for (std::size_t byteOffset = 0; byteOffset < trimmed.size();) {
-    const CodePoint decoded = DecodeCodePoint(trimmed, byteOffset);
+    const Utf8CodePoint decoded = DecodeUtf8CodePoint(trimmed, byteOffset);
     if (decoded.value <= 0x7fu) {
       if (const auto glyph = glyphs_.MessageGlyph(static_cast<char>(decoded.value)); glyph.has_value()) {
         result.glyphs.push_back({result.width, *glyph});

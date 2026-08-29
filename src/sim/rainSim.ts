@@ -362,6 +362,7 @@ export class RainSim {
     const density = controls.density * DENSITY_SCALE;
     const respawnProb = 1 - Math.exp(-cfg.respawnChance * density * dt);
     const speedMul = controls.speed;
+    const averageFallSpeed = averageSpeed * Math.max(speedMul, 0.1);
     // Density controls how many streams a column sustains at once, and how
     // quickly it refills toward that count (the inter-stream gap shrinks).
     const maxStreams = Math.max(1, Math.round(density));
@@ -412,7 +413,7 @@ export class RainSim {
             b *= decayMul;
           } else {
             const streamSpeed = (this.trailSpeed[idx] || averageSpeed) * speedMul;
-            const variedSpeed = effectiveTrailSpeed(streamSpeed, speedMul, trailVariation, cfg);
+            const variedSpeed = averageFallSpeed + (streamSpeed - averageFallSpeed) * trailVariation;
             b *= Math.pow(trailLength, dt * streamSpeed / variedSpeed / cfg.trailLengthScale);
           }
           if (b < MIN_BRIGHT) b = 0;

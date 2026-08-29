@@ -14,6 +14,7 @@ void RunScreenSaverArgsTests();
 void RunSettingsTests();
 void RunTokenResolverTests();
 void RunUtf8Tests();
+void RunWin32UtfTests();
 
 int main() {
   try {
@@ -28,6 +29,7 @@ int main() {
     RunSettingsTests();
     RunTokenResolverTests();
     RunUtf8Tests();
+    RunWin32UtfTests();
     std::cout << "MatrixCodeNativeTests: " << matrixcode::test::assertions << " assertions passed\n";
     return 0;
   } catch (const std::exception& error) {

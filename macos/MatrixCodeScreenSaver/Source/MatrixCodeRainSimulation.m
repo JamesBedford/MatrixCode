@@ -134,17 +134,18 @@ static double MatrixCodeRainControlNumber(NSDictionary<NSString *, id> *controls
     return [value doubleValue];
 }
 
-static void MatrixCodeRainAppendStream(MatrixCodeRainSimulationStreamList *list,
+static BOOL MatrixCodeRainAppendStream(MatrixCodeRainSimulationStreamList *list,
                                        MatrixCodeRainSimulationStream stream) {
     if (list->count == list->capacity) {
         NSUInteger nextCapacity = MAX((NSUInteger)2, list->capacity * 2);
         MatrixCodeRainSimulationStream *next = realloc(
             list->items, nextCapacity * sizeof(MatrixCodeRainSimulationStream));
-        NSCAssert(next != NULL, @"Unable to allocate Matrix rain streams");
+        if (!next) return NO;
         list->items = next;
         list->capacity = nextCapacity;
     }
     list->items[list->count++] = stream;
+    return YES;
 }
 
 static void MatrixCodeRainRemoveStream(MatrixCodeRainSimulationStreamList *list,
@@ -159,11 +160,13 @@ static void MatrixCodeRainRemoveStream(MatrixCodeRainSimulationStreamList *list,
     list->count--;
 }
 
+static void MatrixCodeRainDestroyStorage(MatrixCodeRainSimulationStorage *storage);
+
 static MatrixCodeRainSimulationStorage *MatrixCodeRainCreateStorage(NSInteger columns,
                                                                    NSInteger rows,
                                                                    uint32_t seed) {
     MatrixCodeRainSimulationStorage *storage = calloc(1, sizeof(MatrixCodeRainSimulationStorage));
-    NSCAssert(storage != NULL, @"Unable to allocate Matrix rain storage");
+    if (!storage) return NULL;
     storage->columns = columns;
     storage->rows = rows;
     NSUInteger columnCount = (NSUInteger)columns;
@@ -179,10 +182,12 @@ static MatrixCodeRainSimulationStorage *MatrixCodeRainCreateStorage(NSInteger co
     storage->phase = calloc(cellCount, sizeof(float));
     storage->headMark = calloc(rowCount, sizeof(uint8_t));
     storage->claimed = calloc(cellCount, sizeof(uint8_t));
-    NSCAssert(storage->streams && storage->respawnTimer && storage->columnGate &&
-              storage->brightness && storage->trailSpeed && storage->glyphNew &&
-              storage->glyphOld && storage->phase && storage->headMark && storage->claimed,
-              @"Unable to allocate Matrix rain grid");
+    if (!storage->streams || !storage->respawnTimer || !storage->columnGate ||
+        !storage->brightness || !storage->trailSpeed || !storage->glyphNew ||
+        !storage->glyphOld || !storage->phase || !storage->headMark || !storage->claimed) {
+        MatrixCodeRainDestroyStorage(storage);
+        return NULL;
+    }
 
     uint32_t gateState = seed ^ 0x85ebca6bU;
     for (NSInteger column = 0; column < columns; column++) {
@@ -193,8 +198,10 @@ static MatrixCodeRainSimulationStorage *MatrixCodeRainCreateStorage(NSInteger co
 
 static void MatrixCodeRainDestroyStorage(MatrixCodeRainSimulationStorage *storage) {
     if (!storage) return;
-    for (NSInteger column = 0; column < storage->columns; column++) {
-        free(storage->streams[column].items);
+    if (storage->streams) {
+        for (NSInteger column = 0; column < storage->columns; column++) {
+            free(storage->streams[column].items);
+        }
     }
     free(storage->streams);
     free(storage->respawnTimer);
@@ -293,6 +300,7 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
     _glyphMode = MatrixCodeRainValidGlyphMode(glyphMode) ? [glyphMode copy] : @"matrix";
     _glyphModeKind = MatrixCodeRainGlyphModeKindForMode(_glyphMode);
     _storage = MatrixCodeRainCreateStorage(columns, rows, seed);
+    if (!_storage) return nil;
     _stateData = [NSMutableData dataWithLength:(NSUInteger)columns * (NSUInteger)rows * 4];
     [self seedColumnsFrom:0 to:columns storage:(MatrixCodeRainSimulationStorage *)_storage];
     return self;
@@ -405,14 +413,15 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
     if (target >= 0) storage->claimed[index] = 1;
 }
 
-- (void)resizeToColumns:(NSInteger)columns rows:(NSInteger)rows {
+- (BOOL)resizeToColumns:(NSInteger)columns rows:(NSInteger)rows {
     NSParameterAssert(columns > 0);
     NSParameterAssert(rows > 0);
-    if (columns == _columns && rows == _rows) return;
+    if (columns == _columns && rows == _rows) return YES;
 
     MatrixCodeRainSimulationStorage *oldStorage = _storage;
     NSInteger oldColumns = _columns;
     MatrixCodeRainSimulationStorage *newStorage = MatrixCodeRainCreateStorage(columns, rows, _seed);
+    if (!newStorage) return NO;
     NSInteger keptColumns = MIN(oldColumns, columns);
     for (NSInteger column = 0; column < keptColumns; column++) {
         newStorage->streams[column] = oldStorage->streams[column];
@@ -430,6 +439,7 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
     _messageIntensity = 1;
     _messageScramble = 0;
     MatrixCodeRainDestroyStorage(oldStorage);
+    return YES;
 }
 
 - (void)reset {
@@ -453,7 +463,7 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
 - (int16_t *)messageTargetBufferFromDictionary:(NSDictionary<NSNumber *, NSNumber *> *)targets {
     NSUInteger cellCount = (NSUInteger)_columns * (NSUInteger)_rows;
     int16_t *buffer = malloc(cellCount * sizeof(int16_t));
-    NSCAssert(buffer != NULL, @"Unable to allocate Matrix message targets");
+    if (!buffer) return NULL;
     for (NSUInteger index = 0; index < cellCount; index++) buffer[index] = -1;
     [targets enumerateKeysAndObjectsUsingBlock:^(NSNumber *indexValue, NSNumber *glyphValue, BOOL *stop) {
         (void)stop;
@@ -467,8 +477,10 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
 
 - (void)setMessageTargets:(NSDictionary<NSNumber *,NSNumber *> *)targets {
     MatrixCodeRainSimulationStorage *storage = _storage;
+    int16_t *next = [self messageTargetBufferFromDictionary:targets];
+    if (!next) return;
     free(storage->messageTargets);
-    storage->messageTargets = [self messageTargetBufferFromDictionary:targets];
+    storage->messageTargets = next;
     memset(storage->claimed, 0, (NSUInteger)_columns * (NSUInteger)_rows);
     _messageIntensity = 1;
     _messageScramble = 0;
@@ -482,6 +494,7 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
     }
     NSUInteger cellCount = (NSUInteger)_columns * (NSUInteger)_rows;
     int16_t *next = [self messageTargetBufferFromDictionary:targets];
+    if (!next) return;
     for (NSUInteger index = 0; index < cellCount; index++) {
         if (next[index] != storage->messageTargets[index]) storage->claimed[index] = 0;
     }

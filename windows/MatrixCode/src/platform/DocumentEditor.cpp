@@ -17,6 +17,7 @@
 #include "matrixcode/core/TokenResolver.h"
 #include "matrixcode/core/Utf8.h"
 #include "matrixcode/platform/ImageImportWin32.h"
+#include "matrixcode/platform/Win32Utf.h"
 #include "resource.h"
 
 namespace matrixcode::platform {
@@ -92,31 +93,6 @@ struct EditorState {
   double introPreviewOpacity = 1.0;
   HBRUSH previewBackground = nullptr;
 };
-
-[[nodiscard]] std::wstring Wide(const std::string& value) {
-  if (value.empty()) return {};
-  const int size = MultiByteToWideChar(
-    CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
-  if (size <= 0) return {};
-  std::wstring result(static_cast<std::size_t>(size), L'\0');
-  MultiByteToWideChar(
-    CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    result.data(), size);
-  return result;
-}
-
-[[nodiscard]] std::string Utf8(const std::wstring& value) {
-  if (value.empty()) return {};
-  const int size = WideCharToMultiByte(
-    CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    nullptr, 0, nullptr, nullptr);
-  if (size <= 0) return {};
-  std::string result(static_cast<std::size_t>(size), '\0');
-  WideCharToMultiByte(
-    CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    result.data(), size, nullptr, nullptr);
-  return result;
-}
 
 [[nodiscard]] int Scale(const int value, const UINT dpi) noexcept {
   return MulDiv(value, static_cast<int>(dpi), 96);
@@ -330,7 +306,7 @@ void AddComboItems(const HWND combo, const std::initializer_list<const wchar_t*>
 }
 
 void SetText(const HWND control, const std::string& value) {
-  const auto text = Wide(value);
+  const auto text = WideFromUtf8(value);
   SetWindowTextW(control, text.c_str());
 }
 
@@ -355,7 +331,7 @@ void SetPercent(const HWND control, const double value) {
 }
 
 [[nodiscard]] std::string TextValue(const HWND control, const std::size_t maximum) {
-  return TruncateUtf8(Utf8(WindowText(control)), maximum);
+  return TruncateUtf8(Utf8FromWide(WindowText(control)), maximum);
 }
 
 [[nodiscard]] double NumberValue(
@@ -508,28 +484,28 @@ void PopulateList(EditorState& state, int selection) {
   switch (state.page) {
     case Page::Intro:
       for (const auto& line : state.draft.intro.lines) {
-        auto text = Wide(line.text);
+        auto text = WideFromUtf8(line.text);
         if (text.empty()) text = L"(blank line)";
         SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
       break;
     case Page::Messages:
       for (const auto& message : state.draft.messages.messages) {
-        auto text = Wide(message);
+        auto text = WideFromUtf8(message);
         if (text.empty()) text = L"(blank message)";
         SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
       break;
     case Page::Images:
       for (const auto& image : state.draft.images.images) {
-        std::wstring text = Wide(image.name) + L" (" + std::to_wstring(image.width) +
+        std::wstring text = WideFromUtf8(image.name) + L" (" + std::to_wstring(image.width) +
           L" x " + std::to_wstring(image.height) + L")";
         SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
       break;
     case Page::Countdown:
       for (const auto& moment : state.draft.countdown.moments) {
-        auto text = Wide(moment.name);
+        auto text = WideFromUtf8(moment.name);
         if (text.empty()) text = L"(unnamed moment)";
         SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
@@ -966,7 +942,7 @@ void UpdateIntroPreview(EditorState& state) {
   } else {
     std::string text = preview.visibleText;
     text += IntroCursorVisible(elapsedMilliseconds) ? "\xE2\x96\x88" : " ";
-    const auto display = Wide(text);
+    const auto display = WideFromUtf8(text);
     SetWindowTextW(output, display.c_str());
     state.introPreviewOpacity = std::clamp(preview.opacity, 0.0, 1.0);
   }
@@ -995,7 +971,7 @@ void UpdateCountdownPreview(EditorState& state) {
     preview += "\r\n" + name + "  " + ResolveTokens("{countdown:" + name + "}", context) +
       " / " + ResolveTokens("{countup:" + name + "}", context);
   }
-  const auto display = Wide(preview);
+  const auto display = WideFromUtf8(preview);
   const HWND output = GetDlgItem(state.window, IdLivePreview);
   SetWindowTextW(output, display.c_str());
   InvalidateRect(output, nullptr, TRUE);

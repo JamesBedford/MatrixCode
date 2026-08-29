@@ -12,25 +12,13 @@
 #include <wrl/client.h>
 
 #include "matrixcode/core/Utf8.h"
+#include "matrixcode/platform/Win32Utf.h"
 
 namespace matrixcode::platform {
 namespace {
 
 using Microsoft::WRL::ComPtr;
 constexpr std::uint32_t kMaximumDimension = 96;
-
-[[nodiscard]] std::string Utf8(const std::wstring& value) {
-  if (value.empty()) return {};
-  const int size = WideCharToMultiByte(
-    CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    nullptr, 0, nullptr, nullptr);
-  if (size <= 0) return {};
-  std::string result(static_cast<std::size_t>(size), '\0');
-  WideCharToMultiByte(
-    CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
-    result.data(), size, nullptr, nullptr);
-  return result;
-}
 
 void SetDiagnostic(std::wstring* diagnostic, const wchar_t* operation, const HRESULT result) {
   if (diagnostic == nullptr) return;
@@ -226,7 +214,7 @@ std::optional<ImageMask> ImportImageMaskWic(
     SetDiagnostic(diagnostic, L"Reading image pixels", result);
     return std::nullopt;
   }
-  auto name = Utf8(path.stem().wstring());
+  auto name = Utf8FromWide(path.stem().wstring());
   return ImageMaskFromRgba(std::move(name), targetWidth, targetHeight, rgba);
 }
 

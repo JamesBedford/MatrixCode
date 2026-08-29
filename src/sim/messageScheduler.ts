@@ -98,8 +98,6 @@ export class MessageScheduler {
    * positioned once across the whole grid.
    */
   update(nowMs: number, sim: MessageSink, regions?: readonly MessageRegion[]): void {
-    const placementRegions = this.normalizeRegions(sim, regions);
-    const placementKey = this.keyForRegions(placementRegions);
     if (this.pendingClear) {
       sim.clearMessageTargets();
       this.pendingClear = false;
@@ -115,9 +113,12 @@ export class MessageScheduler {
       this.nextFireAt = null;
       this.lastCols = sim.cols;
       this.lastRows = sim.rows;
-      this.placementKey = placementKey;
+      this.placementKey = "";
       return;
     }
+
+    const placementRegions = this.normalizeRegions(sim, regions);
+    const placementKey = this.keyForRegions(placementRegions);
 
     // RainSim drops message targets when its grid is resized because the cell indices become stale.
     // Re-layout an active message when the grid or placement regions change so fullscreen transitions
