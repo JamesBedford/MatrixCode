@@ -45,11 +45,12 @@ Most "Matrix rain" projects (including the classic terminal `cmatrix`) scroll a 
 - **Multi-monitor mode** — the **Multi-monitor** button spans the rain across every connected display as one continuous grid (Chromium only; see [docs/multimonitor-setup.md](docs/multimonitor-setup.md))
 - **Settings panel** — press `H` to toggle; controls for color theme, quality tier, glyph scale, and more
 - **Annual holiday colors** — every February 14 uses Red; every March 17 uses Classic Green, based on the computer's local date. Browser (including compatibility mode), Wallpaper Engine, macOS, and Windows switch automatically while running and restore the latest selected theme afterward without overwriting saved settings.
+- **Full-moon colors** — White for the whole local calendar day containing the full moon, using the same offline lunar calculation as `{countdown:fullmoon}`. Fixed holiday colors take priority if the dates coincide; the selected theme returns afterward.
 - **Intro typewriter message** — plays on every load while enabled (toggle it in the intro editor); `Escape` or click skips it
 - **Image reveals** — imported images resolve through falling rain glyphs using a deterministic, portable luminance-mask contract shared by the web and native implementations
 - **Canvas 2D fallback** — displayed automatically if WebGL2 is unavailable
 
-Holiday colors use local midnight boundaries, independently of paused animation or countdown
+Calendar colors use local midnight boundaries, independently of paused animation or countdown
 timing. In Canvas2D compatibility mode, changing palette clears the baked-in fading trails;
 the current glyphs and images are redrawn without advancing their timelines.
 

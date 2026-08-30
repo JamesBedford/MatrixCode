@@ -51,9 +51,18 @@ both standard and high-refresh displays so startup and settled rain keep the sam
 presentation cadence.
 
 The app, screen saver, and preview automatically use Red on February 14 and
-Classic green on March 17, for the entire local Gregorian date each year.
+Classic green on March 17, for the entire local Gregorian date each year. They
+also use White for the entire local calendar day containing the astronomical
+full-moon instant, before and after that instant. Fixed holiday colours take
+precedence when the dates coincide. The shared lunar calculation is the same
+approximation used by the `{countdown:fullmoon}` token, not a phase tolerance;
+both full moons count when two fall in the same month.
 Live OS date/timezone changes are checked before every playback tick, including
-paused/reduced-motion ticks and the first tick after resuming. The override
+paused/reduced-motion ticks and the first tick after resuming. A one-day cache
+uses actual local-calendar-day epoch boundaries, including 23/25-hour DST days.
+A bounded UTC-to-local search finds the first valid instant of each date,
+including skipped or repeated midnight. Resolved boundaries are cached by local
+date and Windows timezone rules, avoiding stale CRT timezone state. The override
 colours rain, messages, images, intro text, and themed toasts, and disables
 Gold-only sparkle while active. Selected settings and custom colours remain
 unchanged; the latest selection returns when the holiday ends. The fixed WARP

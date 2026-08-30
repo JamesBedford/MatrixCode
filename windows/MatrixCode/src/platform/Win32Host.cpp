@@ -8,6 +8,7 @@
 #include <limits>
 #include <memory>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <span>
 #include <string>
@@ -22,6 +23,7 @@
 
 #include "matrixcode/core/Controllers.h"
 #include "matrixcode/core/DisplayTopology.h"
+#include "matrixcode/core/HolidayResolver.h"
 #include "matrixcode/core/ImageReveal.h"
 #include "matrixcode/core/IntroTimeline.h"
 #include "matrixcode/core/MessageScheduler.h"
@@ -49,6 +51,7 @@ constexpr std::uint32_t kPauseModal = 1u << 2u;
 constexpr std::uint32_t kPauseSystem = 1u << 3u;
 constexpr wchar_t kUiStateRegistryKey[] = L"Software\\MatrixCode";
 constexpr wchar_t kHudRegistryValue[] = L"FpsOverlayVisible";
+constexpr std::int64_t kFileTimeUnixEpochTicks = 116444736000000000ll;
 
 [[nodiscard]] bool LoadHudVisible() noexcept {
   DWORD value = 0;
@@ -70,14 +73,91 @@ void SaveHudVisible(const bool visible) noexcept {
   RegCloseKey(key);
 }
 
-[[nodiscard]] double UnixSeconds() noexcept {
-  FILETIME fileTime{};
-  GetSystemTimePreciseAsFileTime(&fileTime);
+[[nodiscard]] double UnixMillisecondsFromFileTime(const FILETIME& fileTime) noexcept {
   ULARGE_INTEGER value{};
   value.LowPart = fileTime.dwLowDateTime;
   value.HighPart = fileTime.dwHighDateTime;
-  constexpr std::uint64_t epoch = 116444736000000000ull;
-  return static_cast<double>(value.QuadPart - epoch) / 10000000.0;
+  return static_cast<double>(static_cast<std::int64_t>(value.QuadPart) -
+    kFileTimeUnixEpochTicks) / 10000.0;
+}
+
+[[nodiscard]] double UnixSeconds() noexcept {
+  FILETIME fileTime{};
+  GetSystemTimePreciseAsFileTime(&fileTime);
+  return UnixMillisecondsFromFileTime(fileTime) / 1000.0;
+}
+
+struct LocalCalendarDay {
+  SYSTEMTIME date{};
+  std::optional<std::pair<double, double>> boundariesMs;
+};
+
+struct LocalCalendarDayCache {
+  LocalCalendarDay day;
+  std::optional<DYNAMIC_TIME_ZONE_INFORMATION> timezone;
+};
+
+[[nodiscard]] bool SameTimezone(
+    const DYNAMIC_TIME_ZONE_INFORMATION& a, const DYNAMIC_TIME_ZONE_INFORMATION& b) noexcept {
+  const auto sameTransition = [](const SYSTEMTIME& left, const SYSTEMTIME& right) {
+    return left.wYear == right.wYear && left.wMonth == right.wMonth &&
+      left.wDay == right.wDay && left.wDayOfWeek == right.wDayOfWeek &&
+      left.wHour == right.wHour && left.wMinute == right.wMinute &&
+      left.wSecond == right.wSecond && left.wMilliseconds == right.wMilliseconds;
+  };
+  return a.Bias == b.Bias && a.StandardBias == b.StandardBias &&
+    a.DaylightBias == b.DaylightBias &&
+    a.DynamicDaylightTimeDisabled == b.DynamicDaylightTimeDisabled &&
+    std::wstring_view(a.TimeZoneKeyName) == std::wstring_view(b.TimeZoneKeyName) &&
+    sameTransition(a.StandardDate, b.StandardDate) &&
+    sameTransition(a.DaylightDate, b.DaylightDate);
+}
+
+[[nodiscard]] LocalCalendarDay ReadLocalCalendarDay(LocalCalendarDayCache& cache) {
+  LocalCalendarDay result;
+  DYNAMIC_TIME_ZONE_INFORMATION timezone{};
+  SYSTEMTIME utc{};
+  GetSystemTime(&utc);
+  if (GetDynamicTimeZoneInformation(&timezone) == TIME_ZONE_ID_INVALID ||
+      !SystemTimeToTzSpecificLocalTimeEx(&timezone, &utc, &result.date)) {
+    GetLocalTime(&result.date);
+    return result;
+  }
+  if (cache.timezone && SameTimezone(*cache.timezone, timezone) &&
+      cache.day.date.wYear == result.date.wYear && cache.day.date.wMonth == result.date.wMonth &&
+      cache.day.date.wDay == result.date.wDay) return cache.day;
+
+  const auto localDayAt = [&timezone](const double milliseconds) -> std::optional<std::int64_t> {
+    const auto unixMs = static_cast<std::int64_t>(milliseconds);
+    if (unixMs < -kFileTimeUnixEpochTicks / 10000 ||
+        unixMs > (std::numeric_limits<std::int64_t>::max() - kFileTimeUnixEpochTicks) / 10000) {
+      return std::nullopt;
+    }
+    ULARGE_INTEGER ticks{};
+    ticks.QuadPart = static_cast<ULONGLONG>(unixMs * 10000 + kFileTimeUnixEpochTicks);
+    const FILETIME fileTime{ticks.LowPart, ticks.HighPart};
+    SYSTEMTIME candidateUtc{};
+    SYSTEMTIME local{};
+    if (!FileTimeToSystemTime(&fileTime, &candidateUtc) ||
+        !SystemTimeToTzSpecificLocalTimeEx(&timezone, &candidateUtc, &local)) return std::nullopt;
+    const std::chrono::year_month_day date{
+      std::chrono::year{local.wYear}, std::chrono::month{local.wMonth}, std::chrono::day{local.wDay}};
+    if (!date.ok()) return std::nullopt;
+    return std::chrono::sys_days{date}.time_since_epoch().count();
+  };
+  const std::chrono::year_month_day today{
+    std::chrono::year{result.date.wYear}, std::chrono::month{result.date.wMonth},
+    std::chrono::day{result.date.wDay}};
+  if (!today.ok()) return result;
+  const auto todayIndex = std::chrono::sys_days{today}.time_since_epoch().count();
+  const auto startMs = LocalDayBoundaryMilliseconds(todayIndex, localDayAt);
+  const auto endMs = LocalDayBoundaryMilliseconds(todayIndex + 1, localDayAt);
+  if (startMs && endMs && *endMs > *startMs) {
+    result.boundariesMs = std::pair{*startMs, *endMs};
+    cache.day = result;
+    cache.timezone = timezone;
+  }
+  return result;
 }
 
 [[nodiscard]] std::uint32_t RandomSessionSeed() noexcept {
@@ -219,6 +299,8 @@ class NativeHost final {
   bool introActive_ = false;
   bool staticFrameRendered_ = false;
   std::string renderedPreset_;
+  LocalCalendarDayCache localCalendarDayCache_;
+  FullMoonDayCache fullMoonDayCache_;
   bool imagesConfigured_ = false;
   bool messagesConfigured_ = false;
   std::filesystem::file_time_type settingsWriteTime_{};
@@ -805,12 +887,13 @@ void NativeHost::Tick() {
   if (!frozen) elapsedSeconds_ += std::max(0.0, frameElapsed);
   RecalculateGeometry();
   PollSettingsFile();
-  // GetLocalTime follows the current OS date/timezone, independently of paused
-  // presentation timelines. Check before skipping paused or reduced-motion frames.
-  SYSTEMTIME localDate{};
-  GetLocalTime(&localDate);
+  // Live OS calendar days are independent of paused presentation timelines. The
+  // boundary-keyed cache avoids repeating lunar calculations on every frame.
+  const auto localDay = ReadLocalCalendarDay(localCalendarDayCache_);
+  const bool fullMoonDay = localDay.boundariesMs && fullMoonDayCache_.ContainsFullMoon(
+    localDay.boundariesMs->first, localDay.boundariesMs->second);
   const Controls renderControls = EffectiveControlsForLocalDate(
-    settings_.controls, localDate.wMonth, localDate.wDay);
+    settings_.controls, localDay.date.wMonth, localDay.date.wDay, fullMoonDay);
   if (renderControls.preset != renderedPreset_) staticFrameRendered_ = false;
   if (!shortcutToastText_.empty() && shortcutToastStartSeconds_ > 0.0) {
     const double lifetime = reducedMotion_ ? 1.7 : 1.88;

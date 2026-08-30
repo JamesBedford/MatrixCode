@@ -457,10 +457,12 @@ QualityTier QualityTierFromString(const std::string& value) {
 }
 
 Controls EffectiveControlsForLocalDate(
-    const Controls& controls, const int localMonth, const int localDay) {
+    const Controls& controls, const int localMonth, const int localDay, const bool fullMoonDay) {
   Controls effective = controls;
   if (const auto holidayPreset = HolidayPresetForLocalDate(localMonth, localDay)) {
     effective.preset = *holidayPreset;
+  } else if (fullMoonDay) {
+    effective.preset = "white";
   }
   return effective;
 }

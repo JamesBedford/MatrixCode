@@ -284,6 +284,48 @@ template <typename PhaseFunction>
 
 }  // namespace
 
+std::optional<double> LocalDayBoundaryMilliseconds(
+    const std::int64_t dayIndex,
+    const std::function<std::optional<std::int64_t>(double)>& localDayAt) {
+  constexpr std::int64_t millisecondsPerDay = 86'400'000;
+  constexpr std::int64_t maximumExactMilliseconds = 9'007'199'254'740'991;
+  if (!localDayAt || dayIndex < -maximumExactMilliseconds / millisecondsPerDay + 2 ||
+      dayIndex > maximumExactMilliseconds / millisecondsPerDay - 2) return std::nullopt;
+  std::int64_t before = (dayIndex - 2) * millisecondsPerDay;
+  std::int64_t after = (dayIndex + 2) * millisecondsPerDay;
+  const auto beforeDay = localDayAt(static_cast<double>(before));
+  const auto afterDay = localDayAt(static_cast<double>(after));
+  if (!beforeDay || !afterDay || *beforeDay >= dayIndex || *afterDay < dayIndex) {
+    return std::nullopt;
+  }
+  while (after - before > 1) {
+    const std::int64_t middle = before + (after - before) / 2;
+    const auto middleDay = localDayAt(static_cast<double>(middle));
+    if (!middleDay) return std::nullopt;
+    if (*middleDay < dayIndex) before = middle;
+    else after = middle;
+  }
+  return static_cast<double>(after);
+}
+
+FullMoonDayCache::FullMoonDayCache(Resolver resolver) : resolver_(std::move(resolver)) {}
+
+bool FullMoonDayCache::ContainsFullMoon(const double localDayStartMs, const double localDayEndMs) {
+  if (!std::isfinite(localDayStartMs) || !std::isfinite(localDayEndMs) ||
+      localDayEndMs <= localDayStartMs) return false;
+  if (cached_ && startMs_ == localDayStartMs && endMs_ == localDayEndMs) return fullMoonDay_;
+  const double searchFrom = localDayStartMs - 1.0;
+  const auto fullMoon = resolver_
+    ? resolver_(searchFrom)
+    : HolidayTargetMilliseconds("fullmoon", searchFrom);
+  startMs_ = localDayStartMs;
+  endMs_ = localDayEndMs;
+  cached_ = true;
+  fullMoonDay_ = fullMoon.has_value() && std::isfinite(*fullMoon) &&
+    *fullMoon >= localDayStartMs && *fullMoon < localDayEndMs;
+  return fullMoonDay_;
+}
+
 std::optional<std::string_view> HolidayPresetForLocalDate(
     const int localMonth, const int localDay) noexcept {
   if (localMonth == kValentinesDate.month + 1 && localDay == kValentinesDate.day) {

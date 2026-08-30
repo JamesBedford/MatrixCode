@@ -1,4 +1,5 @@
 #import "MatrixCodeConstants.h"
+#import "MatrixCodeTokenResolver.h"
 
 #import <math.h>
 
@@ -81,6 +82,33 @@ NSArray<NSNumber *> *MatrixCodeColorPaletteForPreset(NSString *presetName) {
     return MatrixCodeColorPaletteForControls(@{ @"preset": presetName ?: @"classic" });
 }
 
+static BOOL MatrixCodeDayContainsFullMoon(NSDate *start, NSDate *end, NSTimeZone *timeZone) {
+    static NSObject *cacheLock;
+    static NSTimeInterval cachedStart;
+    static NSTimeInterval cachedEnd;
+    static NSString *cachedTimeZoneName;
+    static BOOL cachedFullMoon;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ cacheLock = [[NSObject alloc] init]; });
+    NSTimeInterval startSeconds = start.timeIntervalSince1970;
+    NSTimeInterval endSeconds = end.timeIntervalSince1970;
+    NSString *zoneName = timeZone.name;
+    @synchronized (cacheLock) {
+        // One local day is enough for all attached views; clock/timezone changes invalidate it.
+        if (cachedStart != startSeconds || cachedEnd != endSeconds ||
+            ![cachedTimeZoneName isEqualToString:zoneName]) {
+            NSDate *fullMoon = [MatrixCodeTokenResolver builtInMomentNamed:@"fullmoon"
+                relativeToDate:[start dateByAddingTimeInterval:-0.001]];
+            cachedFullMoon = fullMoon && [fullMoon compare:start] != NSOrderedAscending &&
+                [fullMoon compare:end] == NSOrderedAscending;
+            cachedStart = startSeconds;
+            cachedEnd = endSeconds;
+            cachedTimeZoneName = [zoneName copy];
+        }
+        return cachedFullMoon;
+    }
+}
+
 NSString *MatrixCodeHolidayColorPreset(NSDate *date, NSTimeZone *timeZone) {
     NSCalendar *calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
     calendar.timeZone = timeZone;
@@ -88,6 +116,11 @@ NSString *MatrixCodeHolidayColorPreset(NSDate *date, NSTimeZone *timeZone) {
                                         fromDate:date];
     if (day.month == MatrixCodeValentinesMonth && day.day == MatrixCodeValentinesDay) return @"red";
     if (day.month == MatrixCodeStPatricksMonth && day.day == MatrixCodeStPatricksDay) return @"classic";
+    // Calendar intervals also cover 23/25-hour days and time zones that skip midnight.
+    NSDate *start;
+    NSTimeInterval duration;
+    if (![calendar rangeOfUnit:NSCalendarUnitDay startDate:&start interval:&duration forDate:date]) return nil;
+    if (MatrixCodeDayContainsFullMoon(start, [start dateByAddingTimeInterval:duration], timeZone)) return @"white";
     return nil;
 }
 

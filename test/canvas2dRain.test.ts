@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_IMAGES } from "../src/config/imagesStore.ts";
 import { shouldSparkleGoldHead, startCanvas2dRain } from "../src/fallback/canvas2dRain.ts";
 import { WallpaperEngineFpsLimiter } from "../src/platform/wallpaperEngine.ts";
+import { nextFullMoonMs } from "../src/sim/holidays.ts";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -97,6 +98,25 @@ describe("Canvas2D gold sparkle", () => {
 });
 
 describe("Canvas2D host lifecycle", () => {
+  it("recolors a paused full-moon frame White without advancing glyphs or resuming animation", () => {
+    const harness = canvasHarness();
+    const rain = startCanvas2dRain(harness.canvas, "gold");
+    rain.renderStatic(0);
+    rain.stop();
+    harness.fillText.mockClear();
+    vi.setSystemTime(nextFullMoonMs(Date.UTC(2026, 7, 20)));
+    rain.refreshTheme();
+    expect(harness.context.shadowColor).toBe("rgba(237,237,237,1)");
+    expect(harness.context.shadowBlur).toBe(8);
+    const whiteGlyphs = harness.fillText.mock.calls.slice();
+    harness.fillText.mockClear();
+    vi.setSystemTime(new Date(2026, 1, 14));
+    rain.refreshTheme();
+    expect(harness.fillText.mock.calls).toEqual(whiteGlyphs);
+    expect(harness.context.shadowColor).toBe("rgba(255,42,42,1)");
+    expect(harness.pendingFrames()).toBe(0);
+  });
+
   it("changes live rain with the local date, independently of the animation clock", () => {
     const harness = canvasHarness();
     const rain = startCanvas2dRain(harness.canvas, "custom", 1, "#123456");

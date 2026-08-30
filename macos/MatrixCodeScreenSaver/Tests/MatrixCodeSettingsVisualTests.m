@@ -42,6 +42,11 @@ static NSColor *MatrixCodeLayerColor(CGColorRef color) {
 
 static BOOL MatrixCodeColorIsThemeAccent(NSColor *color) {
     NSColor *rgb = MatrixCodeDeviceRGBColor(color);
+    if ([MatrixCodeSettingsTheme.sharedTheme.effectivePresetName isEqualToString:@"white"]) {
+        return rgb && rgb.redComponent > 0.35 &&
+            fabs(rgb.redComponent - rgb.greenComponent) < 0.03 &&
+            fabs(rgb.greenComponent - rgb.blueComponent) < 0.03;
+    }
     if ([MatrixCodeSettingsTheme.sharedTheme.effectivePresetName isEqualToString:@"red"]) {
         return rgb && rgb.redComponent > 0.35 &&
             rgb.redComponent > rgb.greenComponent * 1.35 &&

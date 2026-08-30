@@ -22,7 +22,8 @@ namespace matrixcode {
 [[nodiscard]] Controls EffectiveControlsForLocalDate(
   const Controls& controls,
   int localMonth,
-  int localDay);
+  int localDay,
+  bool fullMoonDay = false);
 
 [[nodiscard]] std::optional<std::vector<std::uint8_t>> DecodeBase64(std::string_view value);
 [[nodiscard]] std::string EncodeBase64(const std::vector<std::uint8_t>& value);

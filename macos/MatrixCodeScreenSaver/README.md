@@ -22,7 +22,10 @@ The native saver is expected to match the browser app's user-visible behavior:
   lead glow, vignette, theme, quality, mirroring, scanlines, and overlap lanes;
 - annual local-date colors: Red throughout February 14 (Valentine's Day) and
   Classic green throughout March 17 (St Patrick's Day), using the Gregorian
-  calendar. The rain, intro, and themed HUD update while running, including
+  calendar. Other local dates containing a full moon use White for the entire
+  day, using the same offline lunar calculation as `{countdown:fullmoon}`;
+  February 14 and March 17 take priority when they coincide with a full moon.
+  The rain, intro, and themed HUD update while running, including
   paused/reduced-motion frames, timezone or clock changes, and wake. This is a
   temporary rendering override: the latest selected theme and custom color
   remain saved and return automatically when the local date changes;

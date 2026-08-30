@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountMatrixRain, type MatrixRainHandle } from "../src/app.ts";
 import { startCanvas2dRain } from "../src/fallback/canvas2dRain.ts";
 import { createWallpaperEngineBridge } from "../src/platform/wallpaperEngine.ts";
+import { nextFullMoonMs } from "../src/sim/holidays.ts";
 
 vi.mock("../src/fallback/canvas2dRain.ts", () => ({ startCanvas2dRain: vi.fn() }));
 
@@ -43,6 +44,38 @@ function harness(reducedMotion = false) {
 }
 
 describe("mounted holiday color lifecycle", () => {
+  it("uses White for the entire local full-moon date while Wallpaper Engine remains paused", async () => {
+    const view = harness();
+    const phaseMs = nextFullMoonMs(Date.UTC(2026, 7, 20));
+    const phase = new Date(phaseMs);
+    const start = new Date(phase.getFullYear(), phase.getMonth(), phase.getDate());
+    const end = new Date(phase.getFullYear(), phase.getMonth(), phase.getDate() + 1);
+    vi.setSystemTime(start.getTime() - 1000);
+    const bridge = createWallpaperEngineBridge({ host: {} });
+    bridge.listener.applyUserProperties({ colorpreset: { value: "gold" } });
+    bridge.listener.setPaused(true);
+    app = await mountMatrixRain(view.container, undefined, { wallpaperEngine: bridge });
+    view.fallback.renderStatic.mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(view.setProperty).toHaveBeenCalledWith("--mx-accent-rgb", "237 237 237");
+    expect(view.fallback.refreshTheme).toHaveBeenCalledOnce();
+    vi.setSystemTime(phaseMs + 1000);
+    vi.advanceTimersByTime(1000);
+    expect(view.fallback.refreshTheme).toHaveBeenCalledOnce();
+    expect(bridge.pauseClock.isPaused()).toBe(true);
+    expect(app.controls.get().preset).toBe("gold");
+
+    bridge.listener.applyUserProperties({ colorpreset: { value: "blue" } });
+    expect(app.controls.get().preset).toBe("blue");
+    view.fallback.renderStatic.mockClear();
+    vi.setSystemTime(end);
+    vi.advanceTimersByTime(1000);
+    expect(view.setProperty).toHaveBeenCalledWith("--mx-accent-rgb", "39 214 255");
+    expect(view.fallback.refreshTheme).toHaveBeenCalledTimes(2);
+    expect(view.fallback.renderStatic).not.toHaveBeenCalled();
+    expect(bridge.configuration().controls.preset).toBe("blue");
+  });
+
   it("updates reduced-motion browser rain at midnight and cleans up the date watcher", async () => {
     const view = harness(true);
     vi.setSystemTime(new Date(2026, 1, 13, 23, 59, 59));

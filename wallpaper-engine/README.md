@@ -46,6 +46,10 @@ node scripts/wallpaper-engine/verify.mjs dist/wallpaper-engine
   and Classic Green on March 17, for the entire day every year. It follows the actual clock,
   not the paused animation timeline, and restores the latest host-selected palette afterward.
   This also applies to the Canvas2D compatibility renderer; host properties are never rewritten.
+- Full-moon dates use White throughout the local calendar day containing the computed full-moon
+  moment, including the hours before and after it. This uses the offline countdown lunar calculation,
+  respects timezone and daylight-saving changes, and restores the host's selected color afterward.
+  February 14 and March 17 keep their fixed holiday colors if a full moon coincides.
 - The image-folder property accepts supported Wallpaper Engine image formats, de-duplicates
   paths, sorts deterministically, and decodes candidates until it has at most 64 valid images.
   Candidate indexing is defensively bounded at 4096 paths.

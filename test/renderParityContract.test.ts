@@ -327,13 +327,27 @@ describe("Windows/Web render parity source contract", () => {
 
   it("checks the live Windows local date before skipping frozen frames", () => {
     const tick = windowsHost.match(/void NativeHost::Tick\(\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const localDate = tick.indexOf("GetLocalTime(&localDate);");
+    const localDate = tick.indexOf("const auto localDay = ReadLocalCalendarDay(localCalendarDayCache_);");
+    const moonDate = tick.indexOf("fullMoonDayCache_.ContainsFullMoon(");
     const invalidation = tick.indexOf(
       "if (renderControls.preset != renderedPreset_) staticFrameRendered_ = false;",
     );
     const frozenSkip = tick.indexOf("if (frozen && staticFrameRendered_ && !toastAnimating) return;");
     expect(localDate).toBeGreaterThanOrEqual(0);
-    expect(invalidation).toBeGreaterThan(localDate);
+    expect(moonDate).toBeGreaterThan(localDate);
+    expect(invalidation).toBeGreaterThan(moonDate);
     expect(frozenSkip).toBeGreaterThan(invalidation);
+    const calendarDay = windowsHost.match(
+      /LocalCalendarDay ReadLocalCalendarDay\(LocalCalendarDayCache& cache\) \{([\s\S]*?)\n\}/,
+    )?.[1] ?? "";
+    expect(calendarDay).toContain("GetDynamicTimeZoneInformation(&timezone)");
+    expect(calendarDay).toContain("SystemTimeToTzSpecificLocalTimeEx(&timezone, &utc, &result.date)");
+    expect(calendarDay).toContain("SystemTimeToTzSpecificLocalTimeEx(&timezone, &candidateUtc, &local)");
+    expect(calendarDay).toContain("LocalDayBoundaryMilliseconds(todayIndex + 1, localDayAt)");
+    expect(calendarDay.indexOf("SameTimezone(*cache.timezone, timezone)")).toBeLessThan(
+      calendarDay.indexOf("LocalDayBoundaryMilliseconds(todayIndex, localDayAt)"),
+    );
+    expect(calendarDay).not.toContain("TzSpecificLocalTimeToSystemTimeEx(");
+    expect(calendarDay).not.toContain("PresentationTimeSeconds()");
   });
 });

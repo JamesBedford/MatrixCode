@@ -23,7 +23,7 @@ FOUNDATION_EXPORT NSArray<NSNumber *> *MatrixCodeColorPaletteForPreset(
     NSString *presetName);
 FOUNDATION_EXPORT NSArray<NSNumber *> *MatrixCodeColorPaletteForControls(
     NSDictionary<NSString *, id> *controls);
-/// Annual Gregorian holiday override in the supplied local time zone; nil leaves the chosen preset intact.
+/// Local Gregorian holiday/full-moon override; fixed holidays take priority, and nil keeps the chosen preset.
 FOUNDATION_EXPORT NSString * _Nullable MatrixCodeHolidayColorPreset(
     NSDate *date, NSTimeZone *timeZone);
 FOUNDATION_EXPORT NSDictionary<NSString *, id> *MatrixCodeSanitizeControlsDocument(

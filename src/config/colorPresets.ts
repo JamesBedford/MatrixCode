@@ -1,6 +1,7 @@
 import type { ColorPreset, PresetName } from "../types.ts";
 import { hexToRgb } from "../util/math.ts";
 import { ST_PATRICKS_DAY, VALENTINES_DAY } from "./holidayDates.ts";
+import { isFullMoonLocalDate } from "../sim/fullMoon.ts";
 
 export const DEFAULT_CUSTOM_COLOR = "#00FF41";
 
@@ -147,11 +148,12 @@ export function getPreset(name: PresetName, customColor?: string): ColorPreset {
   return PRESETS[name] ?? CLASSIC;
 }
 
-/** Annual local-calendar overrides affect presentation only, never the saved selection. */
+/** Local-calendar overrides affect presentation only; fixed holidays take priority over full moons. */
 export function effectivePresetName(selected: PresetName, localDate = new Date()): PresetName {
   const month = localDate.getMonth() + 1;
   const day = localDate.getDate();
   if (month === VALENTINES_DAY.month && day === VALENTINES_DAY.day) return "red";
   if (month === ST_PATRICKS_DAY.month && day === ST_PATRICKS_DAY.day) return "classic";
+  if (isFullMoonLocalDate(localDate)) return "white";
   return selected;
 }
