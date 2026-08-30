@@ -40,15 +40,20 @@ static NSColor *MatrixCodeLayerColor(CGColorRef color) {
     return color ? MatrixCodeDeviceRGBColor([NSColor colorWithCGColor:color]) : nil;
 }
 
-static BOOL MatrixCodeColorIsGreenAccent(NSColor *color) {
+static BOOL MatrixCodeColorIsThemeAccent(NSColor *color) {
     NSColor *rgb = MatrixCodeDeviceRGBColor(color);
+    if ([MatrixCodeSettingsTheme.sharedTheme.effectivePresetName isEqualToString:@"red"]) {
+        return rgb && rgb.redComponent > 0.35 &&
+            rgb.redComponent > rgb.greenComponent * 1.35 &&
+            rgb.redComponent > rgb.blueComponent * 1.15;
+    }
     return rgb && rgb.greenComponent > 0.35 &&
         rgb.greenComponent > rgb.redComponent * 1.35 &&
         rgb.greenComponent > rgb.blueComponent * 1.15;
 }
 
 static NSUInteger MatrixCodeDistinctOpaqueColors(NSBitmapImageRep *bitmap,
-                                                  NSUInteger *greenPixelCount) {
+                                                  NSUInteger *accentPixelCount) {
     NSMutableSet<NSNumber *> *colors = [NSMutableSet set];
     NSUInteger green = 0;
     NSInteger width = bitmap.pixelsWide;
@@ -61,14 +66,14 @@ static NSUInteger MatrixCodeDistinctOpaqueColors(NSBitmapImageRep *bitmap,
             NSUInteger greenChannel = (NSUInteger)lrint(color.greenComponent * 31);
             NSUInteger blue = (NSUInteger)lrint(color.blueComponent * 31);
             [colors addObject:@((red << 10) | (greenChannel << 5) | blue)];
-            if (MatrixCodeColorIsGreenAccent(color)) green++;
+            if (MatrixCodeColorIsThemeAccent(color)) green++;
         }
     }
-    if (greenPixelCount) *greenPixelCount = green;
+    if (accentPixelCount) *accentPixelCount = green;
     return colors.count;
 }
 
-static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
+static NSUInteger MatrixCodeAccentPixelsAlongBorder(NSBitmapImageRep *bitmap) {
     NSUInteger count = 0;
     NSInteger width = bitmap.pixelsWide;
     NSInteger height = bitmap.pixelsHigh;
@@ -76,7 +81,7 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
     for (NSInteger y = 0; y < height; y++) {
         for (NSInteger x = 0; x < width; x++) {
             if (x >= band && x < width - band && y >= band && y < height - band) continue;
-            if (MatrixCodeColorIsGreenAccent([bitmap colorAtX:x y:y])) count++;
+            if (MatrixCodeColorIsThemeAccent([bitmap colorAtX:x y:y])) count++;
         }
     }
     return count;
@@ -166,20 +171,20 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
         XCTAssertEqualWithAccuracy(background.greenComponent, 0.008, 0.015);
         XCTAssertEqualWithAccuracy(background.blueComponent, 0.031, 0.015);
         NSColor *border = MatrixCodeSettingsTheme.sharedTheme.borderColor;
-        XCTAssertTrue(MatrixCodeColorIsGreenAccent(border));
+        XCTAssertTrue(MatrixCodeColorIsThemeAccent(border));
         XCTAssertGreaterThan(border.alphaComponent, 0.25);
 
         NSBitmapImageRep *bitmap = MatrixCodeRenderView(panel);
         XCTAssertNotNil(bitmap);
         XCTAssertGreaterThan(bitmap.pixelsWide, 250);
         XCTAssertGreaterThan(bitmap.pixelsHigh, 400);
-        NSUInteger greenPixels = 0;
-        NSUInteger distinctColors = MatrixCodeDistinctOpaqueColors(bitmap, &greenPixels);
+        NSUInteger accentPixels = 0;
+        NSUInteger distinctColors = MatrixCodeDistinctOpaqueColors(bitmap, &accentPixels);
         XCTAssertGreaterThan(distinctColors, 12,
                              @"Offscreen panel render appears blank at %@", sizeValue);
-        XCTAssertGreaterThan(greenPixels, 20,
+        XCTAssertGreaterThan(accentPixels, 20,
                              @"Offscreen panel render lost its green accent at %@", sizeValue);
-        XCTAssertGreaterThan(MatrixCodeGreenPixelsAlongBorder(bitmap), 20,
+        XCTAssertGreaterThan(MatrixCodeAccentPixelsAlongBorder(bitmap), 20,
                              @"Drawn panel border lost its accent at %@", sizeValue);
     }
 }
@@ -262,7 +267,7 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
         XCTAssertGreaterThanOrEqual(NSMinY(card.frame), 24);
         XCTAssertTrue([card isKindOfClass:MatrixCodeSettingsPanelView.class]);
         XCTAssertTrue(((MatrixCodeSettingsPanelView *)card).modal);
-        XCTAssertTrue(MatrixCodeColorIsGreenAccent(
+        XCTAssertTrue(MatrixCodeColorIsThemeAccent(
             MatrixCodeSettingsTheme.sharedTheme.borderColor));
 
         for (NSString *identifier in @[@"editor-reset", @"editor-cancel", @"editor-save"]) {
@@ -275,13 +280,13 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
 
         NSBitmapImageRep *bitmap = MatrixCodeRenderView(card);
         XCTAssertNotNil(bitmap);
-        NSUInteger greenPixels = 0;
-        NSUInteger distinctColors = MatrixCodeDistinctOpaqueColors(bitmap, &greenPixels);
+        NSUInteger accentPixels = 0;
+        NSUInteger distinctColors = MatrixCodeDistinctOpaqueColors(bitmap, &accentPixels);
         XCTAssertGreaterThan(distinctColors, 12,
                              @"Offscreen editor render appears blank at %@", sizeValue);
-        XCTAssertGreaterThan(greenPixels, 20,
+        XCTAssertGreaterThan(accentPixels, 20,
                              @"Offscreen editor render lost its green accent at %@", sizeValue);
-        XCTAssertGreaterThan(MatrixCodeGreenPixelsAlongBorder(bitmap), 20,
+        XCTAssertGreaterThan(MatrixCodeAccentPixelsAlongBorder(bitmap), 20,
                              @"Drawn editor border lost its accent at %@", sizeValue);
     }
 }
@@ -330,11 +335,11 @@ static NSUInteger MatrixCodeGreenPixelsAlongBorder(NSBitmapImageRep *bitmap) {
 
         NSBitmapImageRep *bitmap = MatrixCodeRenderView(card);
         XCTAssertNotNil(bitmap);
-        NSUInteger greenPixels = 0;
-        NSUInteger distinctColors = MatrixCodeDistinctOpaqueColors(bitmap, &greenPixels);
+        NSUInteger accentPixels = 0;
+        NSUInteger distinctColors = MatrixCodeDistinctOpaqueColors(bitmap, &accentPixels);
         XCTAssertGreaterThan(distinctColors, 12,
                              @"Offscreen Characters editor render appears blank at %@", sizeValue);
-        XCTAssertGreaterThan(greenPixels, 20,
+        XCTAssertGreaterThan(accentPixels, 20,
                              @"Characters editor render lost its green accent at %@", sizeValue);
     }
 }

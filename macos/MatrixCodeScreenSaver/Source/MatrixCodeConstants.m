@@ -4,6 +4,10 @@
 
 NSString * const MatrixCodeModuleIdentifier = @"com.matrixcode.screensaver";
 NSString * const MatrixCodeSessionDefaultsKey = @"MatrixCodeNativeSession";
+NSInteger const MatrixCodeValentinesMonth = 2;
+NSInteger const MatrixCodeValentinesDay = 14;
+NSInteger const MatrixCodeStPatricksMonth = 3;
+NSInteger const MatrixCodeStPatricksDay = 17;
 
 static NSDictionary<NSString *, NSArray<NSNumber *> *> *MatrixCodeColorPalettes(void) {
     static NSDictionary<NSString *, NSArray<NSNumber *> *> *palettes;
@@ -75,6 +79,16 @@ NSArray<NSNumber *> *MatrixCodeColorPaletteForControls(NSDictionary<NSString *, 
 
 NSArray<NSNumber *> *MatrixCodeColorPaletteForPreset(NSString *presetName) {
     return MatrixCodeColorPaletteForControls(@{ @"preset": presetName ?: @"classic" });
+}
+
+NSString *MatrixCodeHolidayColorPreset(NSDate *date, NSTimeZone *timeZone) {
+    NSCalendar *calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+    calendar.timeZone = timeZone;
+    NSDateComponents *day = [calendar components:NSCalendarUnitMonth | NSCalendarUnitDay
+                                        fromDate:date];
+    if (day.month == MatrixCodeValentinesMonth && day.day == MatrixCodeValentinesDay) return @"red";
+    if (day.month == MatrixCodeStPatricksMonth && day.day == MatrixCodeStPatricksDay) return @"classic";
+    return nil;
 }
 
 NSArray<NSString *> *MatrixCodeStorageKeys(void) {

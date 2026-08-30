@@ -1,3 +1,5 @@
+import { ST_PATRICKS_DAY, VALENTINES_DAY } from "../config/holidayDates.ts";
+
 // Built-in, dynamically-computed holiday targets for {countdown:NAME} / {countup:NAME}.
 // Pure and DOM-free (the clock is injected as nowMs) so it is deterministic and unit-testable.
 //
@@ -185,8 +187,8 @@ const H = 7;
 
 const HOLIDAYS: Record<string, YearToDate> = {
   newyear: (y) => new Date(y, 0, 1, 0, 0, 0),
-  valentines: (y) => new Date(y, 1, 14, H, 0, 0),
-  stpatricks: (y) => new Date(y, 2, 17, H, 0, 0),
+  valentines: (y) => new Date(y, VALENTINES_DAY.month - 1, VALENTINES_DAY.day, H, 0, 0),
+  stpatricks: (y) => new Date(y, ST_PATRICKS_DAY.month - 1, ST_PATRICKS_DAY.day, H, 0, 0),
   aprilfools: (y) => new Date(y, 3, 1, H, 0, 0),
   easter: (y) => { const e = westernEaster(y); return new Date(y, e.month, e.day, H, 0, 0); },
   july4: (y) => new Date(y, 6, 4, H, 0, 0),

@@ -42,6 +42,10 @@ node scripts/wallpaper-engine/verify.mjs dist/wallpaper-engine
   application's normal bounded catch-up policy.
 - `setPaused` freezes app-relative timelines. Wall-clock time and countdown tokens catch up
   naturally when the wallpaper resumes.
+- The local calendar date temporarily overrides the selected palette with Red on February 14
+  and Classic Green on March 17, for the entire day every year. It follows the actual clock,
+  not the paused animation timeline, and restores the latest host-selected palette afterward.
+  This also applies to the Canvas2D compatibility renderer; host properties are never rewritten.
 - The image-folder property accepts supported Wallpaper Engine image formats, de-duplicates
   paths, sorts deterministically, and decodes candidates until it has at most 64 valid images.
   Candidate indexing is defensively bounded at 4096 paths.

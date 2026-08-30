@@ -50,6 +50,15 @@ serially blocking one another. Animated Windows playback is paced to 60 FPS on
 both standard and high-refresh displays so startup and settled rain keep the same
 presentation cadence.
 
+The app, screen saver, and preview automatically use Red on February 14 and
+Classic green on March 17, for the entire local Gregorian date each year.
+Live OS date/timezone changes are checked before every playback tick, including
+paused/reduced-motion ticks and the first tick after resuming. The override
+colours rain, messages, images, intro text, and themed toasts, and disables
+Gold-only sparkle while active. Selected settings and custom colours remain
+unchanged; the latest selection returns when the holiday ends. The fixed WARP
+capture deliberately bypasses this live-date override to remain deterministic.
+
 Standalone keyboard and pointer controls follow the browser contract:
 
 - `H` opens settings; `I`, `M`, `X`, and `C` open the structured document pages;

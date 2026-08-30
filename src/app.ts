@@ -22,7 +22,7 @@ import { MAX_FRAME_CATCHUP_SECONDS, simulationStepPlan } from "./sim/frameSteps.
 import { advanceMultiClick, settledMultiClickAction } from "./sim/multiClick.ts";
 import { computeLanes, tierCap, seedForLayer, MAX_LANES, type Lane } from "./sim/overlapLanes.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
-import { getPreset } from "./config/colorPresets.ts";
+import { effectivePresetName, getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
 import { glyphAtlasFontFamily } from "./config/glyphFonts.ts";
 import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
@@ -133,14 +133,14 @@ function applyChromeAccent(preset: ColorPreset): void {
   root.setProperty("--mx-dim-rgb", channels(preset.body));
 }
 
-function paramsOf(c: Controls): RenderParams {
+function paramsOf(c: Controls, preset: ColorPreset): RenderParams {
   return {
     glow: c.glow,
     leadBrightness: c.leadBrightness,
     scanlines: c.scanlines,
     vignette: c.vignette,
     quality: c.quality,
-    preset: getPreset(c.preset, c.customColor),
+    preset,
   };
 }
 
@@ -219,8 +219,33 @@ export async function mountMatrixRain(
     return currentImagesDoc;
   };
   if (options && !wallpaperHosted) controls.set(options);
-  applyChromeAccent(getPreset(controls.get().preset, controls.get().customColor));
-  applyFavicon(getPreset(controls.get().preset, controls.get().customColor));
+  let activePreset: ColorPreset;
+  let activeCustomColor: string | undefined;
+  const refreshPreset = (current = controls.get()): boolean => {
+    const name = effectivePresetName(current.preset);
+    const customColor = name === "custom" ? current.customColor : undefined;
+    if (activePreset?.name === name && activeCustomColor === customColor) return false;
+    activePreset = getPreset(name, customColor);
+    activeCustomColor = customColor;
+    applyChromeAccent(activePreset);
+    applyFavicon(activePreset);
+    return true;
+  };
+  refreshPreset();
+
+  // Animation samples the wall clock on every frame. This also recolors a static/paused
+  // view after midnight or a clock/time-zone change without advancing its timelines.
+  const watchDateTheme = (repaint: () => void): (() => void) => {
+    const refresh = (): void => {
+      if (!document.hidden && refreshPreset()) repaint();
+    };
+    const timer = window.setInterval(refresh, 1000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  };
 
   let canvas = document.createElement("canvas");
   container.appendChild(canvas);
@@ -254,6 +279,7 @@ export async function mountMatrixRain(
     };
     const launch = (): void => {
       fallback?.stop();
+      refreshPreset();
       const current = controls.get();
       fallback = startCanvas2dRain(
         canvas,
@@ -287,6 +313,9 @@ export async function mountMatrixRain(
     };
     sizeCanvas();
     launch();
+    const stopWatchingDateTheme = watchDateTheme(() => {
+      fallback?.refreshTheme();
+    });
     const resizeObserver = new ResizeObserver(sizeCanvas);
     resizeObserver.observe(container);
     const notice = showNotice(container, noticeText);
@@ -367,6 +396,7 @@ export async function mountMatrixRain(
       },
       destroy: () => {
         fallback?.stop();
+        stopWatchingDateTheme();
         detach?.();
         imageGeneration++;
         unsubscribeFallbackControls();
@@ -868,6 +898,8 @@ export async function mountMatrixRain(
   // window's slice of the shared grid; otherwise the whole grid.
   const paint = (): void => {
     if (!sim) return;
+    const current = controls.get();
+    refreshPreset(current);
     if (multiMonitorState) {
       const { vCols, vRows, slice } = multiMonitorState.config;
       extractSlice(sim.state, vCols, vRows, slice, multiMonitorState.localState);
@@ -897,7 +929,7 @@ export async function mountMatrixRain(
       glyphSet,
     });
     renderer.renderFrame(
-      paramsOf(controls.get()),
+      paramsOf(current, activePreset),
       grid,
       multiMonitorState ? undefined : activeExtraLayers(),
       viewport,
@@ -940,6 +972,7 @@ export async function mountMatrixRain(
     // Snapshot the controls once per frame and reuse for both the sim step and the render
     // params, instead of spreading the store twice.
     const c = controls.get();
+    refreshPreset(c);
     if (multiMonitorState) {
       // Advance toward the shared wall-clock so every window stays in lockstep.
       const target = multiMonitorState.config.warmupSeconds + (Date.now() - multiMonitorState.config.epoch) / 1000;
@@ -1016,7 +1049,7 @@ export async function mountMatrixRain(
       seed: BASE_SEED,
       glyphSet,
     });
-    renderer.renderFrame(paramsOf(c), grid, extraLayers, undefined, image);
+    renderer.renderFrame(paramsOf(c, activePreset), grid, extraLayers, undefined, image);
     message?.update(now);
   };
 
@@ -1583,9 +1616,7 @@ export async function mountMatrixRain(
       controlsChan.broadcastControls(state);
     }
     if (changed.has("preset") || changed.has("customColor")) {
-      const preset = getPreset(controls.get().preset, controls.get().customColor);
-      applyChromeAccent(preset);
-      applyFavicon(preset);
+      refreshPreset();
     }
     if (changed.has("glyphScale")) {
       if (multiMonitorState) rebuildMultiMonitorGeometry();
@@ -1746,6 +1777,10 @@ export async function mountMatrixRain(
     if (!nativeHosted && !wallpaperHosted) void prefetchScreens(); // warm screen details before multi-monitor mode is requested
   }
 
+  const stopWatchingDateTheme = watchDateTheme(() => {
+    if (!running && !restoringGpu && !gl.isContextLost()) renderStatic();
+  });
+
   return {
     controls,
     setActive: (active: boolean) => {
@@ -1756,6 +1791,7 @@ export async function mountMatrixRain(
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
+      stopWatchingDateTheme();
       atlasBuildGeneration++;
       if (multiMonitorState) exitMultiMonitor(false);
       controlsChan?.close();

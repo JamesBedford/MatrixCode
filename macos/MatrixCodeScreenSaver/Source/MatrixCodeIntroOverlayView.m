@@ -56,11 +56,24 @@ static BOOL MatrixCodeBoolean(NSDictionary *dictionary, NSString *key, BOOL fall
     self.wantsLayer = YES;
     self.layer.backgroundColor = NSColor.clearColor.CGColor;
     _completion = [completion copy];
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                           selector:@selector(refreshAccentColor)
+                                               name:MatrixCodeSettingsThemeDidChangeNotification
+                                             object:nil];
 
     [self reloadStoredValues:storedValues tokenResolver:tokenResolver];
     _hasIntro = self.enabled;
     self.hidden = YES;
     return self;
+}
+
+- (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
+- (void)refreshAccentColor {
+    self.accentColor = MatrixCodeSettingsTheme.sharedTheme.accentColor;
+    [self setNeedsDisplay:YES];
 }
 
 - (void)reloadStoredValues:(NSDictionary<NSString *,NSString *> *)storedValues
@@ -70,7 +83,7 @@ static BOOL MatrixCodeBoolean(NSDictionary *dictionary, NSString *key, BOOL fall
     NSDictionary *controls = MatrixCodeSanitizeControlsDocument(
         [self.class dictionaryFromJSONString:storedValues[@"mx-controls"]]);
     [MatrixCodeSettingsTheme.sharedTheme applyControls:controls];
-    self.accentColor = MatrixCodeSettingsTheme.sharedTheme.accentColor;
+    [self refreshAccentColor];
 
     NSDictionary *intro = [self.class dictionaryFromJSONString:storedValues[@"mx-intro"]];
     NSArray *rawLines = [intro[@"lines"] isKindOfClass:NSArray.class] ? intro[@"lines"] : nil;

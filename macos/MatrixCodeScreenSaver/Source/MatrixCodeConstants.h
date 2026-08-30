@@ -4,6 +4,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 FOUNDATION_EXPORT NSString * const MatrixCodeModuleIdentifier;
 FOUNDATION_EXPORT NSString * const MatrixCodeSessionDefaultsKey;
+FOUNDATION_EXPORT NSInteger const MatrixCodeValentinesMonth;
+FOUNDATION_EXPORT NSInteger const MatrixCodeValentinesDay;
+FOUNDATION_EXPORT NSInteger const MatrixCodeStPatricksMonth;
+FOUNDATION_EXPORT NSInteger const MatrixCodeStPatricksDay;
 
 typedef NS_ENUM(NSUInteger, MatrixCodeColorStop) {
     MatrixCodeColorStopBackground,
@@ -19,6 +23,9 @@ FOUNDATION_EXPORT NSArray<NSNumber *> *MatrixCodeColorPaletteForPreset(
     NSString *presetName);
 FOUNDATION_EXPORT NSArray<NSNumber *> *MatrixCodeColorPaletteForControls(
     NSDictionary<NSString *, id> *controls);
+/// Annual Gregorian holiday override in the supplied local time zone; nil leaves the chosen preset intact.
+FOUNDATION_EXPORT NSString * _Nullable MatrixCodeHolidayColorPreset(
+    NSDate *date, NSTimeZone *timeZone);
 FOUNDATION_EXPORT NSDictionary<NSString *, id> *MatrixCodeSanitizeControlsDocument(
     id _Nullable rawControls);
 FOUNDATION_EXPORT double MatrixCodeQuantizedControlValue(NSString *key, double value);

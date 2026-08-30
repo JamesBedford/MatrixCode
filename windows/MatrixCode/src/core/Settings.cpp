@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <set>
 
+#include "matrixcode/core/HolidayResolver.h"
 #include "matrixcode/core/Utf8.h"
 
 namespace matrixcode {
@@ -453,6 +454,15 @@ QualityTier QualityTierFromString(const std::string& value) {
   if (value == "low") return QualityTier::Low;
   if (value == "med") return QualityTier::Medium;
   return QualityTier::High;
+}
+
+Controls EffectiveControlsForLocalDate(
+    const Controls& controls, const int localMonth, const int localDay) {
+  Controls effective = controls;
+  if (const auto holidayPreset = HolidayPresetForLocalDate(localMonth, localDay)) {
+    effective.preset = *holidayPreset;
+  }
+  return effective;
 }
 
 ColorPalette PaletteForControls(const Controls& controls) {

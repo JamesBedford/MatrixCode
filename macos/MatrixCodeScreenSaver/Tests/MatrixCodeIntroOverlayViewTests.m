@@ -1,6 +1,7 @@
 #import <XCTest/XCTest.h>
 
 #import "MatrixCodeIntroOverlayView.h"
+#import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeTokenResolver.h"
 
 @interface MatrixCodeIntroOverlayView (Testing)
@@ -14,6 +15,12 @@
 @end
 
 @implementation MatrixCodeIntroOverlayViewTests
+
+- (void)setUp {
+    [super setUp];
+    [MatrixCodeSettingsTheme.sharedTheme refreshColorsAtDate:[NSDate dateWithTimeIntervalSince1970:0]
+                                                  timeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
+}
 
 - (void)testStoredIntroTimingAndCompletion {
     NSDictionary *values = @{

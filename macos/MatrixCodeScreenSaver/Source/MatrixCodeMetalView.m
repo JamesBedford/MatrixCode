@@ -15,6 +15,7 @@
 #import "MatrixCodeMessageScheduler.h"
 #import "MatrixCodeRainLifecycle.h"
 #import "MatrixCodeRainSimulation.h"
+#import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeTokenResolver.h"
 
 // Per-cell data only; the cell size and atlas cell extent are identical for
@@ -788,6 +789,12 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 @property(nonatomic, strong) MatrixCodeAdaptiveResolution *adaptiveResolution;
 @property(nonatomic) BOOL adaptiveResolutionEnabled;
 @property(nonatomic) double renderScale;
+@property(nonatomic, copy, nullable) NSString *holidayPresetName;
+@property(nonatomic, strong, nullable) NSTimer *holidayColorTimer;
+@property(nonatomic) BOOL holidayColorRedrawPending;
+- (NSDate *)currentColorDate;
+- (void)refreshHolidayColors;
+- (BOOL)isVisibleForHolidayColorRefresh;
 - (BOOL)ensureRenderTargetsForWidth:(NSUInteger)width
                               height:(NSUInteger)height;
 - (BOOL)encodeFrameToTexture:(id<MTLTexture>)target
@@ -812,6 +819,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 #if DEBUG
+- (float)diagnosticGoldSparkleStrength {
+    return self.uniforms.goldSparkle;
+}
+
 + (float)diagnosticEffectiveTrailLength:(float)trailLength
                                   rows:(float)rows
                           speedControl:(float)speedControl {
@@ -911,7 +922,29 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         NSLog(@"MatrixCode: glyph atlas creation failed");
         return nil;
     }
+    for (NSNotificationName name in @[
+        NSCalendarDayChangedNotification, NSSystemClockDidChangeNotification,
+        NSSystemTimeZoneDidChangeNotification, NSApplicationDidUnhideNotification,
+        NSWindowDidChangeOcclusionStateNotification,
+    ]) {
+        [NSNotificationCenter.defaultCenter addObserver:self
+                                               selector:@selector(holidayColorEnvironmentDidChange:)
+                                                   name:name object:nil];
+    }
+    for (NSNotificationName name in @[
+        NSWorkspaceDidWakeNotification, NSWorkspaceScreensDidWakeNotification,
+    ]) {
+        [NSWorkspace.sharedWorkspace.notificationCenter addObserver:self
+                                                           selector:@selector(holidayColorEnvironmentDidChange:)
+                                                               name:name object:nil];
+    }
     return self;
+}
+
+- (void)dealloc {
+    [self.holidayColorTimer invalidate];
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+    [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
 }
 
 - (void)configureFramePacingForScreen:(NSScreen *)screen {
@@ -1185,6 +1218,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         self.nextImageFire = scheduleBase + imageFrequency *
             (0.75 + 0.5 * MatrixCodeImageUnit(self.seed ^ 0x6d2b79f5U));
     }
+    [self refreshColorsAtDate:self.currentColorDate timeZone:NSTimeZone.localTimeZone];
     [self updatePalette];
     BOOL nextMirror = MatrixCodeBool(self.controls, @"mirror", YES);
     NSString *nextGlyphMode = MatrixCodeGlyphMode(self.controls);
@@ -1781,8 +1815,10 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)updatePalette {
-    NSString *preset = [self.controls[@"preset"] isKindOfClass:NSString.class] ? self.controls[@"preset"] : @"classic";
-    NSArray<NSNumber *> *palette = MatrixCodeColorPaletteForControls(self.controls);
+    NSString *preset = self.holidayPresetName ?: self.controls[@"preset"] ?: @"classic";
+    NSArray<NSNumber *> *palette = self.holidayPresetName
+        ? MatrixCodeColorPaletteForPreset(preset)
+        : MatrixCodeColorPaletteForControls(self.controls);
     MTLClearColor background = {
         ((palette[0].unsignedIntValue >> 16) & 0xff) / 255.0,
         ((palette[0].unsignedIntValue >> 8) & 0xff) / 255.0,
@@ -1808,6 +1844,43 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     uniforms.scanlines = MatrixCodeBool(self.controls, @"scanlines", NO) ? 1 : 0;
     uniforms.leadBrightness = MatrixCodeNumber(self.controls, @"leadBrightness", 1.6, 0, 3);
     self.uniforms = uniforms;
+}
+
+- (BOOL)refreshColorsAtDate:(NSDate *)date timeZone:(NSTimeZone *)timeZone {
+    NSString *holidayPreset = MatrixCodeHolidayColorPreset(date, timeZone);
+    if (self.holidayPresetName == holidayPreset ||
+        [self.holidayPresetName isEqualToString:holidayPreset]) return NO;
+    self.holidayPresetName = holidayPreset;
+    [self updatePalette];
+    self.holidayColorRedrawPending = YES;
+    return YES;
+}
+
+- (NSDate *)currentColorDate {
+    // Color follows wall time even when rain, intro, or token timelines are frozen.
+    return NSDate.date;
+}
+
+- (BOOL)isVisibleForHolidayColorRefresh {
+    return !self.hiddenOrHasHiddenAncestor && self.window.isVisible &&
+        !self.window.miniaturized && !NSApp.hidden &&
+        (self.window.occlusionState & NSWindowOcclusionStateVisible) != 0;
+}
+
+- (void)refreshHolidayColors {
+    NSDate *date = self.currentColorDate;
+    NSTimeZone *timeZone = NSTimeZone.localTimeZone;
+    [MatrixCodeSettingsTheme.sharedTheme refreshColorsAtDate:date timeZone:timeZone];
+    [self refreshColorsAtDate:date timeZone:timeZone];
+    if (self.holidayColorRedrawPending && self.isPaused && [self isVisibleForHolidayColorRefresh]) {
+        [self draw];
+    }
+}
+
+- (void)holidayColorEnvironmentDidChange:(NSNotification *)notification {
+    if ([notification.object isKindOfClass:NSWindow.class] && notification.object != self.window) return;
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf refreshHolidayColors]; });
 }
 
 - (void)resetRainSimulationsFromEmpty {
@@ -2423,6 +2496,9 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 
 - (void)drawInMTKView:(MTKView *)view {
     if (!self.commandQueue || !self.pipeline) return;
+    NSDate *colorDate = self.currentColorDate;
+    [MatrixCodeSettingsTheme.sharedTheme refreshColorsAtDate:colorDate timeZone:NSTimeZone.localTimeZone];
+    [self refreshColorsAtDate:colorDate timeZone:NSTimeZone.localTimeZone];
     [self updateDrawableSizeForCurrentRenderScale];
     NSDate *frameDate = self.animationActive ? NSDate.date : nil;
     self.hasCurrentFrameTime = frameDate != nil;
@@ -2467,6 +2543,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     }];
     [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];
+    self.holidayColorRedrawPending = NO;
 }
 
 #if DEBUG
@@ -2618,6 +2695,16 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     [self updateDrawableSizeForCurrentRenderScale];
+    [self.holidayColorTimer invalidate];
+    self.holidayColorTimer = nil;
+    if (self.window) {
+        [self refreshHolidayColors];
+        __weak typeof(self) weakSelf = self;
+        self.holidayColorTimer = [NSTimer timerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) {
+            [weakSelf refreshHolidayColors];
+        }];
+        [NSRunLoop.mainRunLoop addTimer:self.holidayColorTimer forMode:NSRunLoopCommonModes];
+    }
 }
 
 - (void)viewDidChangeBackingProperties {

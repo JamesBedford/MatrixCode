@@ -20,6 +20,7 @@ const nativeShaders = read("macos/MatrixCodeScreenSaver/Resources/MatrixCodeShad
 const nativeAdaptive = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeAdaptiveResolution.m");
 const nativeApp = read("macos/MatrixCodeScreenSaver/AppSource/MatrixCodeAppDelegate.m");
 const windowsControllers = read("windows/MatrixCode/include/matrixcode/core/Controllers.h");
+const windowsHost = read("windows/MatrixCode/src/platform/Win32Host.cpp");
 const windowsRenderer = read("windows/MatrixCode/src/render/D3D11Renderer.cpp");
 const windowsSettings = read("windows/MatrixCode/src/core/Settings.cpp");
 const windowsShader = read("windows/MatrixCode/shaders/MatrixCode.hlsl");
@@ -304,5 +305,35 @@ describe("Windows/Web render parity source contract", () => {
       expect(windowsShader).toContain(stage);
       expect(windowsRenderer).toContain(`CompileShader("${stage}"`);
     }
+  });
+
+  it("keeps paused Windows token and image timelines frozen during holiday repaints", () => {
+    const presentationClock = windowsHost.match(
+      /double NativeHost::PresentationTimeSeconds\(\) const \{([\s\S]*?)\n\}/,
+    )?.[1];
+    expect(normalized(presentationClock ?? "")).toContain(
+      "return timelinePauseReasons_ != 0 && timelinePauseStartSeconds_ > 0.0 ? timelinePauseStartSeconds_ : UnixSeconds();",
+    );
+    const tokenResolver = windowsHost.match(
+      /std::string NativeHost::ResolveText\([^\n]*\) const \{([\s\S]*?)\n\}/,
+    )?.[1];
+    expect(tokenResolver).toContain("context.nowMilliseconds = PresentationTimeSeconds() * 1000.0;");
+    expect(tokenResolver).not.toContain("UnixSeconds()");
+    const renderAll = windowsHost.match(
+      /void NativeHost::RenderAll\([^\n]*\) \{([\s\S]*?)\n\}/,
+    )?.[1];
+    expect(renderAll).toContain("const double now = PresentationTimeSeconds();");
+  });
+
+  it("checks the live Windows local date before skipping frozen frames", () => {
+    const tick = windowsHost.match(/void NativeHost::Tick\(\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const localDate = tick.indexOf("GetLocalTime(&localDate);");
+    const invalidation = tick.indexOf(
+      "if (renderControls.preset != renderedPreset_) staticFrameRendered_ = false;",
+    );
+    const frozenSkip = tick.indexOf("if (frozen && staticFrameRendered_ && !toastAnimating) return;");
+    expect(localDate).toBeGreaterThanOrEqual(0);
+    expect(invalidation).toBeGreaterThan(localDate);
+    expect(frozenSkip).toBeGreaterThan(invalidation);
   });
 });

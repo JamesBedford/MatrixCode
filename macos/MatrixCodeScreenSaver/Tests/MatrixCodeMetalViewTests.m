@@ -25,6 +25,16 @@
                                                 controls:(NSDictionary *)controls;
 @end
 
+// Pixel fixtures exercise the selected palette independently of the machine's calendar date.
+@interface MatrixCodeDeterministicMetalView : MatrixCodeMetalView
+@end
+
+@implementation MatrixCodeDeterministicMetalView
+- (NSDate *)currentColorDate {
+    return [NSDate dateWithTimeIntervalSince1970:0];
+}
+@end
+
 @interface MatrixCodeMetalViewTests : XCTestCase
 @end
 
@@ -187,7 +197,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         ],
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
                                            session:session
                                       storedValues:@{}];
     XCTAssertNotNil(view);
@@ -196,7 +206,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 
 - (void)testRendererBuildsWebParityPostProcessingPipelines {
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:nil
                                       storedValues:@{}];
 
@@ -211,7 +221,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 
 - (void)testRendererMaintainsThreeCompleteSharedInstanceBuffers {
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:nil
                                       storedValues:@{}];
 
@@ -232,7 +242,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 
 - (void)testHighQualityRendererAllocatesWebParityHDRTargetHierarchy {
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:nil
                                       storedValues:@{}];
     [view setDensityScale:0 rainElapsed:0];
@@ -273,11 +283,11 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     };
     NSDictionary *plainControls = @{ @"scanlines": @NO, @"vignette": @0 };
     NSDictionary *effectControls = @{ @"scanlines": @YES, @"vignette": @1 };
-    MatrixCodeMetalView *plain = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *plain = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 160, 90)
               session:session
          storedValues:@{ @"mx-controls": MatrixCodeJSONString(plainControls) }];
-    MatrixCodeMetalView *effects = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *effects = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 160, 90)
               session:session
          storedValues:@{ @"mx-controls": MatrixCodeJSONString(effectControls) }];
@@ -299,7 +309,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testAdaptiveResolutionScalesOnlyDrawableAndCanBeDisabled {
-    MatrixCodeMetalView *adaptive = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *adaptive = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:nil
          storedValues:@{}];
@@ -317,7 +327,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     XCTAssertLessThan(adaptive.drawableSize.width, fullDrawableSize.width);
     XCTAssertEqual(simulation.columns, columns);
 
-    MatrixCodeMetalView *disabled = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *disabled = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:@{@"adaptive": @NO}
          storedValues:@{}];
@@ -340,7 +350,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testAtlasCoverageFallbackLeavesEveryGlyphIndexVisible {
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:nil
          storedValues:@{}];
@@ -362,7 +372,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"quality": @"low",
         @"mirror": @YES,
     };
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, frameDimension, frameDimension)
               session:@{@"seed": @12345, @"epoch": @1700000000000}
          storedValues:@{@"mx-controls": MatrixCodeJSONString(controls)}];
@@ -468,7 +478,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testRainControlReloadPreservesUnchangedMessageAndImageTimelines {
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:nil
          storedValues:@{ @"mx-controls": MatrixCodeJSONString(@{ @"speed": @1 }) }];
@@ -518,7 +528,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"scanlines": @"yes",
         @"vignette": @YES,
     };
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:nil
          storedValues:@{ @"mx-controls": MatrixCodeJSONString(malformed) }];
@@ -539,7 +549,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testTokenTimelineShiftSurvivesSettingsReloadAndMultiKeepsEpoch {
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:@{@"epoch": @1700000000000}
          storedValues:@{}];
@@ -563,7 +573,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @{@"id": @"right", @"left": @320, @"top": @0,
           @"width": @320, @"height": @200},
     ];
-    MatrixCodeMetalView *multi = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *multi = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:@{@"epoch": @1700000000000,
                         @"currentScreenId": @"left",
@@ -580,7 +590,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 
 - (void)testStandaloneGeometryTracksViewResizeBeforeRendering {
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 800, 500)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 800, 500)
                                            session:nil
                                       storedValues:@{}];
     XCTAssertNotNil(view);
@@ -597,7 +607,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 
 - (void)testNativeRendererUsesDisplayMaximumFramePacingAndPausesWhenInactive {
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
                                            session:nil
                                       storedValues:@{}];
     XCTAssertNotNil(view);
@@ -613,7 +623,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testAnimationTransitionsPreserveMeasuredFPSContinuity {
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:nil
          storedValues:@{}];
@@ -634,7 +644,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testAnimationTransitionsDiscardStaleNormalFrameTimestamps {
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:nil
          storedValues:@{}];
@@ -656,7 +666,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testFirstActiveFrameAdvancesFromActivationTimestamp {
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:nil
          storedValues:@{}];
@@ -689,7 +699,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
                         @"width": @320, @"height": @200}],
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
                                            session:session
                                       storedValues:@{}];
     [view configureFramePacingForScreen:NSScreen.mainScreen];
@@ -730,7 +740,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 
 - (void)testMeasuredFPSUsesFrameIntervalsInsteadOfPreferredRate {
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 320, 200)
                                            session:nil
                                       storedValues:@{}];
     view.preferredFramesPerSecond = 120;
@@ -770,7 +780,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
                         @"width": @640, @"height": @480}],
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
                                            session:session storedValues:@{}];
     [view setDensityScale:1];
     NSData *frame = [view diagnosticBGRAFrameWithWidth:640 height:480];
@@ -879,7 +889,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"trailLength": @0.255,
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 800, 500)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 800, 500)
                                            session:session
                                       storedValues:@{@"mx-controls": MatrixCodeJSONString(controls)}];
     [view setDensityScale:1 rainElapsed:12.5];
@@ -895,7 +905,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"allowOverlap": @YES,
         @"quality": @"high",
     };
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:nil
          storedValues:@{ @"mx-controls": MatrixCodeJSONString(controls) }];
@@ -926,7 +936,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"screens": @[@{@"id": @"screen-test", @"left": @0, @"top": @0,
                         @"width": @640, @"height": @360}],
     };
-    MatrixCodeMetalView *restarted = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *restarted = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:session
          storedValues:@{}];
@@ -938,7 +948,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     [restarted restartDeterministicRainFromEmpty:YES];
     NSData *restartedEmpty = [restarted diagnosticPackedStateWithWidth:640 height:360];
 
-    MatrixCodeMetalView *fresh = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *fresh = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:session
          storedValues:@{}];
@@ -975,7 +985,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     NSDictionary *storedValues = @{
         @"mx-controls": MatrixCodeJSONString(@{@"rampUpMs": @0}),
     };
-    MatrixCodeMetalView *restarted = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *restarted = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:nil
          storedValues:storedValues];
@@ -983,7 +993,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     [restarted restartDeterministicRainFromEmpty:NO];
     NSData *restartedWarm = [restarted diagnosticPackedStateWithWidth:640 height:360];
 
-    MatrixCodeMetalView *fresh = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *fresh = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:nil
          storedValues:storedValues];
@@ -994,7 +1004,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testActiveDeterministicRestartSeedsFreshFrameTiming {
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:nil
          storedValues:@{}];
@@ -1027,7 +1037,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"scanlines": @NO,
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:session
                                       storedValues:@{@"mx-controls": MatrixCodeJSONString(controls)}];
     [view setDensityScale:1 rainElapsed:9.0];
@@ -1063,7 +1073,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"brightnessFade": @NO,
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:session
                                       storedValues:@{
         @"mx-controls": MatrixCodeJSONString(controls),
@@ -1095,7 +1105,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"appearMs": @0,
         @"disappearMs": @0,
     };
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:nil
          storedValues:@{@"mx-messages": MatrixCodeJSONString(liveMessages)}];
@@ -1147,7 +1157,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"messages": @[@"DRAFT"],
         @"frequencyMs": @500,
     };
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 640, 360)
               session:nil
          storedValues:@{@"mx-messages": MatrixCodeJSONString(liveMessages)}];
@@ -1193,7 +1203,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"imagePlacementJitter": @1,
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
                                            session:session
                                       storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
     NSTimeInterval now = 1700000001.0;
@@ -1229,7 +1239,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         }),
     };
     NSTimeInterval epoch = 1700000000;
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 240)
               session:@{ @"seed": @1234, @"epoch": @(epoch * 1000.0) }
          storedValues:storedValues];
@@ -1271,7 +1281,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"flickerOut": @YES,
         @"brightnessFade": @YES,
     };
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 420, 400)
               session:@{
                   @"seed": @13579,
@@ -1334,11 +1344,11 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"screens": screens,
     };
     MatrixCodeMetalView *left =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
                                            session:leftSession
                                       storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
     MatrixCodeMetalView *right =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
                                            session:rightSession
                                       storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
 
@@ -1387,11 +1397,11 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"currentScreenId": @"left",
         @"screens": screens,
     };
-    MatrixCodeMetalView *reference = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *reference = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 420, 400)
               session:session
          storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
-    MatrixCodeMetalView *late = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *late = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 420, 400)
               session:session
          storedValues:@{@"mx-images": MatrixCodeJSONString(images)}];
@@ -1459,7 +1469,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"disappearMs": @0,
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 420, 400)
                                            session:@{
         @"seed": @13579,
         @"epoch": @1700000000000,
@@ -1494,7 +1504,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
             @"data": [mask base64EncodedStringWithOptions:0],
         }];
     }
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 420, 400)
               session:nil
          storedValues:@{ @"mx-images": MatrixCodeJSONString(@{ @"images": items }) }];
@@ -1541,7 +1551,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"imagePlacementJitter": @0.75,
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:session
                                       storedValues:@{
         @"mx-controls": MatrixCodeJSONString(controls),
@@ -1585,13 +1595,13 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"imagePlacementJitter": @0,
     };
     MatrixCodeMetalView *baselineView =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:session
                                       storedValues:@{
         @"mx-controls": MatrixCodeJSONString(controls),
     }];
     MatrixCodeMetalView *imageView =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:session
                                       storedValues:@{
         @"mx-controls": MatrixCodeJSONString(controls),
@@ -1651,7 +1661,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"imagePlacementJitter": @0,
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
                                            session:session
                                       storedValues:@{
         @"mx-controls": MatrixCodeJSONString(controls),
@@ -1691,11 +1701,11 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     leftSession[@"currentScreenId"] = @"left";
     NSMutableDictionary *rightSession = [baseSession mutableCopy];
     rightSession[@"currentScreenId"] = @"right";
-    MatrixCodeMetalView *left = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *left = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 360, 360)
               session:leftSession
          storedValues:@{}];
-    MatrixCodeMetalView *right = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *right = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 360, 360)
               session:rightSession
          storedValues:@{}];
@@ -1749,7 +1759,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"screens": screens,
     };
     MatrixCodeMetalView *view =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 1920, 1200)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 1920, 1200)
                                            session:session storedValues:@{}];
     [view setDensityScale:1 rainElapsed:0];
     NSData *frame = [view diagnosticBGRAFrameWithWidth:1920 height:1200];
@@ -1782,11 +1792,11 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"mx-controls": MatrixCodeJSONString(controls),
     };
     MatrixCodeMetalView *first =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
                                            session:firstSession
                                       storedValues:storedValues];
     MatrixCodeMetalView *second =
-        [[MatrixCodeMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 480)
                                            session:secondSession
                                       storedValues:storedValues];
 
@@ -1801,7 +1811,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
 }
 
 - (void)testRendererKeepsPackedBrightnessByteOneCells {
-    MatrixCodeMetalView *view = [[MatrixCodeMetalView alloc]
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
         initWithFrame:NSMakeRect(0, 0, 320, 200)
               session:nil
          storedValues:@{}];

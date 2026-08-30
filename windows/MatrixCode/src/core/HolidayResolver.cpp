@@ -64,6 +64,9 @@ struct EventDate {
   int hour = 7;
 };
 
+constexpr EventDate kValentinesDate{1, 14};
+constexpr EventDate kStPatricksDate{2, 17};
+
 [[nodiscard]] std::tm LocalTime(const double epochMilliseconds) noexcept {
   const double seconds = std::floor(epochMilliseconds / 1000.0);
   const double minimum = static_cast<double>(std::numeric_limits<std::time_t>::lowest());
@@ -258,8 +261,8 @@ template <typename PhaseFunction>
 [[nodiscard]] std::optional<EventDate> EventForYear(
     const std::string_view key, const int year) noexcept {
   if (key == "newyear") return EventDate{0, 1, 0};
-  if (key == "valentines") return EventDate{1, 14};
-  if (key == "stpatricks") return EventDate{2, 17};
+  if (key == "valentines") return kValentinesDate;
+  if (key == "stpatricks") return kStPatricksDate;
   if (key == "aprilfools") return EventDate{3, 1};
   if (key == "easter") {
     const auto [month, day] = WesternEaster(year);
@@ -280,6 +283,17 @@ template <typename PhaseFunction>
 }
 
 }  // namespace
+
+std::optional<std::string_view> HolidayPresetForLocalDate(
+    const int localMonth, const int localDay) noexcept {
+  if (localMonth == kValentinesDate.month + 1 && localDay == kValentinesDate.day) {
+    return "red";
+  }
+  if (localMonth == kStPatricksDate.month + 1 && localDay == kStPatricksDate.day) {
+    return "classic";
+  }
+  return std::nullopt;
+}
 
 std::optional<double> HolidayTargetMilliseconds(
     const std::string_view name, const double nowMilliseconds) {

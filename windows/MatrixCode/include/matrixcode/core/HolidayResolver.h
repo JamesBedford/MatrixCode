@@ -14,4 +14,9 @@ namespace matrixcode {
   std::string_view name,
   double nowMilliseconds);
 
+/** Annual full-day colour overrides, using one-based local Gregorian month/day. */
+[[nodiscard]] std::optional<std::string_view> HolidayPresetForLocalDate(
+  int localMonth,
+  int localDay) noexcept;
+
 }  // namespace matrixcode

@@ -127,6 +127,7 @@ if(BUILD_TESTING)
     tests/TestMain.cpp
     tests/ControllersTests.cpp
     tests/DisplayTopologyTests.cpp
+    tests/HolidayThemeTests.cpp
     tests/ImageRevealTests.cpp
     tests/ImageImportTests.cpp
     tests/IntroTimelineTests.cpp

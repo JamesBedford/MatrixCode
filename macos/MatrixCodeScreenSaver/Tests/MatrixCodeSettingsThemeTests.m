@@ -7,6 +7,12 @@
 
 @implementation MatrixCodeSettingsThemeTests
 
+- (void)setUp {
+    [super setUp];
+    [MatrixCodeSettingsTheme.sharedTheme refreshColorsAtDate:[NSDate dateWithTimeIntervalSince1970:0]
+                                                  timeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
+}
+
 - (void)tearDown {
     MatrixCodeSettingsTheme.sharedTheme.presetName = @"classic";
     [super tearDown];

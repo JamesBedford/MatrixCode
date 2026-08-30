@@ -1,5 +1,5 @@
 import { createRng } from "../util/rng.ts";
-import { getPreset } from "../config/colorPresets.ts";
+import { effectivePresetName, getPreset } from "../config/colorPresets.ts";
 import type { ImagesDoc, PresetName } from "../types.ts";
 import type { ActiveImageFrame } from "../sim/imageScheduler.ts";
 import { imageUnit } from "../sim/imageScheduler.ts";
@@ -21,6 +21,8 @@ export interface Canvas2dRainHandle {
   stop: () => void;
   /** Paint a deterministic, warmed rain frame without leaving an animation running. */
   renderStatic: (nowMs?: number) => void;
+  /** Recolor the last frame without advancing rain or image timelines. */
+  refreshTheme: () => void;
 }
 
 export interface CanvasImageRevealSource {
@@ -51,10 +53,10 @@ export function startCanvas2dRain(
   frameGate?: (nowMs: number) => CanvasFrameDecision,
 ): Canvas2dRainHandle {
   const ctx0 = canvas.getContext("2d");
-  if (!ctx0) return { start: () => {}, stop: () => {}, renderStatic: () => {} };
+  if (!ctx0) return { start: () => {}, stop: () => {}, renderStatic: () => {}, refreshTheme: () => {} };
   const ctx = ctx0; // non-null, captured by the animation closures
 
-  const colors = getPreset(preset, customColor);
+  let colors = getPreset(effectivePresetName(preset), customColor);
   const chars: string[] = [];
   for (let cp = 0xff66; cp <= 0xff9d; cp++) chars.push(String.fromCodePoint(cp));
   for (const d of "0123456789") chars.push(d);
@@ -69,6 +71,8 @@ export function startCanvas2dRain(
   let speeds: number[] = [];
   let running = false;
   let raf = 0;
+  let lastGlyphs: Array<{ x: number; y: number; text: string; sparkling: boolean }> = [];
+  let lastImageSource: CanvasImageRevealSource | undefined;
 
   function layout(): void {
     const cssWidth = canvas.clientWidth || canvas.width;
@@ -89,13 +93,27 @@ export function startCanvas2dRain(
   let lastW = canvas.width;
   let lastH = canvas.height;
 
-  const bg = rgb(colors.background, 1);
-  const standardFadeBackground = rgb(colors.background, 0.08);
-  const headColor = rgb(colors.head, 1);
-  const brightColor = rgb(colors.bright, 1);
+  let bg = rgb(colors.background, 1);
+  let standardFadeBackground = rgb(colors.background, 0.08);
+  let headColor = rgb(colors.head, 1);
+  let brightColor = rgb(colors.bright, 1);
 
-  function drawImageReveal(nowMs: number, rows: number): void {
-    const source = imageSource?.(nowMs);
+  function refreshColors(): boolean {
+    const name = effectivePresetName(preset);
+    if (colors.name === name) return false;
+    colors = getPreset(name, customColor);
+    bg = rgb(colors.background, 1);
+    standardFadeBackground = rgb(colors.background, 0.08);
+    headColor = rgb(colors.head, 1);
+    brightColor = rgb(colors.bright, 1);
+    // Trails are baked into the canvas, so discard pixels from the previous palette.
+    // The rain's positions, speeds, and random streams continue unchanged.
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return true;
+  }
+
+  function drawImageReveal(source: CanvasImageRevealSource | undefined, rows: number): void {
     const active = source?.frame;
     if (!source || !active) return;
     const geometry = imageRevealGeometry(active, source.doc, cols, rows);
@@ -139,7 +157,32 @@ export function startCanvas2dRain(
     ctx.restore();
   }
 
+  function drawLastFrame(): void {
+    ctx.font = `${fontSize}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const glyph of lastGlyphs) {
+      ctx.save();
+      ctx.translate(glyph.x, glyph.y);
+      ctx.scale(-1, 1); // mirror, as in the film
+      ctx.fillStyle = headColor;
+      ctx.shadowColor = brightColor;
+      const sparkling = colors.name === "gold" && glyph.sparkling;
+      if (sparkling) {
+        ctx.globalAlpha = 0.4;
+        ctx.shadowBlur = 18 * pixelRatio;
+        ctx.fillText(glyph.text, 0, 0);
+        ctx.globalAlpha = 1;
+      }
+      ctx.shadowBlur = (sparkling ? 12 : 8) * pixelRatio;
+      ctx.fillText(glyph.text, 0, 0);
+      ctx.restore();
+    }
+    drawImageReveal(lastImageSource, canvas.height / fontSize);
+  }
+
   function paint(nowMs: number, frameScale: number, includeImageReveal = true): void {
+    refreshColors();
     if (canvas.width !== lastW || canvas.height !== lastH) {
       lastW = canvas.width;
       lastH = canvas.height;
@@ -153,38 +196,24 @@ export function startCanvas2dRain(
     ctx.fillStyle = frameGate ? rgb(colors.background, fadeAlpha) : standardFadeBackground;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.font = `${fontSize}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
     const rows = canvas.height / fontSize;
-
+    lastGlyphs = [];
     for (let i = 0; i < cols; i++) {
       const y = drops[i]!;
       if (y >= 0) {
-        const px = i * fontSize + fontSize / 2;
-        const py = y * fontSize + fontSize / 2;
-        const ch = chars[Math.floor(rng() * chars.length)]!;
-        ctx.save();
-        ctx.translate(px, py);
-        ctx.scale(-1, 1); // mirror, as in the film
-        ctx.fillStyle = headColor;
-        ctx.shadowColor = brightColor;
-        const sparkling = shouldSparkleGoldHead(preset, sparkleRng);
-        if (sparkling) {
-          ctx.globalAlpha = 0.4;
-          ctx.shadowBlur = 18 * pixelRatio;
-          ctx.fillText(ch, 0, 0);
-          ctx.globalAlpha = 1;
-        }
-        ctx.shadowBlur = (sparkling ? 12 : 8) * pixelRatio;
-        ctx.fillText(ch, 0, 0);
-        ctx.restore();
+        lastGlyphs.push({
+          x: i * fontSize + fontSize / 2,
+          y: y * fontSize + fontSize / 2,
+          text: chars[Math.floor(rng() * chars.length)]!,
+          sparkling: shouldSparkleGoldHead(colors.name, sparkleRng),
+        });
       }
       drops[i]! += speeds[i]! * frameScale;
       if (y * fontSize > canvas.height && rng() > 0.975) drops[i] = Math.floor(rng() * -20);
       if (y > rows + 40) drops[i] = Math.floor(rng() * -20);
     }
-    if (includeImageReveal) drawImageReveal(nowMs, rows);
+    lastImageSource = includeImageReveal ? imageSource?.(nowMs) : undefined;
+    drawLastFrame();
   }
 
   function frame(nowMs: number): void {
@@ -209,11 +238,15 @@ export function startCanvas2dRain(
 
   return {
     start,
+    refreshTheme: () => {
+      if (refreshColors()) drawLastFrame();
+    },
     stop: () => {
       running = false;
       cancelAnimationFrame(raf);
     },
     renderStatic: (nowMs = performance.now()) => {
+      refreshColors();
       const wasRunning = running;
       if (wasRunning) {
         running = false;

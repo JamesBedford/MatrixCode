@@ -20,6 +20,12 @@ The native saver is expected to match the browser app's user-visible behavior:
 - weighted Katakana/digit/Latin/symbol glyph selection and glyph scrambling;
 - rain controls for ramp-up, trail decay, speed, glyph change, glyph size, glow,
   lead glow, vignette, theme, quality, mirroring, scanlines, and overlap lanes;
+- annual local-date colors: Red throughout February 14 (Valentine's Day) and
+  Classic green throughout March 17 (St Patrick's Day), using the Gregorian
+  calendar. The rain, intro, and themed HUD update while running, including
+  paused/reduced-motion frames, timezone or clock changes, and wake. This is a
+  temporary rendering override: the latest selected theme and custom color
+  remain saved and return automatically when the local date changes;
 - native intro typewriter overlay with click/Escape skip, optional rain during
   intro, post-intro delay, and the same token resolver as the web app. The intro
   is gated by the `enabled` flag in the `mx-intro` document (default on, exposed

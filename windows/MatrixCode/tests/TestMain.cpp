@@ -5,6 +5,7 @@
 
 void RunControllersTests();
 void RunDisplayTopologyTests();
+void RunHolidayThemeTests();
 void RunIntroTimelineTests();
 void RunImageRevealTests();
 void RunImageImportTests();
@@ -20,6 +21,7 @@ int main() {
   try {
     RunControllersTests();
     RunDisplayTopologyTests();
+    RunHolidayThemeTests();
     RunIntroTimelineTests();
     RunImageRevealTests();
     RunImageImportTests();

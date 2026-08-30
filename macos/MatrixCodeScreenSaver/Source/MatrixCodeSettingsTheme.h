@@ -2,7 +2,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Posted after ``presetName`` and all semantic colors have changed.
+/// Posted after selected or effective preset colors have changed.
 FOUNDATION_EXPORT NSNotificationName const MatrixCodeSettingsThemeDidChangeNotification;
 
 /// Native counterpart of the web settings UI's semantic design tokens.
@@ -12,6 +12,7 @@ FOUNDATION_EXPORT NSNotificationName const MatrixCodeSettingsThemeDidChangeNotif
 
 @property (nonatomic, copy) NSString *presetName;
 @property (nonatomic, copy) NSString *customColorHex;
+@property (nonatomic, readonly) NSString *effectivePresetName;
 @property (nonatomic, readonly) NSColor *accentColor;
 @property (nonatomic, readonly) NSColor *dimColor;
 @property (nonatomic, readonly) NSColor *backgroundColor;
@@ -21,6 +22,8 @@ FOUNDATION_EXPORT NSNotificationName const MatrixCodeSettingsThemeDidChangeNotif
 
 /// Updates the chrome palette from the same sanitized controls document used by the rain renderer.
 - (void)applyControls:(NSDictionary<NSString *, id> *)controls;
+/// Refreshes the transient holiday override without editing the selected preset or custom color.
+- (BOOL)refreshColorsAtDate:(NSDate *)date timeZone:(NSTimeZone *)timeZone;
 
 - (NSFont *)monospacedFontOfSize:(CGFloat)size weight:(NSFontWeight)weight;
 

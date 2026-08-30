@@ -27,6 +27,7 @@
 #include "matrixcode/core/MessageScheduler.h"
 #include "matrixcode/core/RainSimulation.h"
 #include "matrixcode/core/Rng.h"
+#include "matrixcode/core/Settings.h"
 #include "matrixcode/core/TokenResolver.h"
 #include "matrixcode/render/D3D11Renderer.h"
 #include "matrixcode/platform/SettingsStoreWin32.h"
@@ -154,13 +155,14 @@ class NativeHost final {
   void WarmStaticRain();
   void BeginRampFromEmpty();
   void Tick();
-  void RenderAll(double elapsedSeconds);
+  void RenderAll(double elapsedSeconds, const Controls& renderControls);
   void ApplyImageToBaseLayer(double nowSeconds);
   void InitializePresentation();
   void UpdateIntroPresentation();
   [[nodiscard]] bool SkipIntro();
   void PollSettingsFile();
   void UpdateMessages();
+  [[nodiscard]] double PresentationTimeSeconds() const;
   [[nodiscard]] std::string ResolveText(std::string_view text) const;
   void Exit();
   void RelaunchMultiMonitor();
@@ -216,6 +218,7 @@ class NativeHost final {
   bool presentationInitialized_ = false;
   bool introActive_ = false;
   bool staticFrameRendered_ = false;
+  std::string renderedPreset_;
   bool imagesConfigured_ = false;
   bool messagesConfigured_ = false;
   std::filesystem::file_time_type settingsWriteTime_{};
@@ -523,10 +526,17 @@ void NativeHost::BeginRampFromEmpty() {
   ResetRainToEmpty(start);
 }
 
+double NativeHost::PresentationTimeSeconds() const {
+  // Theme-only repaints must not advance paused tokens or image reveals.
+  return timelinePauseReasons_ != 0 && timelinePauseStartSeconds_ > 0.0
+    ? timelinePauseStartSeconds_
+    : UnixSeconds();
+}
+
 std::string NativeHost::ResolveText(const std::string_view text) const {
   TokenContext context;
   context.name = settings_.viewerName;
-  context.nowMilliseconds = UnixSeconds() * 1000.0;
+  context.nowMilliseconds = PresentationTimeSeconds() * 1000.0;
   context.countdownTargetMilliseconds = settings_.countdown.targetMilliseconds;
   for (const auto& moment : settings_.countdown.moments) {
     context.moments.insert_or_assign(moment.name, moment.targetMilliseconds);
@@ -686,10 +696,8 @@ void NativeHost::ApplyImageToBaseLayer(const double nowSeconds) {
   }
 }
 
-void NativeHost::RenderAll(const double elapsedSeconds) {
-  const double now = timelinePauseReasons_ != 0 && timelinePauseStartSeconds_ > 0.0
-    ? timelinePauseStartSeconds_
-    : UnixSeconds();
+void NativeHost::RenderAll(const double elapsedSeconds, const Controls& renderControls) {
+  const double now = PresentationTimeSeconds();
   if (reducedMotion_) {
     const auto base = simulations_.front()->State();
     renderStates_.front().assign(base.begin(), base.end());
@@ -739,8 +747,8 @@ void NativeHost::RenderAll(const double elapsedSeconds) {
       if (!window->rendererReady) continue;
     }
     render::FrameParameters parameters;
-    parameters.controls = settings_.controls;
-    parameters.palette = PaletteForControls(settings_.controls);
+    parameters.controls = renderControls;
+    parameters.palette = PaletteForControls(renderControls);
     parameters.overlayText = introText_;
     parameters.toastText = shortcutToastText_;
     parameters.toastOpacity = toastOpacity;
@@ -797,6 +805,13 @@ void NativeHost::Tick() {
   if (!frozen) elapsedSeconds_ += std::max(0.0, frameElapsed);
   RecalculateGeometry();
   PollSettingsFile();
+  // GetLocalTime follows the current OS date/timezone, independently of paused
+  // presentation timelines. Check before skipping paused or reduced-motion frames.
+  SYSTEMTIME localDate{};
+  GetLocalTime(&localDate);
+  const Controls renderControls = EffectiveControlsForLocalDate(
+    settings_.controls, localDate.wMonth, localDate.wDay);
+  if (renderControls.preset != renderedPreset_) staticFrameRendered_ = false;
   if (!shortcutToastText_.empty() && shortcutToastStartSeconds_ > 0.0) {
     const double lifetime = reducedMotion_ ? 1.7 : 1.88;
     if (UnixSeconds() - shortcutToastStartSeconds_ >= lifetime) {
@@ -841,7 +856,8 @@ void NativeHost::Tick() {
     renderScale_ = adaptiveResolution_.Update(
       std::clamp(frameElapsed, 0.001, 0.25) * 1000.0);
   }
-  RenderAll(elapsedSeconds_);
+  RenderAll(elapsedSeconds_, renderControls);
+  renderedPreset_ = renderControls.preset;
   if (frozen) staticFrameRendered_ = true;
 }
 

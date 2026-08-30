@@ -76,6 +76,7 @@
 		B4100EC065BDDB9AAB5588E2 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3CE22739F1AF715A44184DF /* MetalKit.framework */; };
 		B413DB23B40D4C5D4893D378 /* MatrixCodeConstants.m in Sources */ = {isa = PBXBuildFile; fileRef = AEF98B97E178759EDA759445 /* MatrixCodeConstants.m */; };
 		B8B0D9B5DD2965721664EACE /* MatrixCodeRainHostView.m in Sources */ = {isa = PBXBuildFile; fileRef = E72D76D033D97F47275497B9 /* MatrixCodeRainHostView.m */; };
+		BB608044EC3F0E8682A16C11 /* MatrixCodeHolidayColorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D9817361CAB006913819B3AF /* MatrixCodeHolidayColorTests.m */; };
 		BD8F371405B3FCAB4ED439FD /* MatrixCodeMetalView.m in Sources */ = {isa = PBXBuildFile; fileRef = E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */; };
 		BDF6FA60B34F8DBBCB1F6D33 /* MatrixCodeRainLifecycle.m in Sources */ = {isa = PBXBuildFile; fileRef = A5B0B13FCBACEE256E710004 /* MatrixCodeRainLifecycle.m */; };
 		BF10AE4B7F4A9BBCD22FE705 /* MatrixCodeAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 5863B0D5B7B75F26B525393A /* MatrixCodeAppDelegate.m */; };
@@ -151,6 +152,7 @@
 		D176C3805DCE510089D0D66F /* MatrixCodeApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MatrixCodeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D331C34E5842C9475FC9D317 /* MatrixCode.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MatrixCode.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
 		D95B4AD4E624D11550055918 /* ScreenSaver.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenSaver.framework; path = System/Library/Frameworks/ScreenSaver.framework; sourceTree = SDKROOT; };
+		D9817361CAB006913819B3AF /* MatrixCodeHolidayColorTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeHolidayColorTests.m; sourceTree = "<group>"; };
 		DCACD09200F763B25BE37D6E /* MatrixCodeSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeSession.m; sourceTree = "<group>"; };
 		E4674D47761FB39380FC4139 /* MatrixCodeMetalView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeMetalView.m; sourceTree = "<group>"; };
 		E72D76D033D97F47275497B9 /* MatrixCodeRainHostView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeRainHostView.m; sourceTree = "<group>"; };
@@ -221,6 +223,7 @@
 			children = (
 				9DC485C17FB717889FBC999D /* MatrixCodeAdaptiveResolutionTests.m */,
 				8095DE3A536DFECCF9FED58F /* MatrixCodeConfigurationControllerTests.m */,
+				D9817361CAB006913819B3AF /* MatrixCodeHolidayColorTests.m */,
 				CCC607C3D4E78676C6AC03CE /* MatrixCodeImageContractTests.m */,
 				B7FB66B2F1DA00F3EAD79399 /* MatrixCodeIntroOverlayViewTests.m */,
 				CDDC2C16012FD6B486AF29EF /* MatrixCodeMessageSchedulerTests.m */,
@@ -477,6 +480,7 @@
 				DDE43AE261604E346612D178 /* MatrixCodeConfigurationController.m in Sources */,
 				76504B3702DE7A1DBF571ED1 /* MatrixCodeConfigurationControllerTests.m in Sources */,
 				B413DB23B40D4C5D4893D378 /* MatrixCodeConstants.m in Sources */,
+				BB608044EC3F0E8682A16C11 /* MatrixCodeHolidayColorTests.m in Sources */,
 				53F8AB1942770602CD06A690 /* MatrixCodeImageContract.m in Sources */,
 				698AE25FAE66EBC9DD999D74 /* MatrixCodeImageContractTests.m in Sources */,
 				126833FF63A5C64FCFC6C8AB /* MatrixCodeIntroOverlayView.m in Sources */,

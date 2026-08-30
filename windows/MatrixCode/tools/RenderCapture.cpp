@@ -34,6 +34,7 @@ int wmain(int argc, wchar_t** argv) {
   const matrixcode::render::RainLayerView layer{
     simulation.State(), {}, 72, 40, 0.0f, 1.0f};
   matrixcode::render::FrameParameters parameters;
+  // Fixed captures intentionally use the selected palette without live holiday overrides.
   parameters.controls = settings.controls;
   parameters.palette = matrixcode::PaletteForControls(settings.controls);
   parameters.cellPixels = 18.0f;

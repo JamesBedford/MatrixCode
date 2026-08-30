@@ -38,6 +38,7 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
 @property (nonatomic, readwrite) NSColor *panelColor;
 @property (nonatomic, readwrite) NSColor *borderColor;
 @property (nonatomic, readwrite) NSColor *labelColor;
+@property (nonatomic, copy, nullable) NSString *holidayPresetName;
 @end
 
 @implementation MatrixCodeSettingsTheme
@@ -57,6 +58,7 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
         _styledViews = [NSMapTable weakToStrongObjectsMapTable];
         _presetName = @"classic";
         _customColorHex = @"#00FF41";
+        _holidayPresetName = MatrixCodeHolidayColorPreset(NSDate.date, NSTimeZone.localTimeZone);
         [self updateColors];
     }
     return self;
@@ -91,7 +93,7 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
 
 - (void)updateColors {
     NSArray<NSNumber *> *palette = MatrixCodeColorPaletteForControls(@{
-        @"preset": self.presetName,
+        @"preset": self.effectivePresetName,
         @"customColor": self.customColorHex,
     });
     self.backgroundColor = MatrixCodeSRGB(
@@ -108,6 +110,22 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
                                           green:accent.greenComponent * 0.65 + 0.35
                                            blue:accent.blueComponent * 0.65 + 0.35
                                           alpha:1.0];
+}
+
+- (NSString *)effectivePresetName {
+    return self.holidayPresetName ?: self.presetName;
+}
+
+- (BOOL)refreshColorsAtDate:(NSDate *)date timeZone:(NSTimeZone *)timeZone {
+    NSString *holidayPreset = MatrixCodeHolidayColorPreset(date, timeZone);
+    if (self.holidayPresetName == holidayPreset ||
+        [self.holidayPresetName isEqualToString:holidayPreset]) return NO;
+    self.holidayPresetName = holidayPreset;
+    [self updateColors];
+    [self restyleRegisteredViews];
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:MatrixCodeSettingsThemeDidChangeNotification object:self];
+    return YES;
 }
 
 - (NSFont *)monospacedFontOfSize:(CGFloat)size weight:(NSFontWeight)weight {

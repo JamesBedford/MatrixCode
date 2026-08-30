@@ -1,4 +1,5 @@
 #import "MatrixCodeTokenResolver.h"
+#import "MatrixCodeConstants.h"
 
 typedef struct {
     double newCoefficient;
@@ -410,8 +411,10 @@ static NSDateFormatter *MatrixCodeCachedFormatterForDateFormat(NSString *dateFor
     };
     key = aliases[key] ?: key;
     NSDictionary<NSString *, NSArray<NSNumber *> *> *fixed = @{
-        @"newyear": @[@1, @1, @0], @"valentines": @[@2, @14, @7],
-        @"stpatricks": @[@3, @17, @7], @"aprilfools": @[@4, @1, @7],
+        @"newyear": @[@1, @1, @0],
+        @"valentines": @[@(MatrixCodeValentinesMonth), @(MatrixCodeValentinesDay), @7],
+        @"stpatricks": @[@(MatrixCodeStPatricksMonth), @(MatrixCodeStPatricksDay), @7],
+        @"aprilfools": @[@4, @1, @7],
         @"july4": @[@7, @4, @7], @"halloween": @[@10, @31, @7],
         @"christmaseve": @[@12, @24, @7], @"christmas": @[@12, @25, @7],
     };

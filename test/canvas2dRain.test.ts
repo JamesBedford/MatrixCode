@@ -1,10 +1,16 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_IMAGES } from "../src/config/imagesStore.ts";
 import { shouldSparkleGoldHead, startCanvas2dRain } from "../src/fallback/canvas2dRain.ts";
 import { WallpaperEngineFpsLimiter } from "../src/platform/wallpaperEngine.ts";
 
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 0, 1));
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -91,6 +97,84 @@ describe("Canvas2D gold sparkle", () => {
 });
 
 describe("Canvas2D host lifecycle", () => {
+  it("changes live rain with the local date, independently of the animation clock", () => {
+    const harness = canvasHarness();
+    const rain = startCanvas2dRain(harness.canvas, "custom", 1, "#123456");
+    rain.renderStatic(0);
+    expect(harness.context.shadowColor).toBe("rgba(18,52,86,1)");
+
+    vi.setSystemTime(new Date(2026, 1, 14));
+    harness.runNextFrame(16);
+    expect(harness.context.shadowColor).toBe("rgba(255,42,42,1)");
+
+    vi.setSystemTime(new Date(2026, 2, 17));
+    harness.runNextFrame(32);
+    expect(harness.context.shadowColor).toBe("rgba(0,255,65,1)");
+
+    vi.setSystemTime(new Date(2026, 1, 13));
+    harness.runNextFrame(48);
+    expect(harness.context.shadowColor).toBe("rgba(18,52,86,1)");
+    expect(harness.pendingFrames()).toBe(1);
+    rain.stop();
+  });
+
+  it("recolors a stopped static frame without starting animation", () => {
+    const harness = canvasHarness();
+    const rain = startCanvas2dRain(harness.canvas, "gold");
+    rain.stop();
+    rain.renderStatic(0);
+    harness.fillText.mockClear();
+    vi.setSystemTime(new Date(2026, 1, 14));
+    rain.refreshTheme();
+    expect(harness.fillText).toHaveBeenCalled();
+    expect(harness.context.shadowColor).toBe("rgba(255,42,42,1)");
+    expect(harness.context.shadowBlur).toBe(8);
+    expect(harness.pendingFrames()).toBe(0);
+  });
+
+  it("does not advance positions, glyph RNG, or image scheduling when recoloring paused rain", () => {
+    const harness = canvasHarness();
+    const images = vi.fn(() => ({ frame: null, doc: DEFAULT_IMAGES, seed: 7 }));
+    const rain = startCanvas2dRain(harness.canvas, "gold", 1, undefined, images);
+    rain.renderStatic(0);
+    rain.stop();
+    images.mockClear();
+    vi.mocked(harness.context.translate).mockClear();
+    harness.fillText.mockClear();
+    vi.setSystemTime(new Date(2026, 1, 14));
+    rain.refreshTheme();
+    const redPositions = vi.mocked(harness.context.translate).mock.calls.slice();
+    const redGlyphs = harness.fillText.mock.calls.slice();
+    vi.mocked(harness.context.translate).mockClear();
+    harness.fillText.mockClear();
+    vi.setSystemTime(new Date(2026, 2, 17));
+    rain.refreshTheme();
+    expect(vi.mocked(harness.context.translate).mock.calls).toEqual(redPositions);
+    expect(harness.fillText.mock.calls).toEqual(redGlyphs);
+    expect(images).not.toHaveBeenCalled();
+    expect(harness.pendingFrames()).toBe(0);
+
+    vi.setSystemTime(new Date(2026, 0, 1));
+    rain.refreshTheme();
+    rain.start();
+    harness.fillText.mockClear();
+    vi.mocked(harness.context.translate).mockClear();
+    harness.runNextFrame(16);
+    const resumedPositions = vi.mocked(harness.context.translate).mock.calls.slice();
+    const resumedGlyphs = harness.fillText.mock.calls.slice();
+    rain.stop();
+
+    const control = canvasHarness();
+    const controlRain = startCanvas2dRain(control.canvas, "gold");
+    controlRain.renderStatic(0);
+    control.fillText.mockClear();
+    vi.mocked(control.context.translate).mockClear();
+    control.runNextFrame(16);
+    expect(vi.mocked(control.context.translate).mock.calls).toEqual(resumedPositions);
+    expect(control.fillText.mock.calls).toEqual(resumedGlyphs);
+    controlRain.stop();
+  });
+
   it("scales glyph geometry to the backing-store ratio on high-density displays", () => {
     const harness = canvasHarness();
     Object.defineProperties(harness.canvas, {

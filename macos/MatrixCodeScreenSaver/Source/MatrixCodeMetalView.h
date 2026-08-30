@@ -32,7 +32,10 @@ typedef void (^MatrixCodeMetalFrameHandler)(MatrixCodeMetalView *view,
 - (void)setDensityScale:(double)densityScale;
 - (void)setDensityScale:(double)densityScale rainElapsed:(NSTimeInterval)rainElapsed;
 - (void)reloadStoredValues:(NSDictionary<NSString *, NSString *> *)storedValues;
+/// Updates rendering only; callers can redraw a paused frame when this returns YES.
+- (BOOL)refreshColorsAtDate:(NSDate *)date timeZone:(NSTimeZone *)timeZone;
 #if DEBUG
+- (float)diagnosticGoldSparkleStrength;
 + (float)diagnosticEffectiveTrailLength:(float)trailLength
                                   rows:(float)rows
                           speedControl:(float)speedControl;
