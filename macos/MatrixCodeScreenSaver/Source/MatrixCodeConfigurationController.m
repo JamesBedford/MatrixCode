@@ -31,6 +31,8 @@ static const CGFloat MatrixCodeSettingsPanelInset = 16.0;
 static const CGFloat MatrixCodeEditorCardWidth = 620.0;
 static const CGFloat MatrixCodeEditorCardMaxHeight = 610.0;
 static const CGFloat MatrixCodeEditorCardVerticalMargin = 48.0;
+static const CGFloat MatrixCodeEditorDocumentWidth = 600.0;
+static const CGFloat MatrixCodeEditorDocumentMinimumHeight = 700.0;
 static NSString *MatrixCodeMomentTokenHint(NSArray<NSDictionary *> *moments) {
     NSMutableArray<NSString *> *namedTokens = [NSMutableArray array];
     for (NSDictionary *moment in moments) {
@@ -933,13 +935,14 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     // its bottom edge, which made every settings tab open at the end of its
     // form. Use a top-origin document so y=0 is the first control.
     NSView *document = [[MatrixCodeFlippedDocumentView alloc]
-        initWithFrame:NSMakeRect(0, 0, 600, 700)];
+        initWithFrame:NSMakeRect(0, 0,
+                                 MatrixCodeEditorDocumentWidth,
+                                 MatrixCodeEditorDocumentMinimumHeight)];
     [document addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
         [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor],
         [stack.trailingAnchor constraintEqualToAnchor:document.trailingAnchor],
         [stack.topAnchor constraintEqualToAnchor:document.topAnchor],
-        [stack.bottomAnchor constraintLessThanOrEqualToAnchor:document.bottomAnchor],
         [stack.widthAnchor constraintGreaterThanOrEqualToConstant:560],
     ]];
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
@@ -948,6 +951,35 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     scroll.documentView = document;
     if (stackOut) *stackOut = stack;
     return scroll;
+}
+
+- (void)resizeScrollingDocumentContainingView:(NSView *)view {
+    MatrixCodeFlippedDocumentView *document = nil;
+    NSView *startingView = [view isKindOfClass:NSScrollView.class]
+        ? ((NSScrollView *)view).documentView
+        : view;
+    for (NSView *candidate = startingView; candidate; candidate = candidate.superview) {
+        if ([candidate isKindOfClass:MatrixCodeFlippedDocumentView.class]) {
+            document = (MatrixCodeFlippedDocumentView *)candidate;
+            break;
+        }
+    }
+    if (!document) return;
+
+    NSStackView *stack = nil;
+    for (NSView *subview in document.subviews) {
+        if ([subview isKindOfClass:NSStackView.class]) {
+            stack = (NSStackView *)subview;
+            break;
+        }
+    }
+    if (!stack) return;
+
+    [stack invalidateIntrinsicContentSize];
+    [stack layoutSubtreeIfNeeded];
+    CGFloat contentHeight = ceil(stack.fittingSize.height);
+    CGFloat documentHeight = fmax(MatrixCodeEditorDocumentMinimumHeight, contentHeight);
+    [document setFrameSize:NSMakeSize(MatrixCodeEditorDocumentWidth, documentHeight)];
 }
 
 - (void)buildInterface {
@@ -1432,6 +1464,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSView *body = [self editorContentForKind:kind];
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [self styleEditorViewHierarchy:body];
+    [self resizeScrollingDocumentContainingView:body];
     NSButton *reset = [self settingsButton:[self editorResetButtonTitleForKind:kind]
                                     action:@selector(resetCurrentEditor:)
                                 identifier:@"editor-reset"];
@@ -2154,7 +2187,9 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     self.introLinesStack.spacing = 8;
     [stack addArrangedSubview:self.introLinesStack];
     [self rebuildIntroLines];
-    NSButton *add = [NSButton buttonWithTitle:@"Add Line" target:self action:@selector(addIntroLine:)];
+    NSButton *add = [self settingsButton:@"Add Line"
+                                  action:@selector(addIntroLine:)
+                              identifier:@"intro-add"];
     [stack addArrangedSubview:add];
     for (NSArray *field in @[@[@"Typing speed (ms/character)", @"charMs"],
                               @[@"Start delay (s)", @"startDelayMs"],
@@ -2217,6 +2252,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         row.alignment = NSLayoutAttributeLeading;
         [self.introLinesStack addArrangedSubview:[self settingsCardContainingView:row]];
     }];
+    [self resizeScrollingDocumentContainingView:self.introLinesStack];
 }
 
 - (void)introLineChanged:(NSTextField *)sender {
@@ -2305,7 +2341,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     self.messageLinesStack.spacing = 8;
     [stack addArrangedSubview:self.messageLinesStack];
     [self rebuildMessageLines];
-    [stack addArrangedSubview:[NSButton buttonWithTitle:@"Add Message" target:self action:@selector(addMessage:)]];
+    NSButton *add = [self settingsButton:@"Add Message"
+                                  action:@selector(addMessage:)
+                              identifier:@"message-add"];
+    [stack addArrangedSubview:add];
     for (NSArray *field in @[@[@"Show one every (s)", @"frequencyMs"],
                               @[@"Appear over (s)", @"appearMs"],
                               @[@"Each stays for (s)", @"persistenceMs"],
@@ -2356,6 +2395,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         row.spacing = 6; row.alignment = NSLayoutAttributeCenterY;
         [self.messageLinesStack addArrangedSubview:[self settingsCardContainingView:row]];
     }];
+    [self resizeScrollingDocumentContainingView:self.messageLinesStack];
 }
 - (void)messageLineChanged:(NSTextField *)sender {
     if (MatrixCodeIsValidIndex(sender.tag, self.messageLines.count))
@@ -2517,7 +2557,9 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     self.imageItemsStack.spacing = 8;
     [stack addArrangedSubview:self.imageItemsStack];
     [self rebuildImageItems];
-    NSButton *add = [NSButton buttonWithTitle:@"Add Image" target:self action:@selector(addImage:)];
+    NSButton *add = [self settingsButton:@"Add Image"
+                                  action:@selector(addImage:)
+                              identifier:@"image-add"];
     add.toolTip = [NSString stringWithFormat:@"Up to %lu images can be stored.",
                    (unsigned long)MatrixCodeImageMaximumCount];
     [stack addArrangedSubview:add];
@@ -2589,6 +2631,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         row.alignment = NSLayoutAttributeCenterY;
         [self.imageItemsStack addArrangedSubview:[self settingsCardContainingView:row]];
     }];
+    [self resizeScrollingDocumentContainingView:self.imageItemsStack];
 }
 
 - (void)addImage:(id)sender {
@@ -2739,7 +2782,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     self.momentsStack.spacing = 8;
     [stack addArrangedSubview:self.momentsStack];
     [self rebuildMoments];
-    [stack addArrangedSubview:[NSButton buttonWithTitle:@"Add Named Moment" target:self action:@selector(addMoment:)]];
+    NSButton *add = [self settingsButton:@"Add Named Moment"
+                                  action:@selector(addMoment:)
+                              identifier:@"moment-add"];
+    [stack addArrangedSubview:add];
     NSTextField *preview = [NSTextField wrappingLabelWithString:@""];
     preview.identifier = @"countdown-preview";
     preview.accessibilityLabel = @"Countdown and current time preview";
@@ -2812,6 +2858,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         row.spacing = 8; row.alignment = NSLayoutAttributeCenterY;
         [self.momentsStack addArrangedSubview:[self settingsCardContainingView:row]];
     }];
+    [self resizeScrollingDocumentContainingView:self.momentsStack];
 }
 - (void)defaultCountdownEnabled:(NSButton *)sender {
     self.countdown[@"targetMs"] = sender.state == NSControlStateValueOn

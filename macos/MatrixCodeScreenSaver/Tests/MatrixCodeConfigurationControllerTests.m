@@ -9,6 +9,7 @@
 #import "MatrixCodeTokenResolver.h"
 
 @interface MatrixCodeConfigurationController (Testing)
+- (void)addMessage:(id)sender;
 - (void)cancel:(id)sender;
 - (void)controlChanged:(id)sender;
 - (void)imageNumberChanged:(NSTextField *)sender;
@@ -1055,6 +1056,69 @@ restrictedToMultiMonitorControls:YES];
     NSDictionary *stored = MatrixCodeJSONDictionary([controller serializedValues][@"mx-messages"]);
     XCTAssertEqualObjects(stored[@"messageLayout"], @"drop");
     XCTAssertEqualObjects(stored[@"messageDirection"], @"bottomToTop");
+}
+
+- (void)testMessagesEditorAddButtonAppendsAnEditableMessage {
+    NSMutableArray<NSString *> *savedMessages = [NSMutableArray array];
+    for (NSUInteger index = 0; index < 11; index++) {
+        [savedMessages addObject:[NSString stringWithFormat:@"MESSAGE %lu", (unsigned long)index]];
+    }
+    [self.preferences commitValues:@{
+        @"mx-messages": MatrixCodeJSONString(@{ @"messages": savedMessages }),
+    }];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller openEditorKind:@"messages"];
+    [controller.window.contentView layoutSubtreeIfNeeded];
+    NSButton *add = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"message-add");
+    NSScrollView *scroll = add.enclosingScrollView;
+    CGFloat originalDocumentHeight = NSHeight(scroll.documentView.bounds);
+    NSMutableArray *messageLines = [controller valueForKey:@"messageLines"];
+    NSUInteger originalCount = messageLines.count;
+
+    XCTAssertTrue([add isKindOfClass:NSButton.class]);
+    XCTAssertEqual(add.target, controller);
+    XCTAssertEqual(add.action, @selector(addMessage:));
+
+    [add performClick:nil];
+    [controller.window.contentView layoutSubtreeIfNeeded];
+
+    NSStackView *messageLinesStack = [controller valueForKey:@"messageLinesStack"];
+    XCTAssertEqual(messageLines.count, originalCount + 1);
+    XCTAssertEqual(messageLinesStack.arrangedSubviews.count, originalCount + 1);
+    XCTAssertGreaterThan(NSHeight(scroll.documentView.bounds), originalDocumentHeight);
+    NSTextField *newMessage = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        messageLinesStack.arrangedSubviews.lastObject, @"messageText");
+    XCTAssertTrue([newMessage isKindOfClass:NSTextField.class]);
+    XCTAssertTrue(newMessage.editable);
+    XCTAssertEqualObjects(newMessage.stringValue, @"");
+}
+
+- (void)testMessagesEditorKeepsAddButtonReachableWithMaximumSavedMessages {
+    NSMutableArray<NSString *> *messages = [NSMutableArray array];
+    for (NSUInteger index = 0; index < 12; index++) {
+        [messages addObject:[NSString stringWithFormat:@"MESSAGE %lu", (unsigned long)index]];
+    }
+    [self.preferences commitValues:@{
+        @"mx-messages": MatrixCodeJSONString(@{ @"messages": messages }),
+    }];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller openEditorKind:@"messages"];
+    [controller.window.contentView layoutSubtreeIfNeeded];
+
+    NSButton *add = (NSButton *)MatrixCodeDescendantWithIdentifier(
+        controller.window.contentView, @"message-add");
+    NSScrollView *scroll = add.enclosingScrollView;
+    NSView *document = scroll.documentView;
+    NSRect addFrame = [add.superview convertRect:add.frame toView:document];
+
+    XCTAssertTrue([add isKindOfClass:NSButton.class]);
+    XCTAssertTrue([scroll isKindOfClass:NSScrollView.class]);
+    XCTAssertGreaterThan(NSHeight(addFrame), 20);
+    XCTAssertTrue(NSContainsRect(document.bounds, addFrame));
+    XCTAssertGreaterThan(NSHeight(document.bounds), 700);
 }
 
 - (void)testMessagesEditorPreservesExplicitSavedAxisValues {
