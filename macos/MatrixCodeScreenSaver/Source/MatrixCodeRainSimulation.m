@@ -13,6 +13,7 @@ static const double MatrixCodeRainTrailControlMinimum = 0.01;
 static const double MatrixCodeRainTrailControlMaximum = 0.5;
 static const double MatrixCodeRainMaximumTrailViewports = 3.0;
 static const double MatrixCodeRainDensityScale = 0.5;
+static const double MatrixCodeRainStreamCompactionDelay = 5.0;
 static const uint8_t MatrixCodeRainHeadFlag = 0x80;
 static const uint8_t MatrixCodeRainWhiteHeadFlag = 0x40;
 static const uint8_t MatrixCodeRainPhaseMask = 0x3f;
@@ -35,6 +36,7 @@ typedef struct {
     MatrixCodeRainSimulationStream *items;
     NSUInteger count;
     NSUInteger capacity;
+    double underutilizedSeconds;
 } MatrixCodeRainSimulationStreamList;
 
 typedef struct {
@@ -158,6 +160,34 @@ static void MatrixCodeRainRemoveStream(MatrixCodeRainSimulationStreamList *list,
                 trailing * sizeof(MatrixCodeRainSimulationStream));
     }
     list->count--;
+}
+
+static void MatrixCodeRainCompactStreamListIfNeeded(
+    MatrixCodeRainSimulationStreamList *list,
+    NSUInteger expectedMaximumCount,
+    double deltaTime) {
+    NSUInteger requiredCapacity = MAX((NSUInteger)2,
+        MAX(list->count, expectedMaximumCount));
+    NSUInteger targetCapacity = 2;
+    while (targetCapacity < requiredCapacity && targetCapacity <= NSUIntegerMax / 2) {
+        targetCapacity *= 2;
+    }
+
+    if (targetCapacity > list->capacity / 4) {
+        list->underutilizedSeconds = 0;
+        return;
+    }
+
+    list->underutilizedSeconds += deltaTime;
+    if (list->underutilizedSeconds < MatrixCodeRainStreamCompactionDelay) return;
+
+    MatrixCodeRainSimulationStream *compacted = realloc(
+        list->items, targetCapacity * sizeof(MatrixCodeRainSimulationStream));
+    if (compacted) {
+        list->items = compacted;
+        list->capacity = targetCapacity;
+    }
+    list->underutilizedSeconds = 0;
 }
 
 static void MatrixCodeRainDestroyStorage(MatrixCodeRainSimulationStorage *storage);
@@ -332,6 +362,7 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
                 storage:(MatrixCodeRainSimulationStorage *)storage {
     for (NSInteger column = from; column < to; column++) {
         storage->streams[column].count = 0;
+        storage->streams[column].underutilizedSeconds = 0;
         storage->respawnTimer[column] =
             (float)(MatrixCodeRainNextRandom(&_rngState) * _config.respawnDelayJitter);
     }
@@ -607,6 +638,8 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
                 MatrixCodeRainRemoveStream(streams, (NSUInteger)streamIndex);
             }
         }
+        MatrixCodeRainCompactStreamListIfNeeded(
+            streams, (NSUInteger)maximumStreams, dt);
 
         for (NSUInteger streamIndex = 0; streamIndex < streams->count; streamIndex++) {
             MatrixCodeRainSimulationStream stream = streams->items[streamIndex];
@@ -750,6 +783,12 @@ static double MatrixCodeRainEffectiveTrailSpeed(double streamSpeed,
     if (column < 0 || column >= _columns) return 0;
     MatrixCodeRainSimulationStorage *storage = _storage;
     return storage->streams[column].count;
+}
+
+- (NSUInteger)streamCapacityForColumn:(NSInteger)column {
+    if (column < 0 || column >= _columns) return 0;
+    MatrixCodeRainSimulationStorage *storage = _storage;
+    return storage->streams[column].capacity;
 }
 
 @end

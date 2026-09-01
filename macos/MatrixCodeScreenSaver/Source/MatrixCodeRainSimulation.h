@@ -123,6 +123,7 @@ FOUNDATION_EXPORT double MatrixCodeRainEffectiveTrailLengthForControls(
 
 /** Test/integration diagnostics that do not expose mutable simulation storage. */
 - (NSUInteger)activeStreamCountForColumn:(NSInteger)column;
+- (NSUInteger)streamCapacityForColumn:(NSInteger)column;
 
 @end
 

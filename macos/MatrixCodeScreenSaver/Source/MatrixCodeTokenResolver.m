@@ -114,49 +114,47 @@ static NSNumber *MatrixCodeSanitizedTarget(id value) {
 
 // Token resolution runs every frame while a token message is displayed, so the
 // calendar and per-directive formatters are cached. All consumers run on the
-// main thread, and the caches are discarded when the system time zone changes
-// so long-running savers keep tracking the current zone without mutating the
-// cached objects after construction.
-static NSCalendar *MatrixCodeCreateLocalGregorianCalendar(void) {
+// main thread. Comparing an immutable snapshot of the local time zone on access
+// keeps long-running savers current without process-lifetime notification tokens.
+static NSCalendar *MatrixCodeCachedLocalCalendar;
+static NSMutableDictionary<NSString *, NSDateFormatter *> *MatrixCodeCachedFormatters;
+static NSTimeZone *MatrixCodeCachedLocalTimeZone;
+
+static NSTimeZone *MatrixCodeLocalTimeZoneSnapshot(void) {
+    NSTimeZone *localTimeZone = NSTimeZone.localTimeZone;
+    NSTimeZone *snapshot = [NSTimeZone timeZoneWithName:localTimeZone.name];
+    return snapshot ?: [NSTimeZone timeZoneForSecondsFromGMT:
+        [localTimeZone secondsFromGMT]];
+}
+
+static NSCalendar *MatrixCodeCreateLocalGregorianCalendar(NSTimeZone *timeZone) {
     NSCalendar *calendar = [[NSCalendar alloc]
         initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
-    calendar.timeZone = NSTimeZone.localTimeZone;
+    calendar.timeZone = timeZone;
     calendar.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
     return calendar;
 }
 
+static void MatrixCodeRefreshDateCachesIfNeeded(void) {
+    NSTimeZone *localTimeZone = MatrixCodeLocalTimeZoneSnapshot();
+    if ([MatrixCodeCachedLocalTimeZone isEqualToTimeZone:localTimeZone]) return;
+    MatrixCodeCachedLocalTimeZone = localTimeZone;
+    MatrixCodeCachedLocalCalendar = MatrixCodeCreateLocalGregorianCalendar(localTimeZone);
+    [MatrixCodeCachedFormatters removeAllObjects];
+}
+
 static NSCalendar *MatrixCodeLocalGregorianCalendar(void) {
-    static NSCalendar *calendar;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        calendar = MatrixCodeCreateLocalGregorianCalendar();
-        [NSNotificationCenter.defaultCenter
-            addObserverForName:NSSystemTimeZoneDidChangeNotification
-                        object:nil
-                         queue:NSOperationQueue.mainQueue
-                    usingBlock:^(NSNotification *notification) {
-            (void)notification;
-            calendar = MatrixCodeCreateLocalGregorianCalendar();
-        }];
-    });
-    return calendar;
+    MatrixCodeRefreshDateCachesIfNeeded();
+    return MatrixCodeCachedLocalCalendar;
 }
 
 static NSDateFormatter *MatrixCodeCachedFormatterForDateFormat(NSString *dateFormat) {
-    static NSMutableDictionary<NSString *, NSDateFormatter *> *formatters;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        formatters = [NSMutableDictionary dictionary];
-        [NSNotificationCenter.defaultCenter
-            addObserverForName:NSSystemTimeZoneDidChangeNotification
-                        object:nil
-                         queue:NSOperationQueue.mainQueue
-                    usingBlock:^(NSNotification *notification) {
-            (void)notification;
-            [formatters removeAllObjects];
-        }];
+        MatrixCodeCachedFormatters = [NSMutableDictionary dictionary];
     });
-    NSDateFormatter *formatter = formatters[dateFormat];
+    MatrixCodeRefreshDateCachesIfNeeded();
+    NSDateFormatter *formatter = MatrixCodeCachedFormatters[dateFormat];
     if (!formatter) {
         formatter = [[NSDateFormatter alloc] init];
         formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
@@ -166,9 +164,9 @@ static NSDateFormatter *MatrixCodeCachedFormatterForDateFormat(NSString *dateFor
             initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
         calendar.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
         formatter.calendar = calendar;
-        formatter.timeZone = NSTimeZone.localTimeZone;
+        formatter.timeZone = MatrixCodeCachedLocalTimeZone;
         formatter.dateFormat = dateFormat;
-        formatters[dateFormat] = formatter;
+        MatrixCodeCachedFormatters[dateFormat] = formatter;
     }
     return formatter;
 }

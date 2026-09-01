@@ -6,6 +6,7 @@
 #import "MatrixCodeRainSimulation.h"
 
 @interface MatrixCodeMetalView (MessageTesting)
+- (BOOL)ensureInstanceCapacity:(NSUInteger)capacity;
 - (void)updateImageScheduleAtTime:(NSTimeInterval)now
                         globalCols:(NSInteger)globalCols
                         globalRows:(NSInteger)globalRows
@@ -238,6 +239,69 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     for (id<MTLBuffer> buffer in buffers) {
         XCTAssertEqual(buffer.length, buffers.firstObject.length);
     }
+}
+
+- (void)testRendererShrinksInstanceBufferRingAfterSustainedUnderuse {
+    MatrixCodeMetalView *view =
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+                                           session:nil
+                                      storedValues:@{}];
+    NSUInteger minimumCapacity = MatrixCodeMetalView.diagnosticMinimumInstanceCapacity;
+    NSUInteger largeCapacity = minimumCapacity * 16;
+    NSUInteger requiredCapacity = minimumCapacity;
+
+    XCTAssertTrue([view ensureInstanceCapacity:largeCapacity]);
+    XCTAssertEqual([[view valueForKey:@"instanceCapacity"] unsignedIntegerValue],
+                   largeCapacity);
+    NSArray<id<MTLBuffer>> *largeBuffers = [view valueForKey:@"instanceBuffers"];
+    NSUInteger instanceStride = largeBuffers.firstObject.length / largeCapacity;
+
+    NSUInteger shrinkFrameCount =
+        MatrixCodeMetalView.diagnosticInstanceCapacityShrinkFrameCount;
+    for (NSUInteger frame = 1; frame < shrinkFrameCount; frame++) {
+        XCTAssertTrue([view ensureInstanceCapacity:requiredCapacity]);
+    }
+    XCTAssertEqual([[view valueForKey:@"instanceCapacity"] unsignedIntegerValue],
+                   largeCapacity);
+    XCTAssertEqualObjects([view valueForKey:@"instanceBuffers"], largeBuffers);
+
+    XCTAssertTrue([view ensureInstanceCapacity:requiredCapacity]);
+    NSUInteger expectedCapacity = MAX(minimumCapacity, requiredCapacity * 2);
+    XCTAssertEqual([[view valueForKey:@"instanceCapacity"] unsignedIntegerValue],
+                   expectedCapacity);
+    NSArray<id<MTLBuffer>> *shrunkBuffers = [view valueForKey:@"instanceBuffers"];
+    XCTAssertEqual(shrunkBuffers.count, (NSUInteger)3);
+    XCTAssertNotEqualObjects(shrunkBuffers, largeBuffers);
+    for (id<MTLBuffer> buffer in shrunkBuffers) {
+        XCTAssertEqual(buffer.length, expectedCapacity * instanceStride);
+    }
+    XCTAssertTrue([shrunkBuffers containsObject:[view valueForKey:@"instanceBuffer"]]);
+    XCTAssertTrue([view diagnosticRendererConsumesPackedStateWithWidth:640 height:360]);
+}
+
+- (void)testRendererCancelsPendingInstanceBufferShrinkWhenDemandRecovers {
+    MatrixCodeMetalView *view =
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+                                           session:nil
+                                      storedValues:@{}];
+    NSUInteger minimumCapacity = MatrixCodeMetalView.diagnosticMinimumInstanceCapacity;
+    NSUInteger largeCapacity = minimumCapacity * 16;
+    NSUInteger underusedCapacity = minimumCapacity;
+    NSUInteger recoveredCapacity = largeCapacity / 2;
+
+    XCTAssertTrue([view ensureInstanceCapacity:largeCapacity]);
+    NSUInteger shrinkFrameCount =
+        MatrixCodeMetalView.diagnosticInstanceCapacityShrinkFrameCount;
+    for (NSUInteger frame = 0; frame < shrinkFrameCount - 1; frame++) {
+        XCTAssertTrue([view ensureInstanceCapacity:underusedCapacity]);
+    }
+    XCTAssertTrue([view ensureInstanceCapacity:recoveredCapacity]);
+    for (NSUInteger frame = 0; frame < shrinkFrameCount - 1; frame++) {
+        XCTAssertTrue([view ensureInstanceCapacity:underusedCapacity]);
+    }
+
+    XCTAssertEqual([[view valueForKey:@"instanceCapacity"] unsignedIntegerValue],
+                   largeCapacity);
 }
 
 - (void)testHighQualityRendererAllocatesWebParityHDRTargetHierarchy {

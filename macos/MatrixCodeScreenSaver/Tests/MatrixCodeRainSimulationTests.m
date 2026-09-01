@@ -219,6 +219,31 @@ static uint32_t MatrixCodeFNV1aChecksum(NSData *data) {
     XCTAssertEqual(MatrixCodeFNV1aChecksum(simulation.stateData), 611215237U);
 }
 
+- (void)testStreamStorageCompactsOnlyAfterSustainedLowerDemand {
+    MatrixCodeRainSimulation *simulation =
+        [[MatrixCodeRainSimulation alloc] initWithColumns:1 rows:1 seed:24680U];
+    NSMutableDictionary<NSString *, id> *controls = [MatrixCodeWebGoldenControls() mutableCopy];
+    controls[@"density"] = @100;
+    [simulation warmUpDistributedWithControls:controls seconds:0 step:1.0 / 60.0];
+
+    NSUInteger peakCapacity = [simulation streamCapacityForColumn:0];
+    XCTAssertGreaterThanOrEqual(peakCapacity, (NSUInteger)50);
+
+    [simulation reset];
+    controls[@"density"] = @2;
+    controls[@"speed"] = @0;
+    for (NSUInteger frame = 0; frame < 74; frame++) {
+        [simulation updateWithDeltaTime:1.0 / 15.0 controls:controls];
+    }
+    XCTAssertEqual([simulation streamCapacityForColumn:0], peakCapacity);
+
+    for (NSUInteger frame = 0; frame < 2; frame++) {
+        [simulation updateWithDeltaTime:1.0 / 15.0 controls:controls];
+    }
+    XCTAssertLessThanOrEqual([simulation streamCapacityForColumn:0], (NSUInteger)2);
+    XCTAssertLessThanOrEqual([simulation activeStreamCountForColumn:0], (NSUInteger)1);
+}
+
 - (void)testElapsedTimeAdvanceMatchesWebSubstepPlanner {
     NSDictionary *controls = MatrixCodeWebGoldenControls();
     MatrixCodeRainSimulation *planned =

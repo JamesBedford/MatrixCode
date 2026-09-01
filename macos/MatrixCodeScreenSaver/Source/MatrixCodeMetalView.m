@@ -91,6 +91,9 @@ static const uint32_t MatrixCodeNormalRainSeed = 0x1a2b3cU;
 static const uint32_t MatrixCodeRainLaneSeedMultiplier = 0x9e3779b9U;
 static const NSInteger MatrixCodeMaximumRainLanes = 8;
 static const NSUInteger MatrixCodeInFlightFrameCount = 3;
+static const NSUInteger MatrixCodeMinimumInstanceCapacity = 4096;
+static const NSUInteger MatrixCodeInstanceCapacityShrinkDivisor = 4;
+static const NSUInteger MatrixCodeInstanceCapacityShrinkFrameCount = 300;
 // Covers more than 15 hours even at the shortest legal reveal+gap cadence; the guard is therefore
 // reserved for genuinely stale/hostile epochs rather than ordinary frame stalls or overnight sleep.
 static const NSUInteger MatrixCodeMaximumSynchronizedImageFastForwardSteps = 65536;
@@ -719,6 +722,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 @property(nonatomic) NSUInteger instanceBufferIndex;
 @property(nonatomic, strong) dispatch_semaphore_t inFlightFrameSemaphore;
 @property(nonatomic) NSUInteger instanceCapacity;
+@property(nonatomic) NSUInteger instanceCapacityUnderuseFrameCount;
 @property(nonatomic) NSUInteger instanceCount;
 @property(nonatomic) MatrixCodeUniforms uniforms;
 @property(nonatomic, copy) NSDictionary<NSString *, id> *controls;
@@ -2036,13 +2040,37 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (BOOL)ensureInstanceCapacity:(NSUInteger)capacity {
-    if (capacity <= self.instanceCapacity &&
-        self.instanceBuffers.count == MatrixCodeInFlightFrameCount) {
+    BOOL hasCompleteBufferRing =
+        self.instanceBuffers.count == MatrixCodeInFlightFrameCount;
+    BOOL needsGrowth = capacity > self.instanceCapacity;
+    BOOL needsShrink = NO;
+    if (!needsGrowth && hasCompleteBufferRing &&
+        self.instanceCapacity > MatrixCodeMinimumInstanceCapacity &&
+        capacity <= self.instanceCapacity / MatrixCodeInstanceCapacityShrinkDivisor) {
+        self.instanceCapacityUnderuseFrameCount++;
+        needsShrink = self.instanceCapacityUnderuseFrameCount >=
+            MatrixCodeInstanceCapacityShrinkFrameCount;
+    } else {
+        self.instanceCapacityUnderuseFrameCount = 0;
+    }
+    if (!needsGrowth && !needsShrink && hasCompleteBufferRing) {
         return YES;
     }
-    NSUInteger nextCapacity = MAX(
-        capacity,
-        MAX((NSUInteger)4096, self.instanceCapacity * 2));
+
+    NSUInteger nextCapacity;
+    if (needsGrowth) {
+        NSUInteger doubledCapacity = self.instanceCapacity <= NSUIntegerMax / 2
+            ? self.instanceCapacity * 2 : NSUIntegerMax;
+        nextCapacity = MAX(capacity,
+                           MAX(MatrixCodeMinimumInstanceCapacity, doubledCapacity));
+    } else if (needsShrink) {
+        nextCapacity = MAX(MatrixCodeMinimumInstanceCapacity, capacity * 2);
+        self.instanceCapacityUnderuseFrameCount = 0;
+    } else {
+        nextCapacity = MAX(MatrixCodeMinimumInstanceCapacity,
+                           MAX(capacity, self.instanceCapacity));
+    }
+    if (nextCapacity > NSUIntegerMax / sizeof(MatrixCodeGlyphInstance)) return NO;
     NSMutableArray<id<MTLBuffer>> *buffers =
         [NSMutableArray arrayWithCapacity:MatrixCodeInFlightFrameCount];
     for (NSUInteger index = 0; index < MatrixCodeInFlightFrameCount; index++) {
@@ -2053,6 +2081,8 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         if (!buffer) return NO;
         [buffers addObject:buffer];
     }
+    // Each submitted command buffer retains its encoded resources. Installing a complete new ring
+    // therefore leaves earlier rings alive only until their GPU work finishes.
     self.instanceCapacity = nextCapacity;
     self.instanceBuffers = buffers;
     self.instanceBufferIndex = 0;
@@ -2549,6 +2579,14 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 #if DEBUG
 + (NSInteger)diagnosticBloomLevelCountForQuality:(NSString *)quality {
     return MatrixCodeBloomLevelCount(quality ?: @"high");
+}
+
++ (NSUInteger)diagnosticMinimumInstanceCapacity {
+    return MatrixCodeMinimumInstanceCapacity;
+}
+
++ (NSUInteger)diagnosticInstanceCapacityShrinkFrameCount {
+    return MatrixCodeInstanceCapacityShrinkFrameCount;
 }
 
 + (NSInteger)diagnosticAtlasColumnCountForGlyphCount:(NSInteger)glyphCount {

@@ -71,6 +71,28 @@ static BOOL MatrixCodeContainsLabel(NSView *view, NSString *label) {
     return NO;
 }
 
+static NSArray<NSString *> *MatrixCodeTransientEditorReferenceKeys(void) {
+    return @[
+        @"introLinesStack",
+        @"messageLinesStack",
+        @"imageItemsStack",
+        @"momentsStack",
+        @"postIntroDelayField",
+        @"defaultCountdownDatePicker",
+        @"countdownPreviewLabel",
+        @"countdownPreviewTimer",
+        @"charactersPreviewView",
+    ];
+}
+
+static void MatrixCodeAssertNoTransientEditorReferences(
+    MatrixCodeConfigurationController *controller
+) {
+    for (NSString *key in MatrixCodeTransientEditorReferenceKeys()) {
+        XCTAssertNil([controller valueForKey:key], @"%@ should be released", key);
+    }
+}
+
 @interface MatrixCodeConfigurationControllerTests : XCTestCase
 @property(nonatomic, strong) MatrixCodePreferences *preferences;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *originalStoredValues;
@@ -753,6 +775,61 @@ restrictedToMultiMonitorControls:YES];
             controller.window.contentView,
             [@"settings-editor-card-" stringByAppendingString:kind]));
     }
+}
+
+- (void)testClosingEditorsReleasesTransientViewsAndAllowsReopen {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSDictionary<NSString *, NSArray<NSString *> *> *expectedReferences = @{
+        @"characters": @[],
+        @"intro": @[@"introLinesStack", @"postIntroDelayField"],
+        @"messages": @[@"messageLinesStack"],
+        @"images": @[@"imageItemsStack"],
+        @"countdowns": @[
+            @"momentsStack", @"defaultCountdownDatePicker", @"countdownPreviewLabel",
+            @"countdownPreviewTimer",
+        ],
+    };
+
+    for (NSString *kind in @[@"characters", @"intro", @"messages", @"images", @"countdowns"]) {
+        for (NSUInteger pass = 0; pass < 2; pass++) {
+            [controller openEditorKind:kind];
+            XCTAssertNotNil([controller valueForKey:@"editorBackdrop"], @"%@ pass %lu", kind,
+                            (unsigned long)pass);
+            for (NSString *key in expectedReferences[kind]) {
+                XCTAssertNotNil([controller valueForKey:key], @"%@ should own %@ while open", kind,
+                                key);
+            }
+
+            NSString *buttonIdentifier = pass == 0 ? @"editor-save" : @"editor-cancel";
+            NSButton *button = (NSButton *)MatrixCodeDescendantWithIdentifier(
+                controller.window.contentView, buttonIdentifier);
+            if (!button) {
+                button = (NSButton *)MatrixCodeDescendantWithIdentifier(
+                    controller.window.contentView, @"editor-save");
+            }
+            XCTAssertNotNil(button, @"%@ pass %lu", kind, (unsigned long)pass);
+            [button performClick:nil];
+
+            XCTAssertNil([controller valueForKey:@"editorBackdrop"], @"%@ pass %lu", kind,
+                         (unsigned long)pass);
+            MatrixCodeAssertNoTransientEditorReferences(controller);
+        }
+    }
+}
+
+- (void)testRebuildingConfigurationReleasesTransientEditorViews {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller openEditorKind:@"images"];
+    XCTAssertNotNil([controller valueForKey:@"imageItemsStack"]);
+
+    [controller resetControls:nil];
+
+    XCTAssertNil([controller valueForKey:@"editorBackdrop"]);
+    MatrixCodeAssertNoTransientEditorReferences(controller);
+    XCTAssertNotNil(MatrixCodeDescendantWithIdentifier(controller.window.contentView,
+                                                       @"settings-panel"));
 }
 
 - (void)testRainSlidersShowLiveNumericValues {

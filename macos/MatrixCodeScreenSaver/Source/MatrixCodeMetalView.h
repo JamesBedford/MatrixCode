@@ -56,6 +56,8 @@ typedef void (^MatrixCodeMetalFrameHandler)(MatrixCodeMetalView *view,
 + (float)diagnosticStepChanceForReferenceRateChance:(float)chance
                                              elapsed:(float)elapsed
                                        referenceRate:(float)referenceRate;
++ (NSUInteger)diagnosticMinimumInstanceCapacity;
++ (NSUInteger)diagnosticInstanceCapacityShrinkFrameCount;
 + (uint32_t)diagnosticNormalRainSeed;
 + (uint32_t)diagnosticRainSeedForLane:(NSInteger)laneIndex;
 - (NSData *)diagnosticPackedStateWithWidth:(NSUInteger)width height:(NSUInteger)height;

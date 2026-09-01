@@ -1,4 +1,5 @@
 #import <XCTest/XCTest.h>
+#import <time.h>
 
 #import "MatrixCodeTokenResolver.h"
 
@@ -114,6 +115,42 @@
     XCTAssertEqual(christmasParts.year, 2026);
     XCTAssertEqual(christmasParts.month, 12);
     XCTAssertEqual(christmasParts.day, 25);
+}
+
+- (void)testDateCachesRefreshWhenLocalTimeZoneChanges {
+    const char *originalEnvironmentTimeZone = getenv("TZ");
+    NSString *savedEnvironmentTimeZone = originalEnvironmentTimeZone
+        ? [NSString stringWithUTF8String:originalEnvironmentTimeZone] : nil;
+    NSDate *date = [NSDate dateWithTimeIntervalSince1970:1768478400];
+    MatrixCodeTokenResolver *resolver = [[MatrixCodeTokenResolver alloc]
+        initWithStoredValues:@{}
+                runStartDate:date];
+
+    @try {
+        setenv("TZ", "UTC", 1);
+        tzset();
+        [NSTimeZone resetSystemTimeZone];
+        XCTAssertEqualObjects([resolver resolveText:@"{time:%H:%M}"
+                                             atDate:date
+                                    framesPerSecond:60],
+                              @"12:00");
+
+        setenv("TZ", "America/Los_Angeles", 1);
+        tzset();
+        [NSTimeZone resetSystemTimeZone];
+        XCTAssertEqualObjects([resolver resolveText:@"{time:%H:%M}"
+                                             atDate:date
+                                    framesPerSecond:60],
+                              @"04:00");
+    } @finally {
+        if (savedEnvironmentTimeZone) {
+            setenv("TZ", savedEnvironmentTimeZone.UTF8String, 1);
+        } else {
+            unsetenv("TZ");
+        }
+        tzset();
+        [NSTimeZone resetSystemTimeZone];
+    }
 }
 
 - (void)testUnknownTokensPassThrough {

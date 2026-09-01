@@ -508,6 +508,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 @property(nonatomic) BOOL screenSaverPresentationEnded;
 @property(nonatomic, weak, nullable) NSWindow *screenSaverSheetParent;
 - (void)discardEditorPresentation;
+- (void)clearTransientEditorReferences;
 - (void)loadSettingsBackdropIfNeeded;
 - (void)prepareForScreenSaverConfigurationPresentation;
 - (void)scheduleSettingsBackdropLoad;
@@ -1445,8 +1446,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (void)presentEditorKind:(NSString *)kind {
     if (self.restrictedToMultiMonitorControls && ![kind isEqualToString:@"characters"]) return;
     [self.editorBackdrop removeFromSuperview];
-    [self stopCharactersPreview];
-    [self stopCountdownPreview];
+    self.editorBackdrop = nil;
+    self.editorCard = nil;
+    self.editorKind = nil;
+    [self clearTransientEditorReferences];
     NSView *root = [self presentationContentView];
     if (!root) return;
     MatrixCodeSettingsBackdropView *backdrop =
@@ -1628,8 +1631,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (void)closeEditorSave:(id)sender {
     [self.messagePreviewRestoreTimer invalidate];
     self.messagePreviewRestoreTimer = nil;
-    [self stopCharactersPreview];
-    [self stopCountdownPreview];
+    [self clearTransientEditorReferences];
     NSDictionary *values = [self serializedValues];
     values = [self commitSerializedValues:values];
     [self publishPreviewValues:values];
@@ -1703,13 +1705,23 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (void)discardEditorPresentation {
     [self.messagePreviewRestoreTimer invalidate];
     self.messagePreviewRestoreTimer = nil;
-    [self stopCharactersPreview];
-    [self stopCountdownPreview];
+    [self clearTransientEditorReferences];
     [self.editorBackdrop removeFromSuperview];
     self.editorBackdrop = nil;
     self.editorCard = nil;
     self.editorKind = nil;
     self.editorSnapshot = nil;
+}
+
+- (void)clearTransientEditorReferences {
+    [self stopCharactersPreview];
+    [self stopCountdownPreview];
+    self.introLinesStack = nil;
+    self.messageLinesStack = nil;
+    self.imageItemsStack = nil;
+    self.momentsStack = nil;
+    self.postIntroDelayField = nil;
+    self.defaultCountdownDatePicker = nil;
 }
 
 - (NSTextField *)heading:(NSString *)text {
