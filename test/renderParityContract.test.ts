@@ -24,6 +24,12 @@ const windowsHost = read("windows/MatrixCode/src/platform/Win32Host.cpp");
 const windowsRenderer = read("windows/MatrixCode/src/render/D3D11Renderer.cpp");
 const windowsSettings = read("windows/MatrixCode/src/core/Settings.cpp");
 const windowsShader = read("windows/MatrixCode/shaders/MatrixCode.hlsl");
+const linuxHost = read("linux/MatrixCode/src/app/MatrixCodeHost.cpp");
+const linuxRenderer = read("linux/MatrixCode/src/render/OpenGLRenderer.cpp");
+const linuxAtlas = read("linux/MatrixCode/src/render/GlyphAtlas.cpp");
+const linuxGlyph = read("linux/MatrixCode/shaders/glyph.frag");
+const linuxBlur = read("linux/MatrixCode/shaders/blur.frag");
+const linuxComposite = read("linux/MatrixCode/shaders/composite.frag");
 
 function numericConstant(source: string, name: string): number {
   const match = source.match(new RegExp(`\\b${name}\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)f?\\b`));
@@ -349,5 +355,66 @@ describe("Windows/Web render parity source contract", () => {
     );
     expect(calendarDay).not.toContain("TzSpecificLocalTimeToSystemTimeEx(");
     expect(calendarDay).not.toContain("PresentationTimeSeconds()");
+  });
+});
+
+describe("Linux/Web render parity source contract", () => {
+  it("locks atlas resolution, HDR formats, bloom levels, and blur spread", () => {
+    expect(numericConstant(linuxAtlas, "kAtlasCellPixels")).toBe(64);
+    expect(numericConstant(linuxRenderer, "kBlurSpread")).toBe(
+      numericConstant(webRenderer, "BLUR_SPREAD"),
+    );
+    expect(linuxRenderer).toContain("GL_RGBA16F");
+    expect(linuxRenderer).toContain("GL_R11F_G11F_B10F");
+    expect(normalized(linuxRenderer)).toContain(
+      "parameters.controls.quality == QualityTier::Low ? 1u : parameters.controls.quality == QualityTier::Medium ? 2u : 3u",
+    );
+  });
+
+  it("keeps the Gaussian kernel, ACES, scanlines, and vignette aligned", () => {
+    for (const name of ["w0", "w12", "w34", "o12", "o34"]) {
+      expect(numericConstant(linuxBlur, name), name).toBe(numericConstant(webBlur, name));
+    }
+    for (const name of ["a", "b", "c", "d", "e"]) {
+      expect(numericConstant(linuxComposite, name), name).toBe(
+        numericConstant(webComposite, name),
+      );
+    }
+    for (const value of ["0.15", "0.95", "0.42", "2.8"]) {
+      expect(linuxComposite).toContain(value);
+      expect(webComposite).toContain(value);
+    }
+    expect(linuxRenderer).toContain("parameters.controls.scanlines ? 0.12f : 0.0f");
+  });
+
+  it("keeps the gold sparkle equations and shader-safe packed-state name", () => {
+    expect(numericConstant(linuxRenderer, "kGoldSparkleStrength")).toBe(
+      numericConstant(webRenderer, "GOLD_SPARKLE_STRENGTH"),
+    );
+    expect(numericConstant(linuxGlyph, "goldSparkleBloom")).toBe(
+      numericConstant(webGlyph, "goldSparkleBloom"),
+    );
+    const shader = normalized(linuxGlyph);
+    expect(shader).toContain(
+      "float sparklePulse = max(isHead ? 0.45 : 0.0, 4.0 * phase * (1.0 - phase));",
+    );
+    expect(shader).toContain(
+      "float goldSparkle = uGoldSparkle * sparklePulse * smoothstep(0.45, 0.95, bright);",
+    );
+    expect(linuxGlyph).toContain("vec4 packedState = texelFetch(uState, cell, 0);");
+    expect(linuxGlyph).not.toMatch(/\bvec4\s+packed\b/);
+  });
+
+  it("uses the shared native simulation and scheduler contracts", () => {
+    for (const symbol of [
+      "ComputeRainLanes",
+      "PlanSimulationSteps",
+      "ImageScheduler",
+      "MessageScheduler",
+      "EffectiveControlsForLocalDate",
+    ]) {
+      expect(linuxHost).toContain(symbol);
+    }
+    expect(linuxAtlas).toContain("inkedIndexes[inkedIndexes.size() / 2]");
   });
 });

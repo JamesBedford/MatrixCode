@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<screensaver name="matrixcode" _label="Matrix Code">
+  <command arg="-root" />
+  <boolean id="software" _label="Use software rendering" arg-set="--software" />
+  <_description>
+    Film-accurate Matrix digital rain rendered by the native GPU-accelerated Ubuntu application.
+    Settings are shared with the standalone Matrix Code app.
+  </_description>
+</screensaver>

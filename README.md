@@ -3,8 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 MatrixCode is an open-source **Matrix digital rain effect** with a browser/WebGL
-implementation as its visual source of truth, independent native screen savers
-for macOS and Windows, and a browser-derived Wallpaper Engine package. The web
+implementation as its visual source of truth, native applications for Ubuntu,
+macOS, and Windows, and a browser-derived Wallpaper Engine package. The web
 build is one self-contained HTML file with no server or runtime dependencies.
 Unlike most Matrix rain demos, the rendering model is film-accurate — glyphs
 sit on a **stationary grid** and a wave of illumination sweeps down each column,
@@ -22,6 +22,7 @@ screen.
 - [Wallpaper Engine](#wallpaper-engine)
 - [Windows app and screen saver](#windows-app-and-screen-saver)
 - [macOS screen saver](#macos-screen-saver)
+- [Ubuntu app and screen saver](#ubuntu-app-and-screen-saver)
 - [Architecture](#architecture)
 - [License](#license)
 - [Screenshots](#screenshots)
@@ -41,6 +42,7 @@ Most "Matrix rain" projects (including the classic terminal `cmatrix`) scroll a 
 - **Single-file build** — `vite build` produces one inlined `matrixcode.html` with no external dependencies
 - **Native macOS screen saver** — a separate AppKit + Metal Apple-Silicon `.saver` bundle with an Options sheet and continuous multi-display rendering
 - **Native Windows app and screen saver** — an independent C++20, Win32, and Direct3D 11 implementation that builds a standalone `.exe` and native `.scr`
+- **Native Ubuntu app and XScreenSaver mode** — a C++20, Qt 6, and hardware OpenGL implementation for arm64 and amd64 with Wayland/X11 fullscreen and continuous multi-display rendering
 - **Wallpaper Engine package** — an offline web-wallpaper package generated from the same browser artifact for import into Wallpaper Engine and eventual Workshop publication
 - **Multi-monitor mode** — the **Multi-monitor** button spans the rain across every connected display as one continuous grid (Chromium only; see [docs/multimonitor-setup.md](docs/multimonitor-setup.md))
 - **Settings panel** — press `H` to toggle; controls for color theme, quality tier, glyph scale, and more
@@ -188,8 +190,34 @@ moments. See
 [`macos/MatrixCodeScreenSaver/README.md`](macos/MatrixCodeScreenSaver/README.md)
 for native build, install, troubleshooting, and parity notes.
 
-The browser, macOS, and Windows versions are separate implementations of the
-same feature contract. Changes to visuals, settings, token behavior,
+## Ubuntu app and screen saver
+
+The Ubuntu 24.04 LTS project lives in [`linux/MatrixCode`](linux/MatrixCode). It
+is a native C++20 + Qt 6 implementation with an OpenGL 3.3 Core renderer and no
+embedded browser. It builds the same portable C++ core used by Windows, keeping
+simulation, settings, messages, images, tokens, holidays, controllers, and
+multi-display topology byte-for-byte aligned while presenting native Linux UI.
+
+```sh
+sudo apt install build-essential cmake ninja-build qt6-base-dev \
+  qt6-image-formats-plugins libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxss-dev
+npm run build:linux
+npm run test:linux
+npm run verify:linux
+npm run release:linux
+```
+
+The application supports windowed, fullscreen, and coordinated multi-monitor
+presentation on Wayland and X11, plus native structured settings and the full
+intro/message/image/countdown feature set. X11 users can install the optional
+XScreenSaver launch mode. Stock GNOME Wayland has no supported extension point
+for third-party secure lock-screen renderers, so MatrixCode does not replace or
+weaken the GNOME lock screen. Build, package, launch, integration, and release
+validation details are maintained in
+[`linux/MatrixCode/README.md`](linux/MatrixCode/README.md).
+
+The browser, macOS, Windows, and Ubuntu versions implement the same feature
+contract. Changes to visuals, settings, token behavior,
 intro/messages/images, or multi-monitor semantics should be made in all
 applicable codebases unless an intentional difference is documented.
 
@@ -200,7 +228,7 @@ Xcode, run `npm run verify:parity` from the repository root.
 
 ## Architecture
 
-MatrixCode has three runtime implementations plus a browser-derived Wallpaper
+MatrixCode has four runtime implementations plus a browser-derived Wallpaper
 Engine distribution:
 
 - **Browser app:** TypeScript + WebGL2 under [`src`](src), producing a single
@@ -211,6 +239,9 @@ Engine distribution:
 - **Windows app and screen saver:** C++20 + Win32 + Direct3D 11 under
   [`windows/MatrixCode`](windows/MatrixCode), producing a native application and
   `.scr` with no embedded web runtime.
+- **Ubuntu app and XScreenSaver mode:** C++20 + Qt 6 + OpenGL under
+  [`linux/MatrixCode`](linux/MatrixCode), producing a native Wayland/X11
+  application and X11 saver mode with no embedded web runtime.
 - **Wallpaper Engine:** a host adapter under `src/platform/wallpaperEngine.ts`
   and generated package metadata under [`wallpaper-engine`](wallpaper-engine);
   it runs the browser build rather than introducing a fourth renderer.
@@ -288,6 +319,17 @@ a fixed WARP PNG
 for a future repository-wide visual comparison gate. Consult the Windows README
 for the current verification boundary before treating a native feature as
 parity-complete.
+
+### Native Ubuntu app and XScreenSaver mode
+
+The Ubuntu implementation separates the shared deterministic C++ core,
+`MatrixCodeRenderGL`, Linux platform adapters, and the Qt application host. The
+renderer consumes the same packed RGBA8 cells and floating-point image
+influence as Windows, uses an RGBA16F scene and matching bloom/ACES composite,
+and exposes hardware diagnostics and deterministic capture. One session drives
+all fullscreen monitor windows over a shared logical grid. Linux tests compile
+the portable Windows-native suites directly and add command-line, atomic XDG
+settings, and Qt image-import coverage.
 
 ## License
 

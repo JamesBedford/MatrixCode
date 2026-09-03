@@ -6,6 +6,7 @@ dist-ssr
 .vite
 coverage
 windows/MatrixCode/out/
+linux/MatrixCode/out/
 .claude/
 __pycache__/
 .pytest_cache/

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="13" fill="#0D0208"/>
+  <defs>
+    <filter id="head-glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.1" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g font-family="Noto Sans JP,DejaVu Sans Mono,monospace" font-size="13" font-weight="bold"
+     text-anchor="middle" dominant-baseline="central">
+    <text x="14" y="10.5" fill="#008F11">ﾊ</text>
+    <text x="14" y="22.5" fill="#00FF41">ｼ</text>
+    <text x="14" y="34.5" fill="#64FF8A">ﾘ</text>
+    <text x="14" y="46.5" fill="#DEFFE4" filter="url(#head-glow)">ﾂ</text>
+    <text x="32" y="22.5" fill="#006509">ｸ</text>
+    <text x="32" y="34.5" fill="#008F11">ｦ</text>
+    <text x="32" y="46.5" fill="#00FF41">ﾐ</text>
+    <text x="32" y="58.5" fill="#DEFFE4" filter="url(#head-glow)">ﾝ</text>
+    <text x="50" y="10.5" fill="#00FF41">ﾅ</text>
+    <text x="50" y="22.5" fill="#64FF8A">ｴ</text>
+    <text x="50" y="34.5" fill="#DEFFE4" filter="url(#head-glow)">ｱ</text>
+  </g>
+</svg>

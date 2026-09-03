@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=Matrix Code
+GenericName=Digital Rain
+Comment=Film-accurate GPU-accelerated Matrix digital rain
+Exec=MatrixCode
+Icon=io.github.matrixcode.MatrixCode
+Terminal=false
+Categories=Graphics;
+Keywords=Matrix;rain;screensaver;OpenGL;animation;
+Actions=Settings;MultiMonitor;
+StartupNotify=true
+StartupWMClass=MatrixCode
+
+[Desktop Action Settings]
+Name=Settings
+Exec=MatrixCode --settings
+
+[Desktop Action MultiMonitor]
+Name=Multi-monitor presentation
+Exec=MatrixCode --multi-monitor

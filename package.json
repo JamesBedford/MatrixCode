@@ -8,16 +8,20 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:linux": "linux/MatrixCode/scripts/build.sh",
     "build:wallpaper": "npm run build && node scripts/wallpaper-engine/package.mjs",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Build-Windows.ps1 -Architecture x64 -Configuration Release -SkipTests",
     "install:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Install-ScreenSaver.ps1",
     "preview": "vite preview",
+    "release:linux": "linux/MatrixCode/scripts/package-deb.sh",
     "test": "vitest run",
+    "test:linux": "linux/MatrixCode/scripts/test.sh",
     "test:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Verify-Windows.ps1 -Architecture x64 -Configuration Debug",
     "test:watch": "vitest",
     "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Build-Release.ps1",
     "verify:wallpaper": "node scripts/wallpaper-engine/generate-project.mjs --check",
     "verify:parity": "./scripts/verify_parity.sh",
+    "verify:linux": "linux/MatrixCode/scripts/verify.sh",
     "verify:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File windows/MatrixCode/scripts/Verify-Windows.ps1 -Architecture x64 -Configuration Debug -Capture"
   },
   "dependencies": {

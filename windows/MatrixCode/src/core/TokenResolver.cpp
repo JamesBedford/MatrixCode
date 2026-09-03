@@ -213,9 +213,8 @@ std::string ResolveTokens(const std::string_view text, const TokenContext& conte
       output.push_back(text[cursor++]);
       continue;
     }
-    const std::optional<std::string_view> argument = colon == std::string_view::npos
-      ? std::nullopt
-      : std::optional<std::string_view>(body.substr(colon + 1));
+    std::optional<std::string_view> argument;
+    if (colon != std::string_view::npos) argument.emplace(body.substr(colon + 1));
     output += ResolveOne(kind, argument, context);
     cursor = close + 1;
   }

@@ -3,7 +3,7 @@
 ## Workflow
 
 - After making changes, check for any bugs, make fixes, and then commit the changes to main when done.
-- This repository contains two separate implementations of MatrixCode: the browser/WebGL app under `src/` and the native macOS AppKit/Metal app + screen saver under `macos/MatrixCodeScreenSaver/`. Whenever a feature, behavior, bug fix, configuration change, token/countdown rule, or visual tuning change is made to one implementation, make the equivalent change to the other implementation in the same workstream so the two codebases stay in sync. If exact parity is impossible, document the intentional difference in the relevant README and tests — `docs/macos-web-parity.md` is the parity contract and already lists the accepted platform-only surfaces.
+- This repository contains browser/WebGL, macOS AppKit/Metal, Windows Win32/Direct3D 11, and Ubuntu Qt/OpenGL implementations of MatrixCode. Whenever a feature, behavior, bug fix, configuration change, token/countdown/image rule, or visual tuning change is made to one implementation, make the equivalent change to the other applicable implementations in the same workstream. If exact parity is impossible, document the intentional difference in the relevant README and tests; `AGENTS.md` is the current architecture and validation reference.
 
 ## Commands
 
@@ -12,6 +12,8 @@
 - `npm test` / `npm run test:watch` — Vitest over `test/**/*.test.ts`, `environment: "node"` (no DOM; every suite tests pure functions), 30s per-test timeout.
 - Single test: `npx vitest run test/rainSim.test.ts` (add `-t "<name>"` to filter).
 - `npm run verify:parity` — the full gate: web tests + build, then the native `./test.sh` and `./build.sh`. Needs a Mac with full Xcode.
+- `npm run verify:linux` — strict GCC build/test plus the Ubuntu Qt/OpenGL Release build and metadata validation; `npm run release:linux` creates the architecture-native `.deb`.
+- `npm run verify:windows` — native MSVC tests plus the WARP capture on Windows; `npm run release:windows` produces release artifacts.
 - Native, from `macos/MatrixCodeScreenSaver/`: `./test.sh` (xcodegen + `xcodebuild test`), `./build.sh` (thin wrapper over `scripts/build-release.sh --auto-signing`), `./install.sh` (release build → `~/Library/Screen Savers`). For a signed/notarized DMG use `scripts/build-release.sh --release` from the repo root. Xcode is located by `scripts/lib/xcode-developer-dir.sh` (DEVELOPER_DIR → XCODE_APP → non-CLT `xcode-select -p` → usual paths → Spotlight), so an Xcode outside `/Applications` needs no `xcode-select --switch`; set `XCODE_APP` to pin one.
 - `test/test_dmg_*.py` are pytest, **not** part of `npm test`. They need their own venv: `python3 -m venv /tmp/dmgvenv && /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow pytest`.
 
@@ -19,8 +21,8 @@
 
 `npm test` is not web-only. Several suites reach outside `src/`, so an innocuous edit elsewhere can fail it:
 
-- `test/renderParityContract.test.ts` reads the native `MatrixCodeMetalView.m`, `MatrixCodeShaders.metal`, `MatrixCodeAdaptiveResolution.m` and `MatrixCodeAppDelegate.m` **as text** and pins their constants against the web ones. Changing `ATLAS_CELL_PX`, bloom level counts, blur/composite constants, preset colors, or `DEFAULT_ADAPTIVE_CONFIG` fails the web suite until the Objective-C/MSL side matches.
-- `test/rainSimGolden.test.ts` pins FNV-1a checksums of the packed `state` bytes, and `test/messageScheduler.test.ts` has a cross-language golden; both are mirrored by XCTests in `macos/MatrixCodeScreenSaver/Tests/`. Any simulation or scheduler behavior change must regenerate both sides deliberately, never one.
+- `test/renderParityContract.test.ts` reads the macOS, Windows, and Linux render sources **as text** and pins their constants against the web source of truth. Changing atlas resolution, bloom levels, blur/composite constants, preset colors, or adaptive defaults fails the web suite until every applicable native renderer matches.
+- `test/rainSimGolden.test.ts` pins FNV-1a checksums of the packed `state` bytes, and `test/messageScheduler.test.ts` has a cross-language golden; these are mirrored by macOS XCTests and the shared Windows/Linux C++ tests. Any simulation or scheduler behavior change must regenerate every applicable fixture deliberately.
 - `test/buildReleaseScript.test.ts` executes `scripts/build-release.sh --help` and greps its source; `test/webIcons.test.ts` reads `index.html`, `public/manifest.webmanifest` and the `public/icons/*.png` pixels, checking them against `colorPresets`.
 
 ## Web architecture
@@ -48,11 +50,11 @@ Invariants and gotchas:
 
 `ControlsStore` (`src/config/controls.ts`) merges defaults < `localStorage` < URL query, and every `set()` writes the non-default controls back into the query string via `history.replaceState`, so the address bar round-trips a look (and rewrites itself as sliders move). Static tuning is `src/config/simConfig.ts`; themes are `src/config/colorPresets.ts`.
 
-Every persisted document follows the same shape: a `DEFAULT_*`, a `sanitize*`/`clone*` pair over the coercion helpers in `src/config/sanitize.ts` (`num`/`text`/`bool`/`capArray`), and a localStorage store. Keys: `mx-controls`, `mx-intro`, `mx-messages`, `mx-countdown`, `mx-ui-state`, `mx-user-name` (native adds `mx-images`). Other URL params: `?name=`, `?hud`, `?native=screensaver|configuration`.
+Every persisted document follows the same shape: a `DEFAULT_*`, a `sanitize*`/`clone*` pair over the coercion helpers in `src/config/sanitize.ts` (`num`/`text`/`bool`/`capArray`), and a localStorage store. Keys: `mx-controls`, `mx-intro`, `mx-messages`, `mx-images`, `mx-countdown`, `mx-ui-state`, and `mx-user-name`. Other URL params: `?name=`, `?hud`, `?native=screensaver|configuration`.
 
 ## Overlays & UI
 
-`src/ui/controlsPanel.ts` is the settings panel. Four modal editors extend `ModalEditor` (`src/ui/modalKit.ts`, styled by `.mx-modal*`/`.mx-line*`/`.mx-field` in `src/styles.css`): characters, intro, messages, countdown — the open one is tracked as `ActiveSettingsSurface` in `src/config/uiState.ts`.
+`src/ui/controlsPanel.ts` is the settings panel. Five modal editors extend `ModalEditor` (`src/ui/modalKit.ts`, styled by `.mx-modal*`/`.mx-line*`/`.mx-field` in `src/styles.css`): characters, intro, messages, images, and countdown — the open one is tracked as `ActiveSettingsSurface` in `src/config/uiState.ts`.
 
 Keys (`onKey` in `app.ts`): `H` panel, `F` fullscreen, `I`/`M`/`C` open the intro/messages/countdown editors, `N` or `Shift+M` toggle messages, `P` pause, `Alt+F` FPS HUD, `-`/`=` nudge density, `Escape` skips the intro. Double-click enters fullscreen, triple-click enters multi-monitor (`src/sim/multiClick.ts`).
 
@@ -78,7 +80,7 @@ Keep these aligned with the browser implementation:
 - `MatrixCodeMetalView` — stationary-grid rain, glyph scrambling, bloom compositing, themes, scanlines, vignette, overlap lanes, continuous virtual-grid multi-display. Honours `MATRIXCODE_ADAPTIVE=0` (the native counterpart of `?adaptive=0`).
 - `MatrixCodeRainLifecycle` — intro/load ramp and glyph-distribution rules.
 - `MatrixCodeIntroOverlayView` — typewriter intro, click/Escape skip, timing, token resolution.
-- `MatrixCodeConfigurationController` — native Options sheet (rain, intro, messages, countdown/countup, and the native-only `mx-images` reveals); persists the same `mx-*` JSON keys with the same sanitization rules as the web app.
+- `MatrixCodeConfigurationController` — native Options sheet for rain, intro, messages, images, and countdown/countup moments; persists the same `mx-*` JSON keys with the same sanitization rules as the web app.
 - `MatrixCodeTokenResolver` — same token grammar and regex as `src/sim/tokens.ts`, holidays included.
 
-Any parity change should usually include tests in both the web suite and `macos/MatrixCodeScreenSaver/Tests`.
+Any parity change should usually include the web suite plus the applicable macOS, Windows, and Linux native tests.

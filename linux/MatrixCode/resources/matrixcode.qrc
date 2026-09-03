@@ -1,0 +1,12 @@
+<RCC>
+  <qresource prefix="/matrixcode">
+    <file alias="icons/matrixcode.svg">icons/hicolor/scalable/apps/io.github.matrixcode.MatrixCode.svg</file>
+    <file alias="shaders/fullscreen.vert">../shaders/fullscreen.vert</file>
+    <file alias="shaders/glyph.frag">../shaders/glyph.frag</file>
+    <file alias="shaders/brightpass.frag">../shaders/brightpass.frag</file>
+    <file alias="shaders/blur.frag">../shaders/blur.frag</file>
+    <file alias="shaders/copy.frag">../shaders/copy.frag</file>
+    <file alias="shaders/composite.frag">../shaders/composite.frag</file>
+    <file alias="shaders/overlay.frag">../shaders/overlay.frag</file>
+  </qresource>
+</RCC>
