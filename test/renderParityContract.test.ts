@@ -16,6 +16,9 @@ const webBlur = read("src/gl/shaders/blur.frag.glsl");
 const webComposite = read("src/gl/shaders/composite.frag.glsl");
 const nativeConstants = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeConstants.m");
 const nativeRenderer = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeMetalView.m");
+const nativeMessageScheduler = read(
+  "macos/MatrixCodeScreenSaver/Source/MatrixCodeMessageScheduler.m",
+);
 const nativeShaders = read("macos/MatrixCodeScreenSaver/Resources/MatrixCodeShaders.metal");
 const nativeAdaptive = read("macos/MatrixCodeScreenSaver/Source/MatrixCodeAdaptiveResolution.m");
 const nativeApp = read("macos/MatrixCodeScreenSaver/AppSource/MatrixCodeAppDelegate.m");
@@ -25,7 +28,9 @@ const windowsRenderer = read("windows/MatrixCode/src/render/D3D11Renderer.cpp");
 const windowsSettings = read("windows/MatrixCode/src/core/Settings.cpp");
 const windowsShader = read("windows/MatrixCode/shaders/MatrixCode.hlsl");
 const linuxHost = read("linux/MatrixCode/src/app/MatrixCodeHost.cpp");
+const linuxMain = read("linux/MatrixCode/app/Main.cpp");
 const linuxRenderer = read("linux/MatrixCode/src/render/OpenGLRenderer.cpp");
+const linuxXScreenSaverLauncher = read("linux/MatrixCode/resources/xscreensaver/matrixcode");
 const linuxAtlas = read("linux/MatrixCode/src/render/GlyphAtlas.cpp");
 const linuxGlyph = read("linux/MatrixCode/shaders/glyph.frag");
 const linuxBlur = read("linux/MatrixCode/shaders/blur.frag");
@@ -359,6 +364,63 @@ describe("Windows/Web render parity source contract", () => {
 });
 
 describe("Linux/Web render parity source contract", () => {
+  it("keeps the message scheduler seed aligned across every implementation", () => {
+    expect(webApp).toContain("const MSG_SEED = 0x5eed1e;");
+    expect(nativeMessageScheduler).toContain(
+      "const uint32_t MatrixCodeMessageSchedulerSeed = 0x5eed1eU;",
+    );
+    expect(windowsHost).toContain("constexpr std::uint32_t kMessageSeed = 0x5eed1eu;");
+    expect(linuxHost).toContain("constexpr std::uint32_t kMessageSeed = 0x5eed1eu;");
+  });
+
+  it("keeps deterministic capture independent of display scale and calendar colors", () => {
+    expect(numericConstant(linuxHost, "kCaptureWidth")).toBe(960);
+    expect(numericConstant(linuxHost, "kCaptureHeight")).toBe(600);
+    expect(linuxHost).toContain("if (IsCapture()) return settings_.controls;");
+    expect(normalized(linuxHost)).toContain(
+      "const float logicalPerPixel = IsCapture() ? 1.0f : static_cast<float>(1.0 / widget.devicePixelRatioF());",
+    );
+  });
+
+  it("allows OpenGL ES 3 when the Qt platform exposes an ES-only implementation", () => {
+    expect(linuxMain).toContain("QOpenGLContext::openGLModuleType()");
+    expect(linuxMain).toContain("QSurfaceFormat::OpenGLES");
+    expect(linuxMain).toContain("format.setVersion(3, usesOpenGles ? 0 : 3);");
+  });
+
+  it("uses independent state textures for every composited rain lane", () => {
+    expect(linuxRenderer).toContain("std::vector<LayerTextures> layerTextures;");
+    expect(linuxRenderer).toContain("LayerTextures& textures = layerTextures[layerIndex];");
+    expect(linuxRenderer).toContain("const LayerTextures& textures = impl_->layerTextures[layerIndex];");
+  });
+
+  it("keeps XScreenSaver playback hosted and retries failed hardware initialization in software", () => {
+    expect(linuxHost).toContain("return IsPreview() || options_.xscreensaverHosted;");
+    expect(linuxHost).toContain("return IsSaver() && !options_.xscreensaverHosted;");
+    expect(linuxHost).toContain("QCoreApplication::exit(kSoftwareFallbackExitCode);");
+    expect(linuxHost).toContain("platform::QueryX11WindowSize(options_.parentWindowId)");
+    expect(linuxXScreenSaverLauncher).toContain('if [ "${status}" -eq 75 ]; then');
+    expect(linuxXScreenSaverLauncher).toContain('exec "${binary}" --software "$@"');
+    expect(linuxHost).toContain("if (!widget.BeginRendererRecovery())");
+    expect(linuxHost).toContain("widget.ResetRendererRecovery();");
+  });
+
+  it("honors GNOME reduced motion and never shifts a scheduler driven by frozen elapsed time", () => {
+    expect(linuxHost).toContain("org.gnome.desktop.interface");
+    expect(linuxHost).toContain("enable-animations");
+    const shiftTimelines = linuxHost.match(
+      /void MatrixCodeHost::ShiftPresentationTimelines\([^\n]*\) \{([\s\S]*?)\n\}/,
+    )?.[1] ?? "";
+    expect(shiftTimelines).not.toContain("messageScheduler_.ShiftTimelineBy");
+  });
+
+  it("starts load-ramped rain empty without applying that reset to embedded previews", () => {
+    expect(normalized(linuxHost)).toContain(
+      "if (!IsPreview() && !reducedMotion_ && settings_.controls.rampUpMilliseconds > 0.0)",
+    );
+    expect(linuxHost).toContain("ResetRainToEmpty(elapsedSeconds_);");
+  });
+
   it("locks atlas resolution, HDR formats, bloom levels, and blur spread", () => {
     expect(numericConstant(linuxAtlas, "kAtlasCellPixels")).toBe(64);
     expect(numericConstant(linuxRenderer, "kBlurSpread")).toBe(

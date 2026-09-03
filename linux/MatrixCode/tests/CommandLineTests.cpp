@@ -36,6 +36,13 @@ void RunCommandLineTests() {
   MX_EXPECT(rootSaver.options.has_value());
   MX_EXPECT(rootSaver.options->mode == LaunchMode::ScreenSaver);
 
+  const auto hostedRoot = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("-root")}, QStringLiteral("0x1234"));
+  MX_EXPECT(hostedRoot.options.has_value());
+  MX_EXPECT(hostedRoot.options->mode == LaunchMode::ScreenSaver);
+  MX_EXPECT(hostedRoot.options->xscreensaverHosted);
+  MX_EXPECT_EQ(hostedRoot.options->parentWindowId, quint64{0x1234});
+
   const auto preview = ParseCommandLine({
     QStringLiteral("MatrixCode"), QStringLiteral("--preview"), QStringLiteral("0x1234")});
   MX_EXPECT(preview.options.has_value());
@@ -90,4 +97,15 @@ void RunCommandLineTests() {
     MX_EXPECT(!result.options.has_value());
     MX_EXPECT(!result.error.isEmpty());
   }
+
+  const auto invalidHostedRoot = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("-root")}, QStringLiteral("not-a-window"));
+  MX_EXPECT(!invalidHostedRoot.options.has_value());
+  MX_EXPECT(invalidHostedRoot.error.contains(QStringLiteral("XSCREENSAVER_WINDOW")));
+
+  const auto hostedMultiMonitor = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("-root"),
+    QStringLiteral("--multi-monitor")}, QStringLiteral("42"));
+  MX_EXPECT(!hostedMultiMonitor.options.has_value());
+  MX_EXPECT(!hostedMultiMonitor.error.isEmpty());
 }

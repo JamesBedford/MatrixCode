@@ -55,6 +55,14 @@ struct OverlayTexture {
   float originY = 0.0f;
 };
 
+struct LayerTextures {
+  GLuint state = 0;
+  GLuint boost = 0;
+  std::uint32_t columns = 0;
+  std::uint32_t rows = 0;
+  std::vector<float> zeroBoost;
+};
+
 [[nodiscard]] std::string GlString(QOpenGLExtraFunctions* gl, const GLenum name) {
   const auto* value = gl == nullptr ? nullptr : gl->glGetString(name);
   return value == nullptr ? std::string{} : reinterpret_cast<const char*>(value);
@@ -129,11 +137,7 @@ struct OpenGLRenderer::Impl {
   GLuint overlayProgram = 0;
   std::unordered_map<GLuint, std::unordered_map<std::string, GLint>> uniformLocations;
 
-  GLuint stateTexture = 0;
-  GLuint boostTexture = 0;
-  std::uint32_t stateColumns = 0;
-  std::uint32_t stateRows = 0;
-  std::vector<float> zeroBoost;
+  std::vector<LayerTextures> layerTextures;
 
   GLuint atlasTexture = 0;
   std::uint32_t atlasColumns = 0;
@@ -193,8 +197,10 @@ struct OpenGLRenderer::Impl {
       DeleteOverlay(introOverlay);
       DeleteOverlay(hudOverlay);
       DeleteOverlay(toastOverlay);
-      if (stateTexture != 0) gl->glDeleteTextures(1, &stateTexture);
-      if (boostTexture != 0) gl->glDeleteTextures(1, &boostTexture);
+      for (LayerTextures& textures : layerTextures) {
+        if (textures.state != 0) gl->glDeleteTextures(1, &textures.state);
+        if (textures.boost != 0) gl->glDeleteTextures(1, &textures.boost);
+      }
       if (atlasTexture != 0) gl->glDeleteTextures(1, &atlasTexture);
       for (const GLuint program : {
              glyphProgram, brightPassProgram, blurProgram, copyProgram, compositeProgram, overlayProgram}) {
@@ -206,9 +212,9 @@ struct OpenGLRenderer::Impl {
 
     vertexArray = vertexBuffer = 0;
     glyphProgram = brightPassProgram = blurProgram = copyProgram = compositeProgram = overlayProgram = 0;
-    stateTexture = boostTexture = atlasTexture = 0;
-    stateColumns = stateRows = atlasColumns = atlasRows = 0;
-    zeroBoost.clear();
+    atlasTexture = 0;
+    atlasColumns = atlasRows = 0;
+    layerTextures.clear();
     atlasReady = false;
     scene = {};
     bloomMain = {};
@@ -457,16 +463,19 @@ struct OpenGLRenderer::Impl {
     return true;
   }
 
-  [[nodiscard]] bool EnsureCellTextures(const std::uint32_t columns, const std::uint32_t rows) {
+  [[nodiscard]] bool EnsureCellTextures(
+      LayerTextures& textures,
+      const std::uint32_t columns,
+      const std::uint32_t rows) {
     if (columns == 0 || rows == 0) return false;
-    if (stateTexture == 0) gl->glGenTextures(1, &stateTexture);
-    if (boostTexture == 0) gl->glGenTextures(1, &boostTexture);
-    if (stateTexture == 0 || boostTexture == 0) return false;
-    if (stateColumns == columns && stateRows == rows) return true;
+    if (textures.state == 0) gl->glGenTextures(1, &textures.state);
+    if (textures.boost == 0) gl->glGenTextures(1, &textures.boost);
+    if (textures.state == 0 || textures.boost == 0) return false;
+    if (textures.columns == columns && textures.rows == rows) return true;
 
     gl->glActiveTexture(GL_TEXTURE0);
     gl->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    gl->glBindTexture(GL_TEXTURE_2D, stateTexture);
+    gl->glBindTexture(GL_TEXTURE_2D, textures.state);
     gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -476,7 +485,7 @@ struct OpenGLRenderer::Impl {
       static_cast<GLsizei>(columns), static_cast<GLsizei>(rows), 0,
       GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 
-    gl->glBindTexture(GL_TEXTURE_2D, boostTexture);
+    gl->glBindTexture(GL_TEXTURE_2D, textures.boost);
     gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -487,21 +496,20 @@ struct OpenGLRenderer::Impl {
       GL_RED, GL_FLOAT, nullptr);
     gl->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     if (gl->glGetError() != GL_NO_ERROR) {
-      gl->glDeleteTextures(1, &stateTexture);
-      gl->glDeleteTextures(1, &boostTexture);
-      stateTexture = boostTexture = 0;
-      stateColumns = stateRows = 0;
+      gl->glDeleteTextures(1, &textures.state);
+      gl->glDeleteTextures(1, &textures.boost);
+      textures = {};
       DrainErrors();
       SetError("Unable to allocate rain state textures");
       return false;
     }
-    stateColumns = columns;
-    stateRows = rows;
-    zeroBoost.assign(static_cast<std::size_t>(columns) * rows, 0.0f);
+    textures.columns = columns;
+    textures.rows = rows;
+    textures.zeroBoost.assign(static_cast<std::size_t>(columns) * rows, 0.0f);
     return true;
   }
 
-  [[nodiscard]] bool UploadLayer(const RainLayerView& layer) {
+  [[nodiscard]] bool UploadLayer(const RainLayerView& layer, const std::size_t layerIndex) {
     if (layer.columns == 0 || layer.rows == 0) return false;
     if (layer.columns > static_cast<std::uint32_t>(std::numeric_limits<GLsizei>::max()) ||
         layer.rows > static_cast<std::uint32_t>(std::numeric_limits<GLsizei>::max())) return false;
@@ -509,22 +517,24 @@ struct OpenGLRenderer::Impl {
     if (cells > std::numeric_limits<std::size_t>::max() / 4u ||
         layer.state.size() != static_cast<std::size_t>(cells) * 4u) return false;
     if (!layer.brightnessBoost.empty() && layer.brightnessBoost.size() != cells) return false;
-    if (!EnsureCellTextures(layer.columns, layer.rows)) return false;
+    if (layerTextures.size() <= layerIndex) layerTextures.resize(layerIndex + 1);
+    LayerTextures& textures = layerTextures[layerIndex];
+    if (!EnsureCellTextures(textures, layer.columns, layer.rows)) return false;
 
     gl->glActiveTexture(GL_TEXTURE0);
     gl->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    gl->glBindTexture(GL_TEXTURE_2D, stateTexture);
+    gl->glBindTexture(GL_TEXTURE_2D, textures.state);
     gl->glTexSubImage2D(
       GL_TEXTURE_2D, 0, 0, 0,
       static_cast<GLsizei>(layer.columns), static_cast<GLsizei>(layer.rows),
       GL_RGBA, GL_UNSIGNED_BYTE, layer.state.data());
     gl->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    gl->glBindTexture(GL_TEXTURE_2D, boostTexture);
+    gl->glBindTexture(GL_TEXTURE_2D, textures.boost);
     gl->glTexSubImage2D(
       GL_TEXTURE_2D, 0, 0, 0,
       static_cast<GLsizei>(layer.columns), static_cast<GLsizei>(layer.rows),
       GL_RED, GL_FLOAT,
-      layer.brightnessBoost.empty() ? zeroBoost.data() : layer.brightnessBoost.data());
+      layer.brightnessBoost.empty() ? textures.zeroBoost.data() : layer.brightnessBoost.data());
     return true;
   }
 
@@ -836,11 +846,13 @@ bool OpenGLRenderer::Render(
   impl_->Set3f(impl_->glyphProgram, "uHead", parameters.palette.head);
 
   std::size_t renderedLayers = 0;
-  for (const RainLayerView& layer : layers) {
-    if (layer.weight <= 0.0f || !impl_->UploadLayer(layer)) continue;
-    impl_->BindTexture(GL_TEXTURE0, impl_->stateTexture);
+  for (std::size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
+    const RainLayerView& layer = layers[layerIndex];
+    if (layer.weight <= 0.0f || !impl_->UploadLayer(layer, layerIndex)) continue;
+    const LayerTextures& textures = impl_->layerTextures[layerIndex];
+    impl_->BindTexture(GL_TEXTURE0, textures.state);
     impl_->BindTexture(GL_TEXTURE1, impl_->atlasTexture);
-    impl_->BindTexture(GL_TEXTURE2, impl_->boostTexture);
+    impl_->BindTexture(GL_TEXTURE2, textures.boost);
     impl_->Set2f(
       impl_->glyphProgram, "uGrid", static_cast<float>(layer.columns), static_cast<float>(layer.rows));
     impl_->Set1f(impl_->glyphProgram, "uColOffset", layer.offsetCells);

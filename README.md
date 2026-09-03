@@ -200,7 +200,8 @@ multi-display topology byte-for-byte aligned while presenting native Linux UI.
 
 ```sh
 sudo apt install build-essential cmake ninja-build qt6-base-dev \
-  qt6-image-formats-plugins libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxss-dev
+  qt6-image-formats-plugins fonts-noto-cjk libgl1-mesa-dev libegl1-mesa-dev \
+  libx11-dev libxss-dev
 npm run build:linux
 npm run test:linux
 npm run verify:linux

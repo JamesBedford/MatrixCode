@@ -55,6 +55,7 @@
 #include "matrixcode/core/TokenResolver.h"
 #include "matrixcode/platform/CommandLine.h"
 #include "matrixcode/platform/SettingsStoreLinux.h"
+#include "matrixcode/platform/X11Window.h"
 #include "matrixcode/render/OpenGLRenderer.h"
 #include "matrixcode/ui/SettingsDialog.h"
 
@@ -62,6 +63,11 @@ namespace matrixcode::app {
 namespace {
 
 constexpr std::uint32_t kNormalSeed = 0x001a2b3cu;
+constexpr std::uint32_t kMessageSeed = 0x5eed1eu;
+constexpr std::uint32_t kCaptureWidth = 960;
+constexpr std::uint32_t kCaptureHeight = 600;
+constexpr int kSoftwareFallbackExitCode = 75;
+constexpr int kMaximumRendererRecoveryAttempts = 1;
 constexpr std::size_t kMaximumRainLanes = 8;
 constexpr int kFrameMilliseconds = 16;
 constexpr int kIdlePollMilliseconds = 250;
@@ -73,7 +79,19 @@ double UnixSeconds() {
   return static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
 }
 
-bool ReducedMotionRequested() {
+bool StartSoftwareFallback() {
+  QStringList arguments = QCoreApplication::arguments();
+  if (!arguments.isEmpty()) arguments.removeFirst();
+  if (arguments.contains(QStringLiteral("--software"))) return false;
+  arguments.push_back(QStringLiteral("--software"));
+  QProcess process;
+  process.setProgram(QCoreApplication::applicationFilePath());
+  process.setArguments(arguments);
+  process.setWorkingDirectory(QCoreApplication::applicationDirPath());
+  return process.startDetached();
+}
+
+bool ToolkitReducedMotionRequested() {
   const auto environment = QProcessEnvironment::systemEnvironment();
   if (environment.value("QT_ENABLE_ANIMATIONS") == "0" ||
       environment.value("GTK_ENABLE_ANIMATIONS") == "0") return true;
@@ -86,13 +104,67 @@ bool ReducedMotionRequested() {
   return false;
 }
 
-std::uint32_t SessionSeed(const platform::CommandLineOptions& options) {
-  if (options.mode == platform::LaunchMode::Capture) return kNormalSeed;
-  if (options.multiMonitor || options.mode == platform::LaunchMode::ScreenSaver) {
-    const std::uint32_t seed = QRandomGenerator::system()->generate();
-    return seed != 0 ? seed : kNormalSeed;
+class ReducedMotionMonitor final {
+ public:
+  ReducedMotionMonitor() {
+    QProcess query;
+    query.start(QStringLiteral("gsettings"), {
+      QStringLiteral("get"), QStringLiteral("org.gnome.desktop.interface"),
+      QStringLiteral("enable-animations")});
+    if (query.waitForStarted(250)) {
+      if (query.waitForFinished(500)) {
+        ApplyGnomeValue(query.readAllStandardOutput());
+      } else {
+        query.kill();
+        query.waitForFinished(250);
+      }
+    }
+
+    QObject::connect(&monitor_, &QProcess::readyReadStandardOutput, &monitor_, [this] {
+      ApplyGnomeValue(monitor_.readAllStandardOutput());
+    });
+    monitor_.start(QStringLiteral("gsettings"), {
+      QStringLiteral("monitor"), QStringLiteral("org.gnome.desktop.interface"),
+      QStringLiteral("enable-animations")});
   }
-  return kNormalSeed;
+
+  ~ReducedMotionMonitor() {
+    if (monitor_.state() == QProcess::NotRunning) return;
+    monitor_.terminate();
+    if (!monitor_.waitForFinished(250)) {
+      monitor_.kill();
+      monitor_.waitForFinished(250);
+    }
+  }
+
+  [[nodiscard]] bool Requested() const {
+    return ToolkitReducedMotionRequested() ||
+      (gnomeAnimationsEnabled_.has_value() && !*gnomeAnimationsEnabled_);
+  }
+
+ private:
+  void ApplyGnomeValue(const QByteArray& output) {
+    const QList<QByteArray> lines = output.split('\n');
+    for (auto line = lines.crbegin(); line != lines.crend(); ++line) {
+      const QByteArray value = line->trimmed();
+      if (value == "true" || value.endsWith(" true")) {
+        gnomeAnimationsEnabled_ = true;
+        return;
+      }
+      if (value == "false" || value.endsWith(" false")) {
+        gnomeAnimationsEnabled_ = false;
+        return;
+      }
+    }
+  }
+
+  QProcess monitor_;
+  std::optional<bool> gnomeAnimationsEnabled_;
+};
+
+std::uint32_t RandomSessionSeed() {
+  const std::uint32_t seed = QRandomGenerator::system()->generate();
+  return seed != 0 ? seed : kNormalSeed;
 }
 
 bool LoadHudVisible() {
@@ -171,6 +243,12 @@ class RainWidget final : public QOpenGLWidget {
   void SetVirtualGeometry(QRectF logicalDisplay);
   [[nodiscard]] const QRectF& VirtualGeometry() const noexcept { return logicalDisplay_; }
   [[nodiscard]] render::OpenGLRenderer& Renderer() noexcept { return renderer_; }
+  [[nodiscard]] bool BeginRendererRecovery() noexcept {
+    if (rendererRecoveryAttempts_ >= kMaximumRendererRecoveryAttempts) return false;
+    ++rendererRecoveryAttempts_;
+    return true;
+  }
+  void ResetRendererRecovery() noexcept { rendererRecoveryAttempts_ = 0; }
 
  protected:
   void initializeGL() override;
@@ -190,6 +268,7 @@ class RainWidget final : public QOpenGLWidget {
   render::OpenGLRenderer renderer_;
   QRectF logicalDisplay_;
   QMetaObject::Connection contextDestroyConnection_;
+  int rendererRecoveryAttempts_ = 0;
 };
 
 struct RainWindow {
@@ -207,11 +286,11 @@ class MatrixCodeHost final : public QObject {
   MatrixCodeHost(QApplication& application, platform::CommandLineOptions options)
       : QObject(&application), application_(application), options_(std::move(options)),
         settings_(options_.mode == platform::LaunchMode::Capture ? DefaultSettings() : store_.Load()),
-        rainSeed_(SessionSeed(options_)),
-        messageScheduler_(kNormalSeed ^ 0x4f1bbcdcu, [this](const std::string_view text) {
+        rainSeed_(kNormalSeed),
+        messageScheduler_(kMessageSeed, [this](const std::string_view text) {
           return ResolveText(text);
         }), epochSeconds_(UnixSeconds()), imageEpochSeconds_(epochSeconds_),
-        reducedMotion_(ReducedMotionRequested()) {
+        reducedMotion_(reducedMotionMonitor_.Requested()) {
     frameClock_.start();
     previousNanoseconds_ = frameClock_.nsecsElapsed();
     timer_.setTimerType(Qt::PreciseTimer);
@@ -219,7 +298,7 @@ class MatrixCodeHost final : public QObject {
     QObject::connect(&timer_, &QTimer::timeout, this, [this] { Tick(); });
     QObject::connect(&application_, &QGuiApplication::applicationStateChanged,
       this, [this](const Qt::ApplicationState state) {
-        SetPauseReason(kPauseInactive, state != Qt::ApplicationActive);
+        if (!IsEmbedded()) SetPauseReason(kPauseInactive, state != Qt::ApplicationActive);
       });
     QObject::connect(&application_, &QGuiApplication::screenAdded,
       this, [this](QScreen*) { ScreensChanged(); });
@@ -240,6 +319,9 @@ class MatrixCodeHost final : public QObject {
   void HandleRendererFailure(RainWidget& widget, const QString& diagnostic);
   void HandleClose(QCloseEvent& event);
   void HandleFocusOut();
+  [[nodiscard]] bool IsCapture() const noexcept {
+    return options_.mode == platform::LaunchMode::Capture;
+  }
 
  private:
   enum PauseReason : std::uint32_t {
@@ -253,11 +335,17 @@ class MatrixCodeHost final : public QObject {
   [[nodiscard]] bool IsSaver() const noexcept {
     return options_.mode == platform::LaunchMode::ScreenSaver;
   }
+  [[nodiscard]] bool IsStandaloneSaver() const noexcept {
+    return IsSaver() && !options_.xscreensaverHosted;
+  }
   [[nodiscard]] bool IsPreview() const noexcept {
     return options_.mode == platform::LaunchMode::Preview;
   }
+  [[nodiscard]] bool IsEmbedded() const noexcept {
+    return IsPreview() || options_.xscreensaverHosted;
+  }
   [[nodiscard]] bool IsMultiDisplay() const noexcept {
-    return options_.multiMonitor || IsSaver();
+    return options_.multiMonitor || (IsSaver() && !options_.xscreensaverHosted);
   }
   [[nodiscard]] bool Frozen() const noexcept {
     return reducedMotion_ || userPaused_ || (pauseReasons_ & ~(kPauseReducedMotion | kPauseUser)) != 0;
@@ -265,7 +353,7 @@ class MatrixCodeHost final : public QObject {
 
   bool CreateWindows();
   RainWindow& AddWindow(QScreen* screen, bool fullscreen);
-  void EmbedPreview(RainWindow& window);
+  [[nodiscard]] bool EmbedPreview(RainWindow& window);
   void RecalculateGeometry();
   void RebuildSimulations(bool preservePresentation = true);
   void ResetRainToEmpty(double startSeconds);
@@ -338,6 +426,7 @@ class MatrixCodeHost final : public QObject {
   bool imagesConfigured_ = false;
   std::uint32_t pauseReasons_ = 0;
   double pauseStartedSeconds_ = 0.0;
+  ReducedMotionMonitor reducedMotionMonitor_;
   bool reducedMotion_ = false;
   bool userPaused_ = false;
   bool staticFrameRendered_ = false;
@@ -364,12 +453,7 @@ RainWidget::RainWidget(MatrixCodeHost& host, QWidget* parent)
   setAutoFillBackground(false);
   setAccessibleName(tr("Matrix Code animated digital rain"));
   setAccessibleDescription(tr("A continuous GPU-rendered field of stationary Matrix rain glyphs."));
-  QSurfaceFormat format;
-  format.setRenderableType(QSurfaceFormat::OpenGL);
-  format.setVersion(3, 3);
-  format.setProfile(QSurfaceFormat::CoreProfile);
-  format.setDepthBufferSize(0);
-  format.setStencilBufferSize(0);
+  QSurfaceFormat format = QSurfaceFormat::defaultFormat();
   format.setSwapInterval(0);
   setFormat(format);
 }
@@ -410,15 +494,19 @@ void RainWidget::initializeGL() {
   }
   const qreal ratio = devicePixelRatioF();
   static_cast<void>(renderer_.Resize(
-    static_cast<std::uint32_t>(std::max(1, qRound(width() * ratio))),
-    static_cast<std::uint32_t>(std::max(1, qRound(height() * ratio)))));
+    host_.IsCapture() ? kCaptureWidth
+                      : static_cast<std::uint32_t>(std::max(1, qRound(width() * ratio))),
+    host_.IsCapture() ? kCaptureHeight
+                      : static_cast<std::uint32_t>(std::max(1, qRound(height() * ratio)))));
 }
 
 void RainWidget::resizeGL(const int width, const int height) {
   const qreal ratio = devicePixelRatioF();
   static_cast<void>(renderer_.Resize(
-    static_cast<std::uint32_t>(std::max(1, qRound(width * ratio))),
-    static_cast<std::uint32_t>(std::max(1, qRound(height * ratio)))));
+    host_.IsCapture() ? kCaptureWidth
+                      : static_cast<std::uint32_t>(std::max(1, qRound(width * ratio))),
+    host_.IsCapture() ? kCaptureHeight
+                      : static_cast<std::uint32_t>(std::max(1, qRound(height * ratio)))));
   host_.GeometryChanged();
 }
 
@@ -512,35 +600,56 @@ RainWindow& MatrixCodeHost::AddWindow(QScreen* screen, const bool fullscreen) {
     window->container->showFullScreen();
   } else {
     window->container->resize(960, 600);
-    window->container->show();
+    if (!IsEmbedded()) window->container->show();
   }
-  window->rain->setFocus();
+  if (!IsEmbedded()) window->rain->setFocus();
   windows_.push_back(std::move(window));
   return *windows_.back();
 }
 
 bool MatrixCodeHost::CreateWindows() {
   if (options_.mode == platform::LaunchMode::Settings) return true;
+  if (IsEmbedded()) {
+    RainWindow& window = AddWindow(QGuiApplication::primaryScreen(), false);
+    return EmbedPreview(window);
+  }
   const bool wall = IsMultiDisplay();
   if (wall) {
     const auto screens = QGuiApplication::screens();
     for (QScreen* screen : screens) AddWindow(screen, true);
-  } else {
-    RainWindow& window = AddWindow(QGuiApplication::primaryScreen(), false);
-    if (IsPreview()) EmbedPreview(window);
-  }
+  } else AddWindow(QGuiApplication::primaryScreen(), false);
   return !windows_.empty();
 }
 
-void MatrixCodeHost::EmbedPreview(RainWindow& window) {
-  if (options_.parentWindowId == 0 || QGuiApplication::platformName().contains("wayland")) return;
+bool MatrixCodeHost::EmbedPreview(RainWindow& window) {
+  if (options_.parentWindowId == 0 || QGuiApplication::platformName().contains("wayland")) {
+    qCritical() << "Matrix Code preview embedding requires a valid X11 host window";
+    return false;
+  }
   previewParent_.reset(QWindow::fromWinId(static_cast<WId>(options_.parentWindowId)));
-  if (!previewParent_ || window.container->windowHandle() == nullptr) return;
-  window.container->windowHandle()->setParent(previewParent_.get());
+  if (!previewParent_) {
+    qCritical() << "Matrix Code could not open the X11 preview host window";
+    return false;
+  }
+  const std::optional<QSize> hostSize = platform::QueryX11WindowSize(options_.parentWindowId);
+  if (!hostSize.has_value()) {
+    qCritical() << "Matrix Code could not read the X11 preview host geometry";
+    return false;
+  }
   window.container->setWindowFlags(Qt::FramelessWindowHint);
-  window.container->setGeometry(0, 0,
-    std::max(1, previewParent_->width()), std::max(1, previewParent_->height()));
+  window.container->winId();
+  if (window.container->windowHandle() == nullptr) {
+    qCritical() << "Matrix Code could not create its X11 preview child window";
+    return false;
+  }
+  window.container->windowHandle()->setParent(previewParent_.get());
+  const qreal pixelRatio = std::max(0.001, window.container->devicePixelRatioF());
+  window.container->setGeometry(
+    0, 0,
+    std::max(1, qRound(hostSize->width() / pixelRatio)),
+    std::max(1, qRound(hostSize->height() / pixelRatio)));
   window.container->show();
+  return true;
 }
 
 int MatrixCodeHost::Run() {
@@ -554,18 +663,24 @@ int MatrixCodeHost::Run() {
     }
     return 0;
   }
+  if (IsMultiDisplay() && QGuiApplication::screens().size() > 1) {
+    rainSeed_ = RandomSessionSeed();
+  }
   if (!CreateWindows()) return 2;
   saverInitialCursor_ = QCursor::pos();
   saverGrace_.start();
-  if (IsSaver()) {
+  if (IsStandaloneSaver()) {
     application_.setOverrideCursor(Qt::BlankCursor);
     saverCursorHidden_ = true;
   }
   RecalculateGeometry();
-  if (RainWindow* controls = ControlsWindow(); controls != nullptr) {
-    controls->container->raise();
-    controls->container->activateWindow();
-    controls->rain->setFocus();
+  if (!IsEmbedded()) {
+    RainWindow* controls = ControlsWindow();
+    if (controls != nullptr) {
+      controls->container->raise();
+      controls->container->activateWindow();
+      controls->rain->setFocus();
+    }
   }
   RebuildSimulations(false);
   InitializePresentation();
@@ -577,7 +692,9 @@ int MatrixCodeHost::Run() {
     pauseReasons_ |= kPauseReducedMotion;
     WarmStaticRain();
   }
-  SetPauseReason(kPauseInactive, application_.applicationState() != Qt::ApplicationActive);
+  if (!IsEmbedded()) {
+    SetPauseReason(kPauseInactive, application_.applicationState() != Qt::ApplicationActive);
+  }
   timer_.start();
   return application_.exec();
 }
@@ -627,7 +744,8 @@ void MatrixCodeHost::GeometryChanged() {
 }
 
 void MatrixCodeHost::RebuildSimulations(const bool preservePresentation) {
-  lanes_ = ComputeRainLanes(settings_.controls.density, settings_.controls.allowOverlap,
+  lanes_ = ComputeRainLanes(settings_.controls.density,
+    settings_.controls.allowOverlap,
     TierLaneCap(settings_.controls.quality));
   const bool firstBuild = simulations_.empty();
   if (firstBuild) {
@@ -712,7 +830,7 @@ void MatrixCodeHost::InitializePresentation() {
     ResetRainToEmpty(std::numeric_limits<double>::infinity());
   } else {
     rainStartSeconds_ = elapsedSeconds_;
-    if (!introActive_ && !reducedMotion_ && settings_.controls.rampUpMilliseconds > 0.0) {
+    if (!IsPreview() && !reducedMotion_ && settings_.controls.rampUpMilliseconds > 0.0) {
       ResetRainToEmpty(elapsedSeconds_);
     }
   }
@@ -838,6 +956,7 @@ void MatrixCodeHost::UpdateRenderBuffers() {
 }
 
 Controls MatrixCodeHost::EffectiveControls() const {
+  if (IsCapture()) return settings_.controls;
   const QDate date = QDate::currentDate();
   const QDateTime start(date.startOfDay());
   const QDateTime end(date.addDays(1).startOfDay());
@@ -880,29 +999,41 @@ void MatrixCodeHost::Render(RainWidget& widget, render::OpenGLRenderer& renderer
   parameters.cellPixels = static_cast<float>(SimConfig{}.targetCellPixels * settings_.controls.glyphScale);
   parameters.virtualOriginX = static_cast<float>(display.left());
   parameters.virtualOriginY = static_cast<float>(display.top());
-  const float logicalPerPixel = static_cast<float>(1.0 / widget.devicePixelRatioF());
+  const float logicalPerPixel = IsCapture()
+    ? 1.0f
+    : static_cast<float>(1.0 / widget.devicePixelRatioF());
   parameters.logicalPerPixelX = logicalPerPixel;
   parameters.logicalPerPixelY = logicalPerPixel;
   parameters.adaptiveScale = static_cast<float>(renderScale_);
   parameters.elapsedSeconds = static_cast<float>(elapsedSeconds_);
   parameters.presentationMode = PresentationModeForWindowCount(windows_.size());
   if (!renderer.Render(renderViews_, parameters, widget.defaultFramebufferObject())) {
-    if (options_.mode == platform::LaunchMode::Capture) {
-      qCritical().noquote() << "Matrix Code capture render failed:"
-                            << FromUtf8(renderer.Diagnostics().lastError);
-      QTimer::singleShot(0, &application_, [] { QCoreApplication::exit(3); });
+    const QString diagnostic = FromUtf8(renderer.Diagnostics().lastError);
+    if (!widget.BeginRendererRecovery()) {
+      QTimer::singleShot(0, &widget, [this, &widget, diagnostic] {
+        HandleRendererFailure(widget, diagnostic);
+      });
       return;
     }
     renderer.Cleanup();
     const bool restored = renderer.Initialize(widget.context());
     const qreal ratio = widget.devicePixelRatioF();
     const bool resized = restored && renderer.Resize(
-      static_cast<std::uint32_t>(std::max(1, qRound(widget.width() * ratio))),
-      static_cast<std::uint32_t>(std::max(1, qRound(widget.height() * ratio))));
-    ShowToast("GPU CONTEXT RECOVERING");
+      IsCapture() ? kCaptureWidth
+                  : static_cast<std::uint32_t>(std::max(1, qRound(widget.width() * ratio))),
+      IsCapture() ? kCaptureHeight
+                  : static_cast<std::uint32_t>(std::max(1, qRound(widget.height() * ratio))));
+    if (!IsCapture()) ShowToast("GPU CONTEXT RECOVERING");
     if (resized) widget.update();
+    else {
+      const QString recoveryDiagnostic = FromUtf8(renderer.Diagnostics().lastError);
+      QTimer::singleShot(0, &widget, [this, &widget, recoveryDiagnostic] {
+        HandleRendererFailure(widget, recoveryDiagnostic);
+      });
+    }
     return;
   }
+  widget.ResetRendererRecovery();
   if (options_.mode == platform::LaunchMode::Capture && !captureSaved_) {
     captureSaved_ = true;
     const QImage capture = renderer.CaptureFrame();
@@ -988,11 +1119,18 @@ void MatrixCodeHost::PollSettings() {
   const double clock = UnixSeconds();
   if (clock < nextSettingsPollSeconds_) return;
   nextSettingsPollSeconds_ = clock + 1.0;
-  const bool reducedMotion = ReducedMotionRequested();
+  const bool reducedMotion = reducedMotionMonitor_.Requested();
   if (reducedMotion != reducedMotion_) {
     reducedMotion_ = reducedMotion;
     SetPauseReason(kPauseReducedMotion, reducedMotion_);
-    if (reducedMotion_) WarmStaticRain();
+    if (reducedMotion_) {
+      presentationInitialized_ = true;
+      introActive_ = false;
+      introText_.clear();
+      introOpacity_ = 0.0f;
+      rainStartSeconds_ = -std::numeric_limits<double>::infinity();
+      WarmStaticRain();
+    }
     staticFrameRendered_ = false;
   }
   if (options_.mode == platform::LaunchMode::Capture) return;
@@ -1059,9 +1197,10 @@ void MatrixCodeHost::OpenSettings(const ui::SettingsPage page, QWidget* owner) {
   const SettingsSnapshot before = settings_;
   SetPauseReason(kPauseModal, true);
   ui::SettingsDialog dialog(settings_, page, owner);
-  dialog.SetPreviewCallback([this, &dialog](
+  dialog.SetPreviewCallback([this, &dialog, &before](
       const SettingsSnapshot& preview, const ui::SettingsPage previewPage) {
     const std::uint64_t generation = ++settingsPreviewGeneration_;
+    dialog.hide();
     SetPauseReason(kPauseModal, false);
     SettingsSnapshot livePreview = preview;
     if (previewPage == ui::SettingsPage::Intro) livePreview.intro.enabled = true;
@@ -1086,9 +1225,24 @@ void MatrixCodeHost::OpenSettings(const ui::SettingsPage page, QWidget* owner) {
         preview.images.disappearMilliseconds;
     }
     const int duration = static_cast<int>(std::clamp(previewMilliseconds, 500.0, 30000.0));
-    QTimer::singleShot(duration, &dialog, [this, generation] {
+    QTimer::singleShot(duration, &dialog, [this, &dialog, &before, generation] {
       if (settingsOpen_ && generation == settingsPreviewGeneration_) {
+        ApplySettings(before, true);
+        messageScheduler_.Configure(settings_.messages);
+        imageScheduler_.Configure(
+          settings_.images, rainSeed_, imageEpochSeconds_, UnixSeconds(), windows_.size() > 1);
+        messagesConfigured_ = true;
+        imagesConfigured_ = true;
+        presentationInitialized_ = true;
+        introActive_ = false;
+        introText_.clear();
+        introOpacity_ = 0.0f;
+        WarmStaticRain();
+        UpdateRenderBuffers();
         SetPauseReason(kPauseModal, true);
+        dialog.show();
+        dialog.raise();
+        dialog.activateWindow();
       }
     });
   });
@@ -1182,7 +1336,11 @@ RainWindow* MatrixCodeHost::ControlsWindow() {
 
 void MatrixCodeHost::HandleKey(RainWidget& widget, QKeyEvent& event) {
   event.ignore();
-  if (IsSaver()) { ExitAll(); event.accept(); return; }
+  if (IsSaver()) {
+    if (IsStandaloneSaver()) ExitAll();
+    event.accept();
+    return;
+  }
   const bool shift = event.modifiers().testFlag(Qt::ShiftModifier);
   const bool alt = event.modifiers().testFlag(Qt::AltModifier);
   const bool control = event.modifiers().testFlag(Qt::ControlModifier) ||
@@ -1235,6 +1393,7 @@ void MatrixCodeHost::HandleKey(RainWidget& widget, QKeyEvent& event) {
   else if (event.key() == Qt::Key_X) { OpenSettings(ui::SettingsPage::Images, &widget); event.accept(); }
   else if (event.key() == Qt::Key_N) { ToggleDocument(false); event.accept(); }
   else if (event.key() == Qt::Key_P) {
+    if (reducedMotion_) { event.accept(); return; }
     userPaused_ = !userPaused_;
     SetPauseReason(kPauseUser, userPaused_);
     ShowToast(userPaused_ ? "ANIMATION PAUSED" : "ANIMATION RESUMED");
@@ -1246,7 +1405,11 @@ void MatrixCodeHost::HandleKey(RainWidget& widget, QKeyEvent& event) {
 
 void MatrixCodeHost::HandleMousePress(RainWidget&, QMouseEvent& event) {
   event.ignore();
-  if (IsSaver()) { ExitAll(); event.accept(); return; }
+  if (IsSaver()) {
+    if (IsStandaloneSaver()) ExitAll();
+    event.accept();
+    return;
+  }
   if (SkipIntro()) { event.accept(); return; }
   if (event.button() != Qt::LeftButton || IsMultiDisplay() || IsPreview()) return;
   const qint64 now = frameClock_.elapsed();
@@ -1261,7 +1424,11 @@ void MatrixCodeHost::HandleMousePress(RainWidget&, QMouseEvent& event) {
 
 void MatrixCodeHost::HandleDoubleClick(RainWidget& widget, QMouseEvent& event) {
   event.ignore();
-  if (IsSaver()) { ExitAll(); event.accept(); return; }
+  if (IsSaver()) {
+    if (IsStandaloneSaver()) ExitAll();
+    event.accept();
+    return;
+  }
   if (SkipIntro()) { event.accept(); return; }
   if (event.button() != Qt::LeftButton || IsMultiDisplay() || IsPreview()) return;
   clickCount_ = std::max(clickCount_, 2);
@@ -1277,7 +1444,7 @@ void MatrixCodeHost::HandleDoubleClick(RainWidget& widget, QMouseEvent& event) {
 
 void MatrixCodeHost::HandleMouseMove(RainWidget&, QMouseEvent& event) {
   event.ignore();
-  if (IsSaver() && saverGrace_.elapsed() > 300 &&
+  if (IsStandaloneSaver() && saverGrace_.elapsed() > 300 &&
       (std::abs(QCursor::pos().x() - saverInitialCursor_.x()) >= 4 ||
        std::abs(QCursor::pos().y() - saverInitialCursor_.y()) >= 4)) {
     ExitAll();
@@ -1288,7 +1455,7 @@ void MatrixCodeHost::HandleMouseMove(RainWidget&, QMouseEvent& event) {
 void MatrixCodeHost::HandleWheel(QWheelEvent& event) {
   event.ignore();
   if (IsSaver()) {
-    ExitAll();
+    if (IsStandaloneSaver()) ExitAll();
     event.accept();
   }
 }
@@ -1296,13 +1463,24 @@ void MatrixCodeHost::HandleWheel(QWheelEvent& event) {
 void MatrixCodeHost::HandlePointerActivity(QEvent& event) {
   event.ignore();
   if (IsSaver()) {
-    ExitAll();
+    if (IsStandaloneSaver()) ExitAll();
     event.accept();
   }
 }
 
 void MatrixCodeHost::HandleRendererFailure(
     RainWidget& widget, const QString& diagnostic) {
+  if (exiting_) return;
+  if (!options_.forceSoftware) {
+    if (options_.xscreensaverHosted) {
+      QCoreApplication::exit(kSoftwareFallbackExitCode);
+      return;
+    }
+    if (StartSoftwareFallback()) {
+      ExitAll();
+      return;
+    }
+  }
   if (options_.mode == platform::LaunchMode::Capture) {
     QCoreApplication::exit(3);
     return;
@@ -1313,6 +1491,7 @@ void MatrixCodeHost::HandleRendererFailure(
   }
   QMessageBox::critical(&widget, QObject::tr("Matrix Code renderer"),
     QObject::tr("OpenGL initialization failed.\n\n%1").arg(diagnostic));
+  ExitAll();
 }
 
 void MatrixCodeHost::ToggleFullscreen(RainWidget& widget) {
@@ -1361,7 +1540,6 @@ void MatrixCodeHost::ShiftPresentationTimelines(const double durationSeconds) {
     imageEpochSeconds_ += durationSeconds;
     imageScheduler_.ShiftTimelineBy(durationSeconds);
   }
-  messageScheduler_.ShiftTimelineBy(durationSeconds * 1000.0);
 }
 
 void MatrixCodeHost::HandleClose(QCloseEvent& event) {
@@ -1374,7 +1552,7 @@ void MatrixCodeHost::HandleClose(QCloseEvent& event) {
 }
 
 void MatrixCodeHost::HandleFocusOut() {
-  if (IsSaver() && saverGrace_.elapsed() > 300) ExitAll();
+  if (IsStandaloneSaver() && saverGrace_.elapsed() > 300) ExitAll();
 }
 
 void MatrixCodeHost::ScreensChanged() {

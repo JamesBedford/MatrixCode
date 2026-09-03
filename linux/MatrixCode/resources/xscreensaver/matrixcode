@@ -1,2 +1,14 @@
 #!/bin/sh
-exec "$(dirname "$0")/../../bin/MatrixCode" "$@"
+launcher_dir=$(dirname "$0")
+if [ -x "${launcher_dir}/MatrixCode" ]; then
+  binary="${launcher_dir}/MatrixCode"
+else
+  binary="${launcher_dir}/../../bin/MatrixCode"
+fi
+
+"${binary}" "$@"
+status=$?
+if [ "${status}" -eq 75 ]; then
+  exec "${binary}" --software "$@"
+fi
+exit "${status}"

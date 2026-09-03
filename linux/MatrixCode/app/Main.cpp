@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QMessageBox>
+#include <QOpenGLContext>
 #include <QSurfaceFormat>
 #include <QTextStream>
 
@@ -32,9 +33,10 @@ int main(int argc, char* argv[]) {
   }
 
   QSurfaceFormat format;
-  format.setRenderableType(QSurfaceFormat::OpenGL);
-  format.setVersion(3, 3);
-  format.setProfile(QSurfaceFormat::CoreProfile);
+  const bool usesOpenGles = QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGLES;
+  format.setRenderableType(usesOpenGles ? QSurfaceFormat::OpenGLES : QSurfaceFormat::OpenGL);
+  format.setVersion(3, usesOpenGles ? 0 : 3);
+  format.setProfile(usesOpenGles ? QSurfaceFormat::NoProfile : QSurfaceFormat::CoreProfile);
   format.setDepthBufferSize(0);
   format.setStencilBufferSize(0);
   format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
@@ -45,7 +47,8 @@ int main(int argc, char* argv[]) {
   application.setDesktopFileName(QStringLiteral("io.github.matrixcode.MatrixCode"));
   application.setQuitOnLastWindowClosed(true);
 
-  const auto parsed = matrixcode::platform::ParseCommandLine(application.arguments());
+  const auto parsed = matrixcode::platform::ParseCommandLine(
+    application.arguments(), qEnvironmentVariable("XSCREENSAVER_WINDOW"));
   if (!parsed.options.has_value()) {
     QMessageBox::critical(nullptr, QObject::tr("Matrix Code"),
       parsed.error + QStringLiteral("\n\n") + matrixcode::platform::CommandLineHelp());

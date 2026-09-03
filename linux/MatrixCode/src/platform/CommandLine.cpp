@@ -52,7 +52,9 @@ struct ParsedValue {
 
 }  // namespace
 
-CommandLineParseResult ParseCommandLine(const QStringList& arguments) {
+CommandLineParseResult ParseCommandLine(
+    const QStringList& arguments,
+    const QString& xscreensaverWindow) {
   CommandLineOptions options;
   bool modeWasSet = false;
   const qsizetype firstArgument = arguments.isEmpty() ? 0 : 1;
@@ -77,9 +79,21 @@ CommandLineParseResult ParseCommandLine(const QStringList& arguments) {
     }
     if (argument == QStringLiteral("--screensaver") ||
         argument == QStringLiteral("-root")) {
+      std::optional<quint64> hostWindow;
+      if (argument == QStringLiteral("-root") && !xscreensaverWindow.isEmpty()) {
+        hostWindow = ParseWindowId(xscreensaverWindow);
+        if (!hostWindow.has_value()) {
+          return {std::nullopt,
+            QStringLiteral("XSCREENSAVER_WINDOW must be a non-zero decimal or hexadecimal integer.")};
+        }
+      }
       QString modeError;
       if (!SetMode(options, LaunchMode::ScreenSaver, modeWasSet, modeError)) {
         return {std::nullopt, std::move(modeError)};
+      }
+      if (hostWindow.has_value()) {
+        options.xscreensaverHosted = true;
+        options.parentWindowId = *hostWindow;
       }
       continue;
     }
@@ -136,6 +150,10 @@ CommandLineParseResult ParseCommandLine(const QStringList& arguments) {
   if (options.multiMonitor &&
       options.mode != LaunchMode::Application && options.mode != LaunchMode::ScreenSaver) {
     return {std::nullopt, QStringLiteral("--multi-monitor is only valid for application or screen-saver playback.")};
+  }
+  if (options.multiMonitor && options.xscreensaverHosted) {
+    return {std::nullopt,
+      QStringLiteral("--multi-monitor cannot be combined with an XScreenSaver host window.")};
   }
   return {std::move(options), {}};
 }

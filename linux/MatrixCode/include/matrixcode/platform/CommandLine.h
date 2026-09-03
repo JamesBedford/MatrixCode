@@ -20,6 +20,7 @@ struct CommandLineOptions {
   LaunchMode mode = LaunchMode::Application;
   bool multiMonitor = false;
   bool forceSoftware = false;
+  bool xscreensaverHosted = false;
   quint64 parentWindowId = 0;
   QString capturePath;
 };
@@ -30,7 +31,9 @@ struct CommandLineParseResult {
 };
 
 /** Parse QCoreApplication::arguments(), including the executable at index zero. */
-[[nodiscard]] CommandLineParseResult ParseCommandLine(const QStringList& arguments);
+[[nodiscard]] CommandLineParseResult ParseCommandLine(
+  const QStringList& arguments,
+  const QString& xscreensaverWindow = {});
 
 [[nodiscard]] QString CommandLineHelp();
 

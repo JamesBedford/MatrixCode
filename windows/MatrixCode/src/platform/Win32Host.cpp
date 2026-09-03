@@ -42,6 +42,7 @@ namespace {
 
 constexpr wchar_t kWindowClass[] = L"MatrixCode.Native.RenderWindow";
 constexpr std::uint32_t kNormalSeed = 0x001a2b3cu;
+constexpr std::uint32_t kMessageSeed = 0x5eed1eu;
 constexpr std::size_t kMaximumRainLanes = 8;
 constexpr UINT_PTR kSettledClickTimer = 1u;
 constexpr UINT kMultiClickMilliseconds = 350u;
@@ -217,7 +218,7 @@ class NativeHost final {
  public:
   NativeHost(HINSTANCE instance, HostOptions options)
       : instance_(instance), options_(options), settings_(store_.Load()),
-        messageScheduler_(kNormalSeed ^ 0x4f1bbcdcu, [this](const std::string_view text) {
+        messageScheduler_(kMessageSeed, [this](const std::string_view text) {
           return ResolveText(text);
         }), epochSeconds_(UnixSeconds()), imageEpochSeconds_(epochSeconds_),
         reducedMotion_(ReducedMotionRequested()) {}
