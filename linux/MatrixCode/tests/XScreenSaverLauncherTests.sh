@@ -3,17 +3,32 @@ set -u
 
 launcher_source=$1
 test_directory=$(mktemp -d)
+launcher_pid=
 child_pid=
-signal_sender_pid=
+grandchild_pid=
 
 cleanup() {
   trap - EXIT HUP INT TERM
-  if [ -n "${signal_sender_pid}" ]; then
-    kill -TERM "${signal_sender_pid}" 2>/dev/null || true
-    wait "${signal_sender_pid}" 2>/dev/null || true
+  if [ -z "${child_pid}" ] && [ -s "${test_directory}/child.pid" ]; then
+    child_pid=$(sed -n '1p' "${test_directory}/child.pid")
+  fi
+  if [ -z "${grandchild_pid}" ] && [ -s "${test_directory}/grandchild.pid" ]; then
+    grandchild_pid=$(sed -n '1p' "${test_directory}/grandchild.pid")
   fi
   if [ -n "${child_pid}" ]; then
+    kill -TERM "-${child_pid}" 2>/dev/null || true
+    kill -TERM "${child_pid}" 2>/dev/null || true
+  fi
+  if [ -n "${launcher_pid}" ]; then
+    kill -TERM "${launcher_pid}" 2>/dev/null || true
+    wait "${launcher_pid}" 2>/dev/null || true
+  fi
+  if [ -n "${child_pid}" ]; then
+    kill -KILL "-${child_pid}" 2>/dev/null || true
     kill -KILL "${child_pid}" 2>/dev/null || true
+  fi
+  if [ -n "${grandchild_pid}" ]; then
+    kill -KILL "${grandchild_pid}" 2>/dev/null || true
   fi
   rm -rf -- "${test_directory}"
 }
@@ -32,6 +47,18 @@ wait_for_file() {
     attempts=$((attempts + 1))
   done
   [ -s "${path}" ] || fail "timed out waiting for ${path}"
+}
+
+wait_for_process_exit() {
+  process_id=$1
+  attempts=0
+  while kill -0 "${process_id}" 2>/dev/null && [ "${attempts}" -lt 100 ]; do
+    sleep 0.02
+    attempts=$((attempts + 1))
+  done
+  if kill -0 "${process_id}" 2>/dev/null; then
+    fail "process ${process_id} was not reaped"
+  fi
 }
 
 expect_status() {
@@ -62,6 +89,8 @@ printf '%s\n' \
   '    trap '\''printf HUP > "${MATRIXCODE_TEST_DIRECTORY}/signal"; exit 0'\'' HUP' \
   '    trap '\''printf INT > "${MATRIXCODE_TEST_DIRECTORY}/signal"; exit 0'\'' INT' \
   '    trap '\''printf TERM > "${MATRIXCODE_TEST_DIRECTORY}/signal"; exit 0'\'' TERM' \
+  '    env --default-signal=HUP,INT,TERM sleep 300 &' \
+  '    printf "%s\n" "$!" > "${MATRIXCODE_TEST_DIRECTORY}/grandchild.pid"' \
   '    printf "%s\n" "$$" > "${MATRIXCODE_TEST_DIRECTORY}/child.pid"' \
   '    while :; do sleep 0.02; done' \
   '    ;;' \
@@ -91,27 +120,30 @@ expect_status 17 "${status}" "software fallback exit"
   fail "quoted original argument was not preserved"
 
 for signal_name in HUP INT TERM; do
-  rm -f -- "${test_directory}/child.pid" "${test_directory}/signal"
+  rm -f -- "${test_directory}/child.pid" "${test_directory}/grandchild.pid" \
+    "${test_directory}/signal"
 
-  (
-    wait_for_file "${test_directory}/child.pid"
-    observed_child_pid=$(sed -n '1p' "${test_directory}/child.pid")
-    observed_launcher_pid=$(ps -o ppid= -p "${observed_child_pid}" | tr -d ' ')
-    [ -n "${observed_launcher_pid}" ] ||
-      fail "could not find launcher for child ${observed_child_pid}"
-    kill "-${signal_name}" "${observed_launcher_pid}"
-  ) &
-  signal_sender_pid=$!
-
-  set +e
-  env --default-signal="${signal_name}" \
+  env --default-signal=HUP,INT,TERM \
     MATRIXCODE_FAKE_MODE=signal MATRIXCODE_TEST_DIRECTORY="${test_directory}" \
-    "${test_directory}/matrixcode" --root
+    "${test_directory}/matrixcode" --root &
+  launcher_pid=$!
+  wait_for_file "${test_directory}/child.pid"
+  wait_for_file "${test_directory}/grandchild.pid"
+  child_pid=$(sed -n '1p' "${test_directory}/child.pid")
+  grandchild_pid=$(sed -n '1p' "${test_directory}/grandchild.pid")
+  child_group=$(ps -o pgid= -p "${child_pid}" | tr -d ' ')
+  grandchild_group=$(ps -o pgid= -p "${grandchild_pid}" | tr -d ' ')
+  [ "${child_group}" = "${child_pid}" ] ||
+    fail "child ${child_pid} did not lead its own process group"
+  [ "${grandchild_group}" = "${child_pid}" ] ||
+    fail "grandchild ${grandchild_pid} was not in child group ${child_pid}"
+
+  kill "-${signal_name}" "${launcher_pid}"
+  set +e
+  wait "${launcher_pid}"
   status=$?
   set -e
-  wait "${signal_sender_pid}" || fail "${signal_name} sender failed"
-  signal_sender_pid=
-  child_pid=$(sed -n '1p' "${test_directory}/child.pid")
+  launcher_pid=
   case "${signal_name}" in
     HUP) expected_status=129 ;;
     INT) expected_status=130 ;;
@@ -121,8 +153,8 @@ for signal_name in HUP INT TERM; do
   wait_for_file "${test_directory}/signal"
   [ "$(cat "${test_directory}/signal")" = "${signal_name}" ] ||
     fail "${signal_name} was not forwarded to the child"
-  if kill -0 "${child_pid}" 2>/dev/null; then
-    fail "${signal_name} left child ${child_pid} running"
-  fi
+  wait_for_process_exit "${child_pid}"
+  wait_for_process_exit "${grandchild_pid}"
   child_pid=
+  grandchild_pid=
 done

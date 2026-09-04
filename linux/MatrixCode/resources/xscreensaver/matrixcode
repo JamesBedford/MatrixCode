@@ -19,7 +19,10 @@ forward_signal() {
     return
   fi
   trap - HUP INT TERM
-  kill "-${signal_name}" "${child_pid}" 2>/dev/null || true
+  if ! kill "-${signal_name}" "-${child_pid}" 2>/dev/null; then
+    kill "-${signal_name}" "${child_pid}" 2>/dev/null || true
+    kill "-${signal_name}" "-${child_pid}" 2>/dev/null || true
+  fi
   wait "${child_pid}" 2>/dev/null || true
   exit "${exit_status}"
 }
@@ -28,17 +31,31 @@ trap 'forward_signal HUP 129' HUP
 trap 'forward_signal INT 130' INT
 trap 'forward_signal TERM 143' TERM
 
-# Asynchronous shell commands inherit SIGINT as ignored, so restore the child dispositions.
-env --default-signal=HUP,INT,TERM "${binary}" "$@" &
-child_pid=$!
-if [ -n "${pending_signal}" ]; then
-  forward_signal "${pending_signal}" "${pending_exit_status}"
-fi
-wait "${child_pid}"
-status=$?
-trap - HUP INT TERM
-child_pid=
-if [ "${status}" -eq 75 ]; then
-  exec "${binary}" --software "$@"
-fi
-exit "${status}"
+software_fallback=false
+while :; do
+  # The dedicated session lets lifecycle signals reach Qt helper processes too.
+  if [ "${software_fallback}" = true ]; then
+    setsid env --default-signal=HUP,INT,TERM "${binary}" --software "$@" &
+  else
+    setsid env --default-signal=HUP,INT,TERM "${binary}" "$@" &
+  fi
+  child_pid=$!
+  if [ -n "${pending_signal}" ]; then
+    forward_signal "${pending_signal}" "${pending_exit_status}"
+  fi
+
+  wait "${child_pid}"
+  status=$?
+  child_pid=
+  if [ -n "${pending_signal}" ]; then
+    trap - HUP INT TERM
+    exit "${pending_exit_status}"
+  fi
+  if [ "${status}" -eq 75 ] && [ "${software_fallback}" = false ]; then
+    software_fallback=true
+    continue
+  fi
+
+  trap - HUP INT TERM
+  exit "${status}"
+done
