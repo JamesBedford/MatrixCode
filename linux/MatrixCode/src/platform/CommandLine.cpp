@@ -77,10 +77,11 @@ CommandLineParseResult ParseCommandLine(
       }
       continue;
     }
-    if (argument == QStringLiteral("--screensaver") ||
-        argument == QStringLiteral("-root")) {
+    const bool rootAlias = argument == QStringLiteral("-root") ||
+      argument == QStringLiteral("--root");
+    if (argument == QStringLiteral("--screensaver") || rootAlias) {
       std::optional<quint64> hostWindow;
-      if (argument == QStringLiteral("-root") && !xscreensaverWindow.isEmpty()) {
+      if (rootAlias && !xscreensaverWindow.isEmpty()) {
         hostWindow = ParseWindowId(xscreensaverWindow);
         if (!hostWindow.has_value()) {
           return {std::nullopt,
@@ -164,7 +165,8 @@ QString CommandLineHelp() {
     "\n"
     "Modes:\n"
     "  --settings                 Open settings without starting playback\n"
-    "  --screensaver, -root       Run full-screen screen-saver playback\n"
+    "  --screensaver, -root, --root\n"
+    "                             Run full-screen screen-saver playback\n"
     "  --preview ID               Render into an X11 preview window\n"
     "  --window-id ID             Alias for --preview ID\n"
     "  -window-id ID              XScreenSaver alias for --preview ID\n"

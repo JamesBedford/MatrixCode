@@ -36,8 +36,13 @@ void RunCommandLineTests() {
   MX_EXPECT(rootSaver.options.has_value());
   MX_EXPECT(rootSaver.options->mode == LaunchMode::ScreenSaver);
 
+  const auto normalizedRootSaver = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("--root")});
+  MX_EXPECT(normalizedRootSaver.options.has_value());
+  MX_EXPECT(normalizedRootSaver.options->mode == LaunchMode::ScreenSaver);
+
   const auto hostedRoot = ParseCommandLine({
-    QStringLiteral("MatrixCode"), QStringLiteral("-root")}, QStringLiteral("0x1234"));
+    QStringLiteral("MatrixCode"), QStringLiteral("--root")}, QStringLiteral("0x1234"));
   MX_EXPECT(hostedRoot.options.has_value());
   MX_EXPECT(hostedRoot.options->mode == LaunchMode::ScreenSaver);
   MX_EXPECT(hostedRoot.options->xscreensaverHosted);
@@ -75,6 +80,7 @@ void RunCommandLineTests() {
   MX_EXPECT(help.options->mode == LaunchMode::Help);
   MX_EXPECT(CommandLineHelp().contains(QStringLiteral("--screensaver")));
   MX_EXPECT(CommandLineHelp().contains(QStringLiteral("-root")));
+  MX_EXPECT(CommandLineHelp().contains(QStringLiteral("--root")));
   MX_EXPECT(CommandLineHelp().contains(QStringLiteral("-window-id")));
 
   for (const auto& invalid : {

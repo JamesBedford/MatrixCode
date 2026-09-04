@@ -68,6 +68,7 @@ MatrixCode --settings              # settings only
 MatrixCode --multi-monitor         # one continuous fullscreen display wall
 MatrixCode --screensaver           # fullscreen saver-style playback
 MatrixCode -root                   # conventional XScreenSaver root playback alias
+MatrixCode --root                  # normalized alias emitted by XScreenSaver 6
 MatrixCode --window-id WINDOW_ID   # XScreenSaver preview/window embedding on X11
 MatrixCode -window-id WINDOW_ID    # conventional XScreenSaver preview alias
 MatrixCode --capture output.png    # deterministic renderer capture
