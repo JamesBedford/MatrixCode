@@ -17,6 +17,7 @@ void RunCommandLineTests();
 void RunSettingsStoreLinuxTests();
 void RunImageImportQtTests();
 void RunShaderContractTests();
+void RunX11WindowTests();
 
 int main() {
   try {
@@ -34,6 +35,7 @@ int main() {
     RunSettingsStoreLinuxTests();
     RunImageImportQtTests();
     RunShaderContractTests();
+    RunX11WindowTests();
     std::cout << "MatrixCodeLinuxTests: " << matrixcode::test::assertions
               << " assertions passed\n";
     return 0;

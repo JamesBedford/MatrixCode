@@ -19,7 +19,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
   OpenGLWidgets
   Widgets
 )
-find_package(X11 REQUIRED)
+find_package(X11 REQUIRED COMPONENTS xcb)
 
 set(MATRIXCODE_REPOSITORY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 set(MATRIXCODE_WINDOWS_ROOT "${MATRIXCODE_REPOSITORY_ROOT}/windows/MatrixCode")
@@ -62,7 +62,10 @@ add_library(MatrixCodePlatformLinux STATIC
   src/platform/SettingsStoreLinux.cpp
   src/platform/X11Window.cpp
 )
-target_include_directories(MatrixCodePlatformLinux PUBLIC include)
+target_include_directories(MatrixCodePlatformLinux PUBLIC
+  include
+  "${X11_xcb_INCLUDE_PATH}"
+)
 target_link_libraries(MatrixCodePlatformLinux
   PUBLIC
     MatrixCodeCore
@@ -135,6 +138,7 @@ if(BUILD_TESTING)
     tests/ImageImportQtTests.cpp
     tests/ShaderContractTests.cpp
     tests/SettingsStoreLinuxTests.cpp
+    tests/X11WindowTests.cpp
     "${MATRIXCODE_WINDOWS_ROOT}/tests/ControllersTests.cpp"
     "${MATRIXCODE_WINDOWS_ROOT}/tests/DisplayTopologyTests.cpp"
     "${MATRIXCODE_WINDOWS_ROOT}/tests/HolidayThemeTests.cpp"
@@ -163,6 +167,12 @@ if(BUILD_TESTING)
   )
   matrixcode_target_options(MatrixCodeLinuxTests)
   add_test(NAME MatrixCodeLinuxTests COMMAND MatrixCodeLinuxTests)
+  add_test(
+    NAME MatrixCodeXScreenSaverLauncherTests
+    COMMAND sh
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/XScreenSaverLauncherTests.sh"
+      "${CMAKE_CURRENT_SOURCE_DIR}/resources/xscreensaver/matrixcode"
+  )
 endif()
 
 install(FILES

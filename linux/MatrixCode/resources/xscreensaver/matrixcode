@@ -6,8 +6,38 @@ else
   binary="${launcher_dir}/../../bin/MatrixCode"
 fi
 
-"${binary}" "$@"
+child_pid=
+pending_signal=
+pending_exit_status=
+
+forward_signal() {
+  signal_name=$1
+  exit_status=$2
+  if [ -z "${child_pid}" ]; then
+    pending_signal=${signal_name}
+    pending_exit_status=${exit_status}
+    return
+  fi
+  trap - HUP INT TERM
+  kill "-${signal_name}" "${child_pid}" 2>/dev/null || true
+  wait "${child_pid}" 2>/dev/null || true
+  exit "${exit_status}"
+}
+
+trap 'forward_signal HUP 129' HUP
+trap 'forward_signal INT 130' INT
+trap 'forward_signal TERM 143' TERM
+
+# Asynchronous shell commands inherit SIGINT as ignored, so restore the child dispositions.
+env --default-signal=HUP,INT,TERM "${binary}" "$@" &
+child_pid=$!
+if [ -n "${pending_signal}" ]; then
+  forward_signal "${pending_signal}" "${pending_exit_status}"
+fi
+wait "${child_pid}"
 status=$?
+trap - HUP INT TERM
+child_pid=
 if [ "${status}" -eq 75 ]; then
   exec "${binary}" --software "$@"
 fi

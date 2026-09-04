@@ -286,6 +286,7 @@ class MatrixCodeHost final : public QObject {
   MatrixCodeHost(QApplication& application, platform::CommandLineOptions options)
       : QObject(&application), application_(application), options_(std::move(options)),
         settings_(options_.mode == platform::LaunchMode::Capture ? DefaultSettings() : store_.Load()),
+        embeddedWindowLifecycleMonitor_([this] { HandleEmbeddedWindowDestroyed(); }),
         rainSeed_(kNormalSeed),
         messageScheduler_(kMessageSeed, [this](const std::string_view text) {
           return ResolveText(text);
@@ -382,6 +383,7 @@ class MatrixCodeHost final : public QObject {
   [[nodiscard]] Controls EffectiveControls() const;
   [[nodiscard]] RainWindow* WindowFor(RainWidget& widget);
   [[nodiscard]] RainWindow* ControlsWindow();
+  void HandleEmbeddedWindowDestroyed();
   void ScreensChanged();
   void ExitAll();
 
@@ -391,6 +393,8 @@ class MatrixCodeHost final : public QObject {
   SettingsSnapshot settings_;
   std::vector<std::unique_ptr<RainWindow>> windows_;
   std::unique_ptr<QWindow> previewParent_;
+  platform::X11WindowLifecycleMonitor embeddedWindowLifecycleMonitor_;
+  bool embeddedWindowLifecycleMonitorInstalled_ = false;
   QTimer timer_;
   QElapsedTimer frameClock_;
   qint64 previousNanoseconds_ = 0;
@@ -559,6 +563,11 @@ void RainWidget::focusOutEvent(QFocusEvent* event) {
 
 MatrixCodeHost::~MatrixCodeHost() {
   timer_.stop();
+  embeddedWindowLifecycleMonitor_.Stop();
+  if (embeddedWindowLifecycleMonitorInstalled_) {
+    application_.removeNativeEventFilter(&embeddedWindowLifecycleMonitor_);
+    embeddedWindowLifecycleMonitorInstalled_ = false;
+  }
   if (saverCursorHidden_) {
     application_.restoreOverrideCursor();
     saverCursorHidden_ = false;
@@ -622,7 +631,8 @@ bool MatrixCodeHost::CreateWindows() {
 }
 
 bool MatrixCodeHost::EmbedPreview(RainWindow& window) {
-  if (options_.parentWindowId == 0 || QGuiApplication::platformName().contains("wayland")) {
+  if (options_.parentWindowId == 0 ||
+      QGuiApplication::platformName() != QStringLiteral("xcb")) {
     qCritical() << "Matrix Code preview embedding requires a valid X11 host window";
     return false;
   }
@@ -642,6 +652,10 @@ bool MatrixCodeHost::EmbedPreview(RainWindow& window) {
     qCritical() << "Matrix Code could not create its X11 preview child window";
     return false;
   }
+  embeddedWindowLifecycleMonitor_.Watch(
+    options_.parentWindowId, static_cast<quint64>(window.container->winId()));
+  application_.installNativeEventFilter(&embeddedWindowLifecycleMonitor_);
+  embeddedWindowLifecycleMonitorInstalled_ = true;
   window.container->windowHandle()->setParent(previewParent_.get());
   const qreal pixelRatio = std::max(0.001, window.container->devicePixelRatioF());
   window.container->setGeometry(
@@ -1561,6 +1575,16 @@ void MatrixCodeHost::ScreensChanged() {
   } else {
     QTimer::singleShot(0, &application_, [this] { RecalculateGeometry(); });
   }
+}
+
+void MatrixCodeHost::HandleEmbeddedWindowDestroyed() {
+  if (!IsEmbedded() || exiting_) return;
+  exiting_ = true;
+  timer_.stop();
+  for (const auto& window : windows_) {
+    if (window->rain != nullptr) window->rain->setUpdatesEnabled(false);
+  }
+  application_.exit(0);
 }
 
 void MatrixCodeHost::ExitAll() {
