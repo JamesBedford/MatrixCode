@@ -8,7 +8,7 @@ user_config="${HOME}/.xscreensaver"
 mkdir -p "${user_bin}"
 
 if [[ -x /usr/libexec/xscreensaver/matrixcode ]]; then
-  command_line="/usr/libexec/xscreensaver/matrixcode -root"
+  command_line="/usr/libexec/xscreensaver/matrixcode --root"
 else
   if [[ ! -x "${binary}" ]]; then
     "${project_dir}/scripts/build.sh"
@@ -16,7 +16,7 @@ else
   install -m 0755 "${binary}" "${user_bin}/MatrixCode"
   install -m 0755 "${project_dir}/resources/xscreensaver/matrixcode" \
     "${user_bin}/matrixcode-xscreensaver"
-  command_line="${user_bin}/matrixcode-xscreensaver -root"
+  command_line="${user_bin}/matrixcode-xscreensaver --root"
 fi
 registration_status=missing
 if [[ -f "${user_config}" ]]; then
@@ -24,7 +24,7 @@ if [[ -f "${user_config}" ]]; then
     function continues(line) { return line ~ /\\[[:space:]]*$/ }
     function inspect(line) {
       if (index(line, command_line) > 0) exact = 1
-      if (line ~ /[^[:space:]]*[Mm]atrix[Cc]ode[^[:space:]]*[[:space:]]+(--screensaver|-root)/) {
+      if (line ~ /[^[:space:]]*[Mm]atrix[Cc]ode[^[:space:]]*[[:space:]]+(--screensaver|--?root)/) {
         legacy = 1
       }
     }
@@ -62,14 +62,14 @@ elif grep -Eq '^[[:space:]]*([*]|XScreenSaver[.])?programs[[:space:]]*:' "${user
       function continues(line) { return line ~ /\\[[:space:]]*$/ }
       /^[[:space:]]*([*]|XScreenSaver[.])?programs[[:space:]]*:/ {
         in_programs = continues($0)
-        sub(/[^[:space:]]*[Mm]atrix[Cc]ode[^[:space:]]*[[:space:]]+(--screensaver|-root)/,
+        sub(/[^[:space:]]*[Mm]atrix[Cc]ode[^[:space:]]*[[:space:]]+(--screensaver|--?root)/,
           command_line)
         print
         next
       }
       in_programs {
         continuation = continues($0)
-        sub(/[^[:space:]]*[Mm]atrix[Cc]ode[^[:space:]]*[[:space:]]+(--screensaver|-root)/,
+        sub(/[^[:space:]]*[Mm]atrix[Cc]ode[^[:space:]]*[[:space:]]+(--screensaver|--?root)/,
           command_line)
         print
         in_programs = continuation

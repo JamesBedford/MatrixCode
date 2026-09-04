@@ -66,6 +66,14 @@ void RunCommandLineTests() {
   MX_EXPECT(xscreensaverWindowId.options->mode == LaunchMode::Preview);
   MX_EXPECT_EQ(xscreensaverWindowId.options->parentWindowId, quint64{1234});
 
+  const auto xscreensaverSettingsPreview = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("--root"),
+    QStringLiteral("--window-id"), QStringLiteral("0x1234")}, QStringLiteral("0x1234"));
+  MX_EXPECT(xscreensaverSettingsPreview.options.has_value());
+  MX_EXPECT(xscreensaverSettingsPreview.options->mode == LaunchMode::Preview);
+  MX_EXPECT(!xscreensaverSettingsPreview.options->xscreensaverHosted);
+  MX_EXPECT_EQ(xscreensaverSettingsPreview.options->parentWindowId, quint64{0x1234});
+
   const auto capture = ParseCommandLine({
     QStringLiteral("MatrixCode"), QStringLiteral("--capture=/tmp/matrix.png"),
     QStringLiteral("--software")});
@@ -94,6 +102,8 @@ void RunCommandLineTests() {
            QStringLiteral("--screensaver")},
          QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--settings"),
            QStringLiteral("--multi-monitor")},
+         QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--screensaver"),
+           QStringLiteral("--window-id"), QStringLiteral("42")},
          QStringList{QStringLiteral("MatrixCode"), QStringLiteral("-root"),
            QStringLiteral("--settings")},
          QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--software"),

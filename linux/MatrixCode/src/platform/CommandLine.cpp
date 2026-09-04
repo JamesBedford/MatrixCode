@@ -58,6 +58,17 @@ CommandLineParseResult ParseCommandLine(
   CommandLineOptions options;
   bool modeWasSet = false;
   const qsizetype firstArgument = arguments.isEmpty() ? 0 : 1;
+  bool previewRequested = false;
+  for (qsizetype index = firstArgument; index < arguments.size(); ++index) {
+    const QString& argument = arguments[index];
+    previewRequested = previewRequested ||
+      argument == QStringLiteral("--preview") ||
+      argument.startsWith(QStringLiteral("--preview=")) ||
+      argument == QStringLiteral("--window-id") ||
+      argument.startsWith(QStringLiteral("--window-id=")) ||
+      argument == QStringLiteral("-window-id") ||
+      argument.startsWith(QStringLiteral("-window-id="));
+  }
   for (qsizetype index = firstArgument; index < arguments.size(); ++index) {
     const QString argument = arguments[index];
     if (argument == QStringLiteral("--multi-monitor")) {
@@ -79,6 +90,7 @@ CommandLineParseResult ParseCommandLine(
     }
     const bool rootAlias = argument == QStringLiteral("-root") ||
       argument == QStringLiteral("--root");
+    if (rootAlias && previewRequested) continue;
     if (argument == QStringLiteral("--screensaver") || rootAlias) {
       std::optional<quint64> hostWindow;
       if (rootAlias && !xscreensaverWindow.isEmpty()) {

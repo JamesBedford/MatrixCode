@@ -88,7 +88,7 @@ atomically to the Qt application-config directory, normally
 ## Screen saver integration
 
 On X11, run `scripts/install-xscreensaver.sh` to install the current release
-binary for the user and register its `-root` command with XScreenSaver.
+binary for the user and register its `--root` command with XScreenSaver.
 The Debian package also installs desktop and XScreenSaver metadata.
 
 Stock GNOME on Wayland has no supported extension point for third-party secure
