@@ -399,8 +399,16 @@ describe("Linux/Web render parity source contract", () => {
     expect(linuxHost).toContain("return IsSaver() && !options_.xscreensaverHosted;");
     expect(linuxHost).toContain("QCoreApplication::exit(kSoftwareFallbackExitCode);");
     expect(linuxHost).toContain("platform::QueryX11WindowSize(options_.parentWindowId)");
-    expect(linuxXScreenSaverLauncher).toContain('if [ "${status}" -eq 75 ]; then');
-    expect(linuxXScreenSaverLauncher).toContain('exec "${binary}" --software "$@"');
+    expect(linuxXScreenSaverLauncher).toContain(
+      'if [ "${status}" -eq 75 ] && [ "${software_fallback}" = false ]; then',
+    );
+    expect(linuxXScreenSaverLauncher).toContain("software_fallback=true");
+    expect(linuxXScreenSaverLauncher).toContain(
+      'setsid env --default-signal=HUP,INT,TERM "${binary}" --software "$@" &',
+    );
+    expect(linuxXScreenSaverLauncher).toContain(
+      'kill "-${signal_name}" "-${child_pid}"',
+    );
     expect(linuxHost).toContain("if (!widget.BeginRendererRecovery())");
     expect(linuxHost).toContain("widget.ResetRendererRecovery();");
   });

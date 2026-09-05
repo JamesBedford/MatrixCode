@@ -7,17 +7,13 @@ user_bin="${XDG_BIN_HOME:-${HOME}/.local/bin}"
 user_config="${HOME}/.xscreensaver"
 mkdir -p "${user_bin}"
 
-if [[ -x /usr/libexec/xscreensaver/matrixcode ]]; then
-  command_line="/usr/libexec/xscreensaver/matrixcode --root"
-else
-  if [[ ! -x "${binary}" ]]; then
-    "${project_dir}/scripts/build.sh"
-  fi
-  install -m 0755 "${binary}" "${user_bin}/MatrixCode"
-  install -m 0755 "${project_dir}/resources/xscreensaver/matrixcode" \
-    "${user_bin}/matrixcode-xscreensaver"
-  command_line="${user_bin}/matrixcode-xscreensaver --root"
+if [[ ! -x "${binary}" ]]; then
+  "${project_dir}/scripts/build.sh"
 fi
+install -m 0755 "${binary}" "${user_bin}/MatrixCode"
+install -m 0755 "${project_dir}/resources/xscreensaver/matrixcode" \
+  "${user_bin}/matrixcode"
+command_line="${user_bin}/matrixcode --root"
 registration_status=missing
 if [[ -f "${user_config}" ]]; then
   registration_status=$(awk -v command_line="${command_line}" '

@@ -1,0 +1,67 @@
+.TH MATRIXCODE 6 "September 2026" "Matrix Code" "XScreenSaver manual"
+.SH NAME
+matrixcode \- render film-accurate Matrix digital rain
+.SH SYNOPSIS
+.B MatrixCode
+[
+.I mode
+]
+[
+.I options
+]
+.SH DESCRIPTION
+.B MatrixCode
+is a native Qt and OpenGL implementation of Matrix digital rain. XScreenSaver
+launches it through the
+.B matrixcode
+helper, while the standalone application provides the complete settings editor.
+.SH MODES
+.TP 8
+.B \-\-settings
+Open the complete Matrix Code settings editor without starting playback.
+.TP 8
+.B \-\-screensaver
+Run full-screen screen-saver playback.
+.TP 8
+.BR \-root ", " \-\-root
+Run XScreenSaver root-window playback. If
+.B XSCREENSAVER_WINDOW
+is set, render inside that host window.
+.TP 8
+.BI \-\-window\-id " window"
+Render inside an X11 preview window. The conventional
+.BI \-window\-id " window"
+form is also accepted.
+.TP 8
+.B \-\-multi\-monitor
+Present one continuous virtual grid across every display.
+.TP 8
+.BI \-\-capture " path"
+Write a deterministic renderer capture to the specified path.
+.SH OPTIONS
+.TP 8
+.B \-\-software
+Force the software OpenGL implementation.
+.TP 8
+.BR \-h ", " \-\-help
+Print command-line help.
+.SH FILES
+.TP 8
+.I ~/.config/MatrixCode/settings.json
+Versioned Matrix Code settings shared by standalone and screen-saver playback.
+.TP 8
+.I ~/.xscreensaver
+XScreenSaver program registration and selected launcher options.
+.SH ENVIRONMENT
+.TP 8
+.B DISPLAY
+The X11 display used for XScreenSaver playback and preview embedding.
+.TP 8
+.B XSCREENSAVER_WINDOW
+The X11 host window used with
+.BR \-root " or " \-\-root .
+.SH SEE ALSO
+.BR xscreensaver (1),
+.BR xscreensaver-settings (1)
+.SH COPYRIGHT
+Matrix Code is distributed under the MIT License.

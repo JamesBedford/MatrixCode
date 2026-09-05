@@ -173,6 +173,14 @@ if(BUILD_TESTING)
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/XScreenSaverLauncherTests.sh"
       "${CMAKE_CURRENT_SOURCE_DIR}/resources/xscreensaver/matrixcode"
   )
+  add_test(
+    NAME MatrixCodeXScreenSaverInstallTests
+    COMMAND sh
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/XScreenSaverInstallTests.sh"
+      "${CMAKE_CURRENT_SOURCE_DIR}/scripts/install-xscreensaver.sh"
+      "${CMAKE_CURRENT_SOURCE_DIR}/resources/xscreensaver/matrixcode"
+      "${CMAKE_CURRENT_SOURCE_DIR}/resources/xscreensaver/matrixcode.xml"
+  )
 endif()
 
 install(FILES
@@ -196,6 +204,9 @@ install(FILES resources/xscreensaver/matrixcode.xml
 )
 install(PROGRAMS resources/xscreensaver/matrixcode
   DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/xscreensaver"
+)
+install(FILES resources/xscreensaver/matrixcode.6
+  DESTINATION "${CMAKE_INSTALL_MANDIR}/man6"
 )
 
 set(CPACK_GENERATOR DEB)
