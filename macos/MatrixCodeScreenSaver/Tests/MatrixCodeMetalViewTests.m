@@ -7,6 +7,9 @@
 
 @interface MatrixCodeMetalView (MessageTesting)
 - (BOOL)ensureInstanceCapacity:(NSUInteger)capacity;
+- (void)refreshHolidayColors;
+- (void)holidayColorEnvironmentDidChange:(nullable NSNotification *)notification;
+- (void)drawInMTKView:(MTKView *)view;
 - (void)updateImageScheduleAtTime:(NSTimeInterval)now
                         globalCols:(NSInteger)globalCols
                         globalRows:(NSInteger)globalRows
@@ -218,6 +221,99 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     XCTAssertNotNil([view valueForKey:@"resamplePipeline"]);
     XCTAssertNotNil([view valueForKey:@"additiveCopyPipeline"]);
     XCTAssertNotNil([view valueForKey:@"compositePipeline"]);
+}
+
+- (void)testInvalidatingRetainedRendererReleasesResourcesAndIgnoresStaleCallbacks {
+    MatrixCodeMetalView *view;
+    __weak MatrixCodeRainSimulation *releasedSimulation;
+    __weak id<MTLTexture> releasedSceneTexture;
+    @autoreleasepool {
+        view = [[MatrixCodeDeterministicMetalView alloc]
+            initWithFrame:NSMakeRect(0, 0, 320, 200)
+                  session:nil
+             storedValues:@{}];
+        XCTAssertNotNil(view);
+        XCTAssertNotNil([view diagnosticBGRAFrameWithWidth:320 height:200]);
+        releasedSimulation = [view valueForKey:@"rainSimulation"];
+        releasedSceneTexture = [view valueForKey:@"sceneTexture"];
+        XCTAssertNotNil(releasedSimulation);
+        XCTAssertNotNil(releasedSceneTexture);
+    }
+
+    NSWindow *window = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 320, 200)
+                  styleMask:NSWindowStyleMaskBorderless
+                    backing:NSBackingStoreBuffered defer:NO];
+    window.releasedWhenClosed = NO;
+    [window.contentView addSubview:view];
+    XCTAssertNotNil([view valueForKey:@"holidayColorTimer"]);
+    __block NSUInteger deliveredFrames = 0;
+    view.frameHandler = ^(MatrixCodeMetalView *renderer, NSDate *date, double framesPerSecond) {
+        deliveredFrames++;
+    };
+    [view setAnimationActive:YES];
+    [view holidayColorEnvironmentDidChange:nil];
+
+    [view invalidateRendering];
+    [view invalidateRendering];
+    XCTAssertNil(releasedSimulation);
+    XCTAssertNil(releasedSceneTexture);
+    XCTAssertTrue(view.paused);
+    XCTAssertNil(view.delegate);
+    XCTAssertNil(view.frameHandler);
+    XCTAssertNil(view.device);
+    XCTAssertNil([view valueForKey:@"holidayColorTimer"]);
+
+    [view setAnimationActive:YES];
+    [view reloadStoredValues:@{@"mx-controls": @"{\"mirror\":false}"}];
+    [view restartDeterministicRainFromEmpty:NO];
+    [view setFrameSize:NSMakeSize(640, 400)];
+    [view viewDidChangeBackingProperties];
+    [view removeFromSuperview];
+    [window.contentView addSubview:view];
+    [view refreshHolidayColors];
+    [view previewMessageAtDate:NSDate.date];
+    [view drawInMTKView:view];
+    [view draw];
+    XCTAssertFalse([view ensureInstanceCapacity:4096]);
+    XCTAssertNil([view diagnosticBGRAFrameWithWidth:320 height:200]);
+
+    XCTestExpectation *queuedCallbacks = [self expectationWithDescription:@"queued color callback"];
+    dispatch_async(dispatch_get_main_queue(), ^{ [queuedCallbacks fulfill]; });
+    [self waitForExpectations:@[queuedCallbacks] timeout:2];
+
+    XCTAssertEqual(deliveredFrames, (NSUInteger)0);
+    XCTAssertTrue(view.paused);
+    for (NSString *key in @[
+        @"commandQueue", @"pipeline", @"brightPassPipeline", @"blurPipeline",
+        @"resamplePipeline", @"additiveCopyPipeline", @"compositePipeline",
+        @"atlas", @"sceneTexture", @"bloomMainTextures", @"bloomTemporaryTextures",
+        @"instanceBuffer", @"instanceBuffers", @"rainSimulation", @"overlapSimulations",
+        @"localSimulationStateData", @"messageScheduler", @"tokenResolver",
+        @"activeImageMaskData", @"holidayColorTimer",
+    ]) {
+        XCTAssertNil([view valueForKey:key], @"%@ must stay released", key);
+    }
+    [view removeFromSuperview];
+    [window close];
+}
+
+- (void)testRendererCanBeInvalidatedFromItsFrameCallback {
+    MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
+        initWithFrame:NSMakeRect(0, 0, 320, 200)
+              session:nil
+         storedValues:@{}];
+    XCTAssertNotNil(view);
+    view.frameHandler = ^(MatrixCodeMetalView *renderer, NSDate *date, double framesPerSecond) {
+        [renderer invalidateRendering];
+    };
+    [view setAnimationActive:YES];
+
+    [view drawInMTKView:view];
+
+    XCTAssertTrue(view.paused);
+    XCTAssertNil(view.device);
+    XCTAssertNil([view valueForKey:@"commandQueue"]);
 }
 
 - (void)testRendererMaintainsThreeCompleteSharedInstanceBuffers {

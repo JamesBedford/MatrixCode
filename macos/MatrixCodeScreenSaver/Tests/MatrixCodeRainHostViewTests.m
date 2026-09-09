@@ -5,6 +5,7 @@
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodePreferences.h"
 #import "MatrixCodeRainHostView.h"
+#import "MatrixCodeSession.h"
 #import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeTokenResolver.h"
 
@@ -23,17 +24,20 @@
 - (void)refreshAnimationForEnvironment;
 - (void)scheduleRampPreviewWithDuration:(NSTimeInterval)duration;
 - (void)showMetalFailureNotice;
+- (void)scheduleScreenResolutionRetry;
+- (void)claimScreen:(NSScreen *)screen;
+- (NSScreen *)screenForPlaybackHostWithRect:(NSRect *)resolvedRect;
 - (void)toggleUserPaused;
 - (void)updateFPSOverlayWithFramesPerSecond:(double)framesPerSecond;
 @end
 
-@interface MatrixCodeRampMetalProbe : NSObject
-@property(nonatomic) NSRect frame;
+@interface MatrixCodeRampMetalProbe : NSView
 @property(nonatomic) BOOL paused;
 @property(nonatomic) BOOL animationActive;
 @property(nonatomic) NSInteger preferredFramesPerSecond;
 @property(nonatomic) NSUInteger rewindCount;
 @property(nonatomic) NSUInteger drawCount;
+@property(nonatomic) NSUInteger invalidationCount;
 @property(nonatomic) NSUInteger prepareReducedMotionCount;
 @property(nonatomic) BOOL reducedMotionEnabled;
 @property(nonatomic) double densityScale;
@@ -64,6 +68,11 @@
 
 - (BOOL)isPaused {
     return self.paused;
+}
+
+- (void)invalidateRendering {
+    self.invalidationCount++;
+    [self setAnimationActive:NO];
 }
 
 - (void)setDensityScale:(double)densityScale rainElapsed:(NSTimeInterval)rainElapsed {
@@ -647,11 +656,24 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     [overlay skip];
     XCTAssertFalse(overlay.playing);
     [hostView stopAnimation];
+    XCTAssertEqual(probe.invalidationCount, 1u);
+    XCTAssertNil([hostView valueForKey:@"metalView"]);
+    XCTAssertNil([hostView valueForKey:@"introOverlay"]);
+
+    // A dismissed saver rebuilds its rendering subtree for the next activation.
+    probe = [[MatrixCodeRampMetalProbe alloc] init];
+    probe.preferredFramesPerSecond = 60;
+    overlay = [[MatrixCodeIntroOverlayView alloc] initWithFrame:NSZeroRect
+                                                 storedValues:values
+                                                tokenResolver:resolver
+                                                   completion:^{}];
+    [hostView setValue:probe forKey:@"metalView"];
+    [hostView setValue:overlay forKey:@"introOverlay"];
 
     [hostView startAnimation];
     XCTAssertTrue(overlay.playing);
     XCTAssertTrue([[hostView valueForKey:@"introScheduled"] boolValue]);
-    XCTAssertEqual(probe.deterministicRestartCount, 2u);
+    XCTAssertEqual(probe.deterministicRestartCount, 1u);
     XCTAssertFalse(probe.deterministicRestartStartsFromEmpty);
     NSDate *secondActivationStart = [hostView valueForKey:@"runStartDate"];
     XCTAssertGreaterThanOrEqual(secondActivationStart.timeIntervalSince1970,
@@ -2000,6 +2022,117 @@ suppressesIntroOverlay:YES];
     [hostView startAnimation];
 
     XCTAssertFalse(hostView.fpsOverlayVisible);
+}
+
+
+- (void)testScreenSaverStopReleasesRenderingSubtreeAndAllowsFreshActivations {
+    NSWindow *window = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 160, 100)
+                  styleMask:NSWindowStyleMaskBorderless
+                    backing:NSBackingStoreBuffered defer:NO];
+    window.releasedWhenClosed = NO;
+    MatrixCodeRainHostView *host = [[MatrixCodeRainHostView alloc]
+        initWithFrame:window.contentView.bounds mode:MatrixCodeRainHostModeScreenSaverPreview];
+    window.contentView = host;
+    XCTAssertNil([host valueForKey:@"metalView"]);
+
+    for (NSUInteger activation = 0; activation < 3; activation++) {
+        __weak MatrixCodeMetalView *releasedRenderer;
+        __weak MatrixCodeIntroOverlayView *releasedIntro;
+        @autoreleasepool {
+            [host startAnimation];
+            MatrixCodeMetalView *renderer = [host valueForKey:@"metalView"];
+            releasedRenderer = renderer;
+            releasedIntro = [host valueForKey:@"introOverlay"];
+            XCTAssertNotNil(renderer);
+            XCTAssertNotNil(releasedIntro);
+            XCTAssertNotNil([renderer diagnosticBGRAFrameWithWidth:160 height:100]);
+            XCTAssertNotNil([renderer valueForKey:@"sceneTexture"]);
+            [host stopAnimation];
+            [host stopAnimation];
+            XCTAssertNil([host valueForKey:@"metalView"]);
+            XCTAssertNil([host valueForKey:@"introOverlay"]);
+            XCTAssertNil([host valueForKey:@"frameStallWatchdogTimer"]);
+            XCTAssertNil([host valueForKey:@"animationTimer"]);
+            XCTAssertEqual(host.subviews.count, 0u);
+            XCTAssertTrue(renderer.isPaused);
+            XCTAssertNil(renderer.delegate);
+
+            // The legacy host can retain and move stopped views or send more callbacks.
+            [host setFrameSize:NSMakeSize(180, 120)];
+            [host layoutSubtreeIfNeeded];
+            [host viewDidMoveToWindow];
+            [host animateOneFrame];
+            [host recoverStalledFrameIfNeeded];
+            [host previewValuesDidChange:[NSNotification
+                notificationWithName:MatrixCodePreviewValuesDidChangeNotification object:nil
+                userInfo:@{MatrixCodePreviewValuesKey: @{@"mx-controls": @"{}"}}]];
+            XCTAssertNil([host valueForKey:@"metalView"]);
+            XCTAssertNil([host valueForKey:@"tokenResolver"]);
+        }
+        XCTAssertNil(releasedRenderer);
+        XCTAssertNil(releasedIntro);
+    }
+    [window close];
+}
+
+- (void)testStandaloneStopRetainsRendererForResume {
+    MatrixCodeRainHostView *host = [[MatrixCodeRainHostView alloc]
+        initWithFrame:NSZeroRect mode:MatrixCodeRainHostModeStandalone];
+    MatrixCodeRampMetalProbe *renderer = [[MatrixCodeRampMetalProbe alloc] init];
+    [host setValue:renderer forKey:@"metalView"];
+    [host startAnimation];
+    [host stopAnimation];
+    XCTAssertEqual([host valueForKey:@"metalView"], renderer);
+    XCTAssertTrue(renderer.isPaused);
+    XCTAssertEqual(renderer.invalidationCount, 0u);
+    [host startAnimation];
+    XCTAssertEqual([host valueForKey:@"metalView"], renderer);
+    [host stopAnimation];
+}
+
+- (void)testStaleScreenResolutionRetryCannotChangeNewActivationState {
+    MatrixCodeRainHostView *host = [[MatrixCodeRainHostView alloc]
+        initWithFrame:NSZeroRect mode:MatrixCodeRainHostModeScreenSaverPlayback];
+    [host setValue:@YES forKey:@"hostActive"];
+    [host scheduleScreenResolutionRetry];
+    [host stopAnimation];
+    XCTAssertFalse([[host valueForKey:@"screenResolutionRetryScheduled"] boolValue]);
+    XCTAssertEqual([[host valueForKey:@"screenResolutionRetryCount"] unsignedIntegerValue], 0u);
+    [host setValue:@YES forKey:@"hostActive"];
+    [host setValue:@YES forKey:@"screenResolutionRetryScheduled"];
+    [host setValue:@7 forKey:@"screenResolutionRetryCount"];
+    XCTestExpectation *retryDelivered = [self expectationWithDescription:@"old retry delivered"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ [retryDelivered fulfill]; });
+    [self waitForExpectations:@[retryDelivered] timeout:2];
+    XCTAssertTrue([[host valueForKey:@"screenResolutionRetryScheduled"] boolValue]);
+    XCTAssertEqual([[host valueForKey:@"screenResolutionRetryCount"] unsignedIntegerValue], 7u);
+    XCTAssertNil([host valueForKey:@"metalView"]);
+    [host stopAnimation];
+}
+
+- (void)testStoppingRetainedHostPreservesNewerDisplayClaim {
+    NSArray<NSScreen *> *screens = NSScreen.screens;
+    XCTAssertGreaterThan(screens.count, 0u);
+    if (screens.count == 0) return;
+    NSMutableArray<MatrixCodeRainHostView *> *owners = [NSMutableArray array];
+    for (NSScreen *screen in screens) {
+        MatrixCodeRainHostView *owner = [[MatrixCodeRainHostView alloc]
+            initWithFrame:screen.frame mode:MatrixCodeRainHostModeScreenSaverPlayback];
+        [owner claimScreen:screen];
+        [owners addObject:owner];
+    }
+    MatrixCodeRainHostView *replacement = [[MatrixCodeRainHostView alloc]
+        initWithFrame:screens.firstObject.frame mode:MatrixCodeRainHostModeScreenSaverPlayback];
+    [replacement claimScreen:screens.firstObject];
+    [owners.firstObject stopAnimation];
+    MatrixCodeRainHostView *candidate = [[MatrixCodeRainHostView alloc]
+        initWithFrame:screens.firstObject.frame mode:MatrixCodeRainHostModeScreenSaverPlayback];
+    XCTAssertNil([candidate screenForPlaybackHostWithRect:NULL]);
+    [replacement stopAnimation];
+    XCTAssertEqual([candidate screenForPlaybackHostWithRect:NULL], screens.firstObject);
+    for (MatrixCodeRainHostView *owner in owners) [owner stopAnimation];
 }
 
 @end

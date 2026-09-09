@@ -116,6 +116,7 @@ targets:
       - path: Source/MatrixCodeRainHostView.m
       - path: Source/MatrixCodeRainLifecycle.m
       - path: Source/MatrixCodeRainSimulation.m
+      - path: Source/MatrixCodeScreenSaverView.m
       - path: Source/MatrixCodeSession.m
       - path: Source/MatrixCodeSettingsTheme.m
       - path: Source/MatrixCodeTokenResolver.m

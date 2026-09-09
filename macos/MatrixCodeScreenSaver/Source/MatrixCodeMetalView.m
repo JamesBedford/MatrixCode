@@ -733,6 +733,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 @property(nonatomic) NSTimeInterval imageEpochSeconds;
 @property(nonatomic) NSTimeInterval tokenRunStartSeconds;
 @property(nonatomic) BOOL animationActive;
+@property(nonatomic) BOOL renderingInvalidated;
 @property(nonatomic) BOOL reducedMotionEnabled;
 @property(nonatomic) NSInteger atlasColumns;
 @property(nonatomic) NSInteger atlasRows;
@@ -951,6 +952,61 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
 }
 
+- (void)invalidateRendering {
+    if (self.renderingInvalidated) return;
+    self.renderingInvalidated = YES;
+    _animationActive = NO;
+    self.paused = YES;
+    self.enableSetNeedsDisplay = NO;
+    self.delegate = nil;
+    self.frameHandler = nil;
+    [self.holidayColorTimer invalidate];
+    self.holidayColorTimer = nil;
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+    [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
+
+    // Committed command buffers retain their resources until GPU execution finishes.
+    // Releasing the renderer's ownership here therefore needs no main-thread wait.
+    [self releaseDrawables];
+    self.device = nil;
+    self.commandQueue = nil;
+    self.pipeline = nil;
+    self.brightPassPipeline = nil;
+    self.blurPipeline = nil;
+    self.resamplePipeline = nil;
+    self.additiveCopyPipeline = nil;
+    self.compositePipeline = nil;
+    self.atlas = nil;
+    self.sceneTexture = nil;
+    self.bloomMainTextures = nil;
+    self.bloomTemporaryTextures = nil;
+    self.instanceBuffer = nil;
+    self.instanceBuffers = nil;
+    self.inFlightFrameSemaphore = nil;
+    self.instanceCapacity = 0;
+    self.instanceCount = 0;
+    self.renderTargetWidth = 0;
+    self.renderTargetHeight = 0;
+    self.renderTargetBloomLevelCount = 0;
+
+    self.rainSimulation = nil;
+    self.overlapSimulations = nil;
+    self.activeOverlapLaneIndexes = nil;
+    self.localSimulationStateData = nil;
+    self.messageScheduler = nil;
+    self.tokenResolver = nil;
+    self.currentMessageRegions = nil;
+    self.messageGlyphs = nil;
+    self.activeImage = nil;
+    self.activeImageMaskData = nil;
+    self.images = nil;
+    self.messages = nil;
+    self.controls = nil;
+    self.overlapLaneControls = nil;
+    self.session = nil;
+    self.adaptiveResolution = nil;
+}
+
 - (void)configureFramePacingForScreen:(NSScreen *)screen {
     NSInteger sessionFramesPerSecond = MatrixCodeSessionPreferredFramesPerSecond(self.session);
     self.preferredFramesPerSecond = sessionFramesPerSecond > 0
@@ -970,6 +1026,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)updateDrawableSizeForCurrentRenderScale {
+    if (self.renderingInvalidated) return;
     BOOL multiMonitor = [self usesSynchronizedMultiMonitorTimeline];
     double appliedScale = self.adaptiveResolutionEnabled && !multiMonitor
         ? self.renderScale
@@ -993,6 +1050,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)setAnimationActive:(BOOL)active {
+    if (self.renderingInvalidated) return;
     BOOL changed = _animationActive != active;
     _animationActive = active;
     if (changed) {
@@ -1006,6 +1064,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)freezeAnimationAtDate:(NSDate *)date {
+    if (self.renderingInvalidated) return;
     NSDate *frameDate = date ?: NSDate.date;
     self.frozenFrameTimeSeconds = frameDate.timeIntervalSince1970;
     self.hasFrozenFrameTime = YES;
@@ -1030,6 +1089,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)restartDeterministicRainFromEmpty:(BOOL)startsFromEmpty {
+    if (self.renderingInvalidated) return;
     if ([self usesSynchronizedMultiMonitorTimeline]) return;
     self.rainSimulation = nil;
     self.overlapSimulations = @[];
@@ -1117,6 +1177,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 
 - (void)previewMessageDocument:(NSDictionary<NSString *, id> *)document
                          atDate:(NSDate *)date {
+    if (self.renderingInvalidated) return;
     if (!self.rainSimulation) {
         [self updateInstancesForDrawableSize:self.drawableSize];
     }
@@ -1172,6 +1233,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)reloadStoredValues:(NSDictionary<NSString *,NSString *> *)storedValues {
+    if (self.renderingInvalidated) return;
     BOOL previousMirror = MatrixCodeBool(self.controls, @"mirror", YES);
     NSString *previousGlyphMode = MatrixCodeGlyphMode(self.controls);
     NSString *previousFont = MatrixCodeGlyphFont(self.controls);
@@ -1851,6 +1913,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (BOOL)refreshColorsAtDate:(NSDate *)date timeZone:(NSTimeZone *)timeZone {
+    if (self.renderingInvalidated) return NO;
     NSString *holidayPreset = MatrixCodeHolidayColorPreset(date, timeZone);
     if (self.holidayPresetName == holidayPreset ||
         [self.holidayPresetName isEqualToString:holidayPreset]) return NO;
@@ -1872,6 +1935,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)refreshHolidayColors {
+    if (self.renderingInvalidated) return;
     NSDate *date = self.currentColorDate;
     NSTimeZone *timeZone = NSTimeZone.localTimeZone;
     [MatrixCodeSettingsTheme.sharedTheme refreshColorsAtDate:date timeZone:timeZone];
@@ -1882,6 +1946,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)holidayColorEnvironmentDidChange:(NSNotification *)notification {
+    if (self.renderingInvalidated) return;
     if ([notification.object isKindOfClass:NSWindow.class] && notification.object != self.window) return;
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf refreshHolidayColors]; });
@@ -2040,6 +2105,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (BOOL)ensureInstanceCapacity:(NSUInteger)capacity {
+    if (self.renderingInvalidated) return NO;
     BOOL hasCompleteBufferRing =
         self.instanceBuffers.count == MatrixCodeInFlightFrameCount;
     BOOL needsGrowth = capacity > self.instanceCapacity;
@@ -2091,6 +2157,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)updateInstancesForDrawableSize:(CGSize)drawableSize {
+    if (self.renderingInvalidated) return;
     [self resolveDesktopGeometryIfNeeded];
     NSArray *sessionScreens = [self.session[@"screens"] isKindOfClass:NSArray.class]
         ? self.session[@"screens"] : @[];
@@ -2525,7 +2592,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 - (void)drawInMTKView:(MTKView *)view {
-    if (!self.commandQueue || !self.pipeline) return;
+    if (self.renderingInvalidated || !self.commandQueue || !self.pipeline) return;
     NSDate *colorDate = self.currentColorDate;
     [MatrixCodeSettingsTheme.sharedTheme refreshColorsAtDate:colorDate timeZone:NSTimeZone.localTimeZone];
     [self refreshColorsAtDate:colorDate timeZone:NSTimeZone.localTimeZone];
@@ -2552,6 +2619,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
             self.frameHandler(self, frameDate, framesPerSecond);
         }
     }
+    if (self.renderingInvalidated) return;
     dispatch_semaphore_wait(self.inFlightFrameSemaphore, DISPATCH_TIME_FOREVER);
     id<CAMetalDrawable> drawable = view.currentDrawable;
     if (!drawable) {
@@ -2732,6 +2800,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
+    if (self.renderingInvalidated) return;
     [self updateDrawableSizeForCurrentRenderScale];
     [self.holidayColorTimer invalidate];
     self.holidayColorTimer = nil;

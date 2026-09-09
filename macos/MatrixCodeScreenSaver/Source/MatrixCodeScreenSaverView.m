@@ -4,6 +4,8 @@
 
 @interface MatrixCodeScreenSaverView ()
 @property(nonatomic, strong) MatrixCodeRainHostView *rainHostView;
+@property(nonatomic, strong) NSNotificationCenter *stopNotificationCenter;
+@property(nonatomic, copy) NSArray<id> *stopNotificationObservers;
 @end
 
 @implementation MatrixCodeScreenSaverView
@@ -17,8 +19,37 @@
             : MatrixCodeRainHostModeScreenSaverPlayback;
         _rainHostView = [[MatrixCodeRainHostView alloc] initWithFrame:self.bounds mode:mode];
         [self addSubview:_rainHostView];
+        if (!isPreview) {
+            _stopNotificationCenter = [self screenSaverNotificationCenter];
+            NSMutableArray<id> *observers = [NSMutableArray array];
+            __weak typeof(self) weakSelf = self;
+            // legacyScreenSaver can retain views without calling stopAnimation.
+            // These undocumented notifications supplement the supported callback.
+            for (NSNotificationName name in @[@"com.apple.screensaver.willstop",
+                                               @"com.apple.screensaver.didstop"]) {
+                id observer = [_stopNotificationCenter
+                    addObserverForName:name
+                                object:nil
+                                 queue:NSOperationQueue.mainQueue
+                            usingBlock:^(NSNotification *notification) {
+                    [weakSelf stopAnimation];
+                }];
+                [observers addObject:observer];
+            }
+            _stopNotificationObservers = [observers copy];
+        }
     }
     return self;
+}
+
+- (NSNotificationCenter *)screenSaverNotificationCenter {
+    return NSDistributedNotificationCenter.defaultCenter;
+}
+
+- (void)dealloc {
+    for (id observer in _stopNotificationObservers) {
+        [_stopNotificationCenter removeObserver:observer];
+    }
 }
 
 - (void)startAnimation {

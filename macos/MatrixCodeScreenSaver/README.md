@@ -51,6 +51,32 @@ The native saver is expected to match the browser app's user-visible behavior:
 If exact parity is intentionally impossible because of platform constraints,
 document the difference here and cover the native behavior with tests.
 
+## Screen saver resource lifecycle
+
+The `.saver` releases its Metal renderer, textures, buffers, animation timers,
+intro overlay, and display claim when `stopAnimation` runs. A later
+`startAnimation` creates a fresh rendering subtree. Stopped instances cannot
+recreate that subtree through layout, settings notifications, or delayed display
+assignment retries, even when `legacyScreenSaver` keeps the outer view alive.
+The standalone app's pause/resume behaviour retains its renderer.
+
+Full-screen saver instances also observe the undocumented distributed
+`com.apple.screensaver.willstop` and `com.apple.screensaver.didstop`
+notifications, because some macOS versions omit the normal stop callback.
+They invoke the same repeatable cleanup on the main thread. System Settings
+previews use their own lifecycle callback and ignore the global notifications;
+there is no global start observer that could restart retained views. Notification
+delivery and preview identification remain subject to macOS host bugs. This
+workaround releases Matrix Code's resources without terminating the shared host;
+it cannot release resources owned exclusively by macOS.
+
+This is a macOS host integration fix with no equivalent change to the browser,
+Windows, Linux, or Wallpaper Engine implementations. Native tests cover cleanup,
+repeated activation, delayed callbacks, display claims, and standalone resume.
+For live verification, record the host's footprint before and after repeated
+hot-corner dismissals and System Settings previews, including multiple displays.
+GPU resources from submitted frames can finish releasing after dismissal.
+
 ## App icon
 
 `scripts/generate_native_icons.py` (repo root) regenerates

@@ -20,6 +20,8 @@ typedef void (^MatrixCodeMetalFrameHandler)(MatrixCodeMetalView *view,
                 storedValues:(NSDictionary<NSString *, NSString *> *)storedValues;
 - (void)configureFramePacingForScreen:(nullable NSScreen *)screen;
 - (void)setAnimationActive:(BOOL)active;
+/// Permanently stops rendering and releases resources; create a new view to render again.
+- (void)invalidateRendering;
 - (void)freezeAnimationAtDate:(NSDate *)date;
 - (void)setReducedMotionEnabled:(BOOL)enabled;
 - (void)prepareReducedMotionFrame;

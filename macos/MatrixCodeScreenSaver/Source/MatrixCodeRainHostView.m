@@ -122,6 +122,9 @@
 @property(nonatomic) BOOL hostActive;
 @property(nonatomic) BOOL screenResolutionRetryScheduled;
 @property(nonatomic) NSUInteger screenResolutionRetryCount;
+@property(nonatomic) NSUInteger screenResolutionRetryGeneration;
+@property(nonatomic, copy, nullable) NSString *claimedScreenIdentifier;
+@property(nonatomic, strong, nullable) NSUUID *screenClaimToken;
 @property(nonatomic, copy, nullable) NSDictionary<NSString *, id> *standaloneSession;
 @property(nonatomic) BOOL suppressesIntroOverlay;
 @property(nonatomic) NSUInteger backdropClickCount;
@@ -176,7 +179,7 @@ static const NSTimeInterval MatrixCodeFrameStallWatchdogInterval = 0.5;
 static const NSTimeInterval MatrixCodeFrameStallThreshold = 1.0;
 static NSString * const MatrixCodeFPSOverlayStorageKey = @"mx-ui-state";
 
-static NSMutableSet<NSString *> *MatrixCodeClaimedScreenIDs;
+static NSMutableDictionary<NSString *, NSUUID *> *MatrixCodeScreenClaims;
 static NSTimeInterval MatrixCodeLastScreenClaimAt;
 
 static id MatrixCodeRainHostJSONObject(NSString *raw, Class expectedClass) {
@@ -232,21 +235,33 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 
 + (void)initialize {
     if (self == MatrixCodeRainHostView.class) {
-        MatrixCodeClaimedScreenIDs = [NSMutableSet set];
+        MatrixCodeScreenClaims = [NSMutableDictionary dictionary];
     }
 }
 
 + (void)resetScreenClaimsIfStale {
     NSTimeInterval now = NSDate.date.timeIntervalSince1970;
     if (MatrixCodeLastScreenClaimAt <= 0 || now - MatrixCodeLastScreenClaimAt > 1.0) {
-        [MatrixCodeClaimedScreenIDs removeAllObjects];
+        [MatrixCodeScreenClaims removeAllObjects];
     }
 }
 
-+ (void)claimScreen:(NSScreen *)screen {
-    [self resetScreenClaimsIfStale];
-    [MatrixCodeClaimedScreenIDs addObject:[MatrixCodeSession identifierForScreen:screen]];
+- (void)claimScreen:(NSScreen *)screen {
+    [self.class resetScreenClaimsIfStale];
+    self.claimedScreenIdentifier = [MatrixCodeSession identifierForScreen:screen];
+    self.screenClaimToken = NSUUID.UUID;
+    MatrixCodeScreenClaims[self.claimedScreenIdentifier] = self.screenClaimToken;
     MatrixCodeLastScreenClaimAt = NSDate.date.timeIntervalSince1970;
+}
+
+- (void)releaseScreenClaim {
+    // A retained view must not release a newer activation's claim for this display.
+    if (self.claimedScreenIdentifier &&
+        [MatrixCodeScreenClaims[self.claimedScreenIdentifier] isEqual:self.screenClaimToken]) {
+        [MatrixCodeScreenClaims removeObjectForKey:self.claimedScreenIdentifier];
+    }
+    self.claimedScreenIdentifier = nil;
+    self.screenClaimToken = nil;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame mode:(MatrixCodeRainHostMode)mode {
@@ -297,6 +312,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 }
 
 - (void)dealloc {
+    [self releaseScreenClaim];
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
     [self.animationTimer invalidate];
@@ -503,14 +519,18 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 }
 
 - (void)scheduleScreenResolutionRetry {
+    if (!self.hostActive && self.mode != MatrixCodeRainHostModeStandalone) return;
     if (self.screenResolutionRetryScheduled || self.screenResolutionRetryCount >= 40) return;
     self.screenResolutionRetryScheduled = YES;
     self.screenResolutionRetryCount++;
+    NSUInteger generation = self.screenResolutionRetryGeneration;
     __weak typeof(self) weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        weakSelf.screenResolutionRetryScheduled = NO;
-        [weakSelf ensureMetalView];
+        MatrixCodeRainHostView *host = weakSelf;
+        if (!host || host.screenResolutionRetryGeneration != generation) return;
+        host.screenResolutionRetryScheduled = NO;
+        [host ensureMetalView];
     });
 }
 
@@ -527,7 +547,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     NSString *identifier = [MatrixCodeSession
         uniqueUnclaimedScreenIdentifierForSize:self.bounds.size
                                    descriptors:descriptors
-                                       claimed:MatrixCodeClaimedScreenIDs];
+                                       claimed:[NSSet setWithArray:MatrixCodeScreenClaims.allKeys]];
     if (!identifier) return nil;
     for (NSScreen *candidate in NSScreen.screens) {
         if ([[MatrixCodeSession identifierForScreen:candidate] isEqualToString:identifier]) {
@@ -555,7 +575,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
         }
     }
     if (!screen) screen = self.window.screen;
-    if (screen && [MatrixCodeClaimedScreenIDs containsObject:[MatrixCodeSession identifierForScreen:screen]]) {
+    if (screen && MatrixCodeScreenClaims[[MatrixCodeSession identifierForScreen:screen]]) {
         NSScreen *unclaimedMatch = [self unclaimedScreenMatchingViewSize];
         if (unclaimedMatch) {
             screen = unclaimedMatch;
@@ -597,6 +617,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 }
 
 - (void)ensureMetalView {
+    if (!self.hostActive && self.mode != MatrixCodeRainHostModeStandalone) return;
     if (self.metalView || !self.window) {
         return;
     }
@@ -607,7 +628,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     if ([self isScreenSaverPlayback]) {
         screen = [self screenForPlaybackHostWithRect:&screenRect];
         if (!screen) return;
-        [self.class claimScreen:screen];
+        [self claimScreen:screen];
         session = [MatrixCodeSession sessionForScreen:screen];
     } else if ([self isScreenSaverPreview]) {
         screen = NSScreen.mainScreen;
@@ -643,6 +664,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
                                                         session:session
                                                    storedValues:storedValues];
     if (!self.metalView) {
+        [self releaseScreenClaim];
         [self showMetalFailureNotice];
         return;
     }
@@ -734,6 +756,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 }
 
 - (void)previewValuesDidChange:(NSNotification *)notification {
+    if (!self.hostActive && self.mode != MatrixCodeRainHostModeStandalone) return;
     NSDictionary<NSString *, NSString *> *values =
         [notification.userInfo[MatrixCodePreviewValuesKey] isKindOfClass:NSDictionary.class]
         ? notification.userInfo[MatrixCodePreviewValuesKey] : nil;
@@ -1084,6 +1107,39 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     [self stopFrameStallWatchdog];
     [self.rampPreviewTimer invalidate];
     self.rampPreviewTimer = nil;
+    if (self.mode != MatrixCodeRainHostModeStandalone) {
+        [self releaseScreenSaverResources];
+    }
+}
+
+- (void)releaseScreenSaverResources {
+    self.screenResolutionRetryGeneration++;
+    self.screenResolutionRetryScheduled = NO;
+    self.screenResolutionRetryCount = 0;
+    [self releaseScreenClaim];
+
+    // The system may retain the ScreenSaverView after dismissal. Keep its host
+    // lightweight and rebuild the rendering subtree only for its next activation.
+    [self.metalView invalidateRendering];
+    [self.metalView removeFromSuperview];
+    self.metalView = nil;
+    [self.introOverlay cancel];
+    [self.introOverlay removeFromSuperview];
+    self.introOverlay = nil;
+    [self.fpsOverlay removeFromSuperview];
+    self.fpsOverlay = nil;
+    [self.metalFailureNotice removeFromSuperview];
+    self.metalFailureNotice = nil;
+    self.introPreviewCompletion = nil;
+    self.tokenResolver = nil;
+    self.runStartDate = nil;
+    self.rainStartDate = nil;
+    self.deferredRainStartDate = nil;
+    self.lastFrameAdvanceDate = nil;
+    self.runTimelineStarted = NO;
+    self.introScheduled = NO;
+    self.rainTimelineRequiresReducedMotionWarmup = NO;
+    self.synchronizedMultiDisplayTimeline = NO;
 }
 
 - (void)advanceAnimationAtDate:(NSDate *)date framesPerSecond:(double)framesPerSecond {
