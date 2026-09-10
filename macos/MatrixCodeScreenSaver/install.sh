@@ -117,6 +117,7 @@ done
 INSTALL_DIR="${HOME}/Library/Screen Savers"
 mkdir -p "${INSTALL_DIR}"
 SOURCE_SAVER="${BUILD_PRODUCTS_DIR}/Matrix Code.saver"
+echo "Built screen saver: ${SOURCE_SAVER}"
 
 # Installs from before the rename are called MatrixCode.saver but carry the same
 # bundle identifier, so leaving one behind lets System Settings list two entries
