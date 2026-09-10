@@ -156,11 +156,9 @@ if /usr/bin/pgrep -x "System Settings" >/dev/null 2>&1; then
 fi
 
 matrixcode_invalidate_thumbnail_cache
-for process_name in legacyScreenSaver WallpaperLegacyExtension WallpaperAgent Wallpaper; do
-  if /usr/bin/killall "${process_name}" 2>/dev/null; then
-    echo "Restarted macOS's cached ${process_name} process."
-  fi
-done
+if /usr/bin/killall legacyScreenSaver 2>/dev/null; then
+  echo "Restarted macOS's legacyScreenSaver process."
+fi
 
 echo "Installed Matrix Code.saver. Select it in System Settings → Screen Saver."
 if [[ "${SYSTEM_SETTINGS_WAS_RUNNING}" == true ]]; then
