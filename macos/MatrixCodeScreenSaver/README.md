@@ -60,15 +60,16 @@ recreate that subtree through layout, settings notifications, or delayed display
 assignment retries, even when `legacyScreenSaver` keeps the outer view alive.
 The standalone app's pause/resume behaviour retains its renderer.
 
-Full-screen saver instances also observe the undocumented distributed
-`com.apple.screensaver.willstop` and `com.apple.screensaver.didstop`
-notifications, because some macOS versions omit the normal stop callback.
-They invoke the same repeatable cleanup on the main thread. System Settings
-previews use their own lifecycle callback and ignore the global notifications;
-there is no global start observer that could restart retained views. Notification
-delivery and preview identification remain subject to macOS host bugs. This
-workaround releases Matrix Code's resources without terminating the shared host;
-it cannot release resources owned exclusively by macOS.
+On Sonoma and Sequoia, `legacyScreenSaver` can omit the normal stop callback and
+retain its complete opaque view/window stack. Merely removing Matrix Code's Metal
+subtree can leave a black retained view above the next activation. Full-screen saver
+instances therefore observe the undocumented distributed
+`com.apple.screensaver.willstop` notification, perform the normal cleanup, and
+retire the faulty extension process; macOS launches a clean host on demand. The
+later `didstop` notification is deliberately ignored because distributed delivery
+can lag behind a new activation. System Settings previews do not install this
+workaround. On Sonoma and Sequoia, the host's incorrect `isPreview` value is
+corrected only for full-screen-sized frames so actual playback takes this path.
 
 This is a macOS host integration fix with no equivalent change to the browser,
 Windows, Linux, or Wallpaper Engine implementations. Native tests cover cleanup,
