@@ -13,6 +13,7 @@
 - (BOOL)handleSettingsTabEvent:(NSEvent *)event;
 - (void)addMessage:(id)sender;
 - (void)styleEditorViewHierarchy:(NSView *)view;
+- (void)accept:(id)sender;
 - (void)cancel:(id)sender;
 - (void)controlChanged:(id)sender;
 - (void)imageNumberChanged:(NSTextField *)sender;
@@ -342,6 +343,64 @@ static void MatrixCodeAssertNoTransientEditorReferences(
 
     [controller cancel:nil];
     [parent orderOut:nil];
+}
+
+- (void)testOptionsCanBePresentedRepeatedlyAfterDoneAndCancel {
+    NSWindow *sheet = [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
+    MatrixCodeConfigurationController *controller =
+        (MatrixCodeConfigurationController *)sheet.windowController;
+    NSWindow *parent = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 800, 600)
+                  styleMask:NSWindowStyleMaskTitled
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [parent orderFront:nil];
+    for (NSUInteger cycle = 0; cycle < 3; cycle++) {
+        XCTAssertEqual([MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow], sheet);
+        XCTAssertFalse([[controller valueForKey:@"configurationDismissalStarted"] boolValue]);
+        NSModalResponse expectedResponse = cycle == 1 ? NSModalResponseCancel : NSModalResponseOK;
+        XCTestExpectation *completed = [self expectationWithDescription:@"host finished Options sheet"];
+        [parent beginSheet:sheet completionHandler:^(NSModalResponse response) {
+            XCTAssertEqual(response, expectedResponse);
+            [completed fulfill];
+        }];
+        XCTAssertEqual(parent.attachedSheet, sheet);
+        XCTAssertEqual(sheet.sheetParent, parent);
+        if (cycle == 1) [controller cancel:nil];
+        else [controller accept:nil];
+        [self waitForExpectations:@[completed] timeout:2];
+        XCTAssertNil(parent.attachedSheet);
+        XCTAssertNil(sheet.sheetParent);
+        XCTAssertFalse(sheet.isVisible);
+    }
+    [parent orderOut:nil];
+}
+
+- (void)testHostCanReuseCachedOptionsSheetAfterExternalDismissal {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSWindow *sheet = controller.window;
+    for (NSUInteger cycle = 0; cycle < 3; cycle++) {
+        NSWindow *parent = [[NSWindow alloc]
+            initWithContentRect:NSMakeRect(0, 0, 800, 600)
+                      styleMask:NSWindowStyleMaskTitled
+                        backing:NSBackingStoreBuffered
+                          defer:NO];
+        [parent orderFront:nil];
+        XCTestExpectation *completed = [self expectationWithDescription:@"cached sheet dismissed"];
+        [parent beginSheet:sheet completionHandler:^(NSModalResponse response) {
+            [completed fulfill];
+        }];
+        // System Settings can present its cached window without asking the saver again.
+        [controller loadSettingsBackdropIfNeeded];
+        XCTAssertFalse([[controller valueForKey:@"configurationDismissalStarted"] boolValue]);
+        XCTAssertNotNil([controller valueForKey:@"settingsMetalView"]);
+        if (cycle == 1) [controller accept:nil];
+        else [parent endSheet:sheet returnCode:NSModalResponseCancel];
+        [self waitForExpectations:@[completed] timeout:2];
+        XCTAssertNil(sheet.sheetParent);
+        [parent orderOut:nil];
+    }
 }
 
 - (void)testConfigurationDismissalRunsCloseHandlerOnlyOnce {

@@ -1147,6 +1147,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (void)recordScreenSaverSheetPresentation {
     NSWindow *sheetParent = self.window.sheetParent;
     if (!sheetParent) return;
+    [self prepareForScreenSaverConfigurationPresentation];
     self.screenSaverSheetWasPresented = YES;
     self.screenSaverPresentationEnded = NO;
     self.screenSaverSheetParent = sheetParent;
@@ -3233,6 +3234,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     if (!parent || (parent.attachedSheet != self.window && self.window.sheetParent != parent)) {
         return;
     }
+    [self prepareForScreenSaverConfigurationPresentation];
     self.screenSaverSheetWasPresented = YES;
     self.screenSaverPresentationEnded = NO;
     self.screenSaverSheetParent = parent;
@@ -3254,9 +3256,11 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 
 - (void)endConfigurationSheetWithResponse:(NSModalResponse)response {
     [self recordScreenSaverSheetPresentation];
-    BOOL waitsForSheetEnd = self.screenSaverSheetParent != nil;
-    [NSApp endSheet:self.window returnCode:response];
-    if (!waitsForSheetEnd) {
+    NSWindow *parent = self.window.sheetParent;
+    if (parent) {
+        [parent endSheet:self.window returnCode:response];
+    } else {
+        [self.window orderOut:nil];
         self.screenSaverPresentationEnded = YES;
         [self notifyOwnerAfterDismissal];
     }
