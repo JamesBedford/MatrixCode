@@ -590,15 +590,14 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     if (!NSIsEmptyRect(self.window.frame)) {
         NSRect windowRect = [self convertRect:self.bounds toView:nil];
         screenRect = [self.window convertRectToScreen:windowRect];
-        CGFloat largestIntersection = 0;
-        for (NSScreen *candidate in NSScreen.screens) {
-            NSRect intersection = NSIntersectionRect(screenRect, candidate.frame);
-            CGFloat area = intersection.size.width * intersection.size.height;
-            if (area > largestIntersection) {
-                largestIntersection = area;
-                screen = candidate;
-            }
+        NSArray<NSScreen *> *screens = NSScreen.screens;
+        NSMutableArray<NSValue *> *frames = [NSMutableArray arrayWithCapacity:screens.count];
+        for (NSScreen *candidate in screens) {
+            [frames addObject:[NSValue valueWithRect:candidate.frame]];
         }
+        NSUInteger index = [MatrixCodeSession screenIndexForPlaybackHostRect:screenRect
+                                                               screenFrames:frames];
+        if (index != NSNotFound) screen = screens[index];
     }
     if (resolvedRect) *resolvedRect = screenRect;
     return screen;

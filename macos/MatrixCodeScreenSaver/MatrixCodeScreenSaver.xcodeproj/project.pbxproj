@@ -21,6 +21,7 @@
 		219AAB22C4231F383153F70D /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0D51BC0EFE837288DF1C2724 /* XCTest.framework */; };
 		245A1D315CA537B226588A1A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 925232946444D95E6DCC5A79 /* Assets.xcassets */; };
 		29F994BCA0F73E37B83D8AD9 /* MatrixCodeMessageScheduler.m in Sources */ = {isa = PBXBuildFile; fileRef = 97BD9D26E3565F6C0AFAF8D0 /* MatrixCodeMessageScheduler.m */; };
+		2CA1D44C20564279AC36507D /* MatrixCodeSessionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = B1053B86E571808FB6DB8FFA /* MatrixCodeSessionTests.m */; };
 		30EAAC6B0CFF66A31327FC8C /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C090124F0DF8A7DCBEDEC974 /* Metal.framework */; };
 		311BB48EABDD91DEA7683ED7 /* MatrixCodePreferences.m in Sources */ = {isa = PBXBuildFile; fileRef = 652BCD2CA85C0793A7839BCA /* MatrixCodePreferences.m */; };
 		31470F554ACCE182047C968C /* MatrixCodeMessageScheduler.m in Sources */ = {isa = PBXBuildFile; fileRef = 97BD9D26E3565F6C0AFAF8D0 /* MatrixCodeMessageScheduler.m */; };
@@ -140,6 +141,7 @@
 		A5B0B13FCBACEE256E710004 /* MatrixCodeRainLifecycle.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeRainLifecycle.m; sourceTree = "<group>"; };
 		AEF98B97E178759EDA759445 /* MatrixCodeConstants.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeConstants.m; sourceTree = "<group>"; };
 		AFA8600626CA1476652EB7A7 /* MatrixCodeTokenResolverTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeTokenResolverTests.m; sourceTree = "<group>"; };
+		B1053B86E571808FB6DB8FFA /* MatrixCodeSessionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeSessionTests.m; sourceTree = "<group>"; };
 		B7FB66B2F1DA00F3EAD79399 /* MatrixCodeIntroOverlayViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeIntroOverlayViewTests.m; sourceTree = "<group>"; };
 		BC608A3472B9FC260A92BA60 /* MatrixCodeIntroOverlayView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MatrixCodeIntroOverlayView.h; sourceTree = "<group>"; };
 		C0324A580D7D065983EF7C15 /* MatrixCodeRainHostViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MatrixCodeRainHostViewTests.m; sourceTree = "<group>"; };
@@ -236,6 +238,7 @@
 				A29C58EE68EF96732324BB68 /* MatrixCodeRainLifecycleTests.m */,
 				A3AF73F595DC616E40D888FF /* MatrixCodeRainSimulationTests.m */,
 				2D71053B10A1328FA237FEED /* MatrixCodeScreenSaverViewTests.m */,
+				B1053B86E571808FB6DB8FFA /* MatrixCodeSessionTests.m */,
 				2EA50F20D5F9B425761B7ED5 /* MatrixCodeSettingsThemeTests.m */,
 				1BE41C2AB066ADD07F2BAE0D /* MatrixCodeSettingsVisualTests.m */,
 				AFA8600626CA1476652EB7A7 /* MatrixCodeTokenResolverTests.m */,
@@ -504,6 +507,7 @@
 				D784E5F079D6B4D9136B678E /* MatrixCodeScreenSaverView.m in Sources */,
 				1FCD1D513ECFB27746F8E330 /* MatrixCodeScreenSaverViewTests.m in Sources */,
 				76D37A9783BF54B369885E51 /* MatrixCodeSession.m in Sources */,
+				2CA1D44C20564279AC36507D /* MatrixCodeSessionTests.m in Sources */,
 				54D3AF9DADA3E6B9DA82CEEF /* MatrixCodeSettingsTheme.m in Sources */,
 				D8085A86448F495C63773091 /* MatrixCodeSettingsThemeTests.m in Sources */,
 				AC157FA9031E79552F2CF922 /* MatrixCodeSettingsVisualTests.m in Sources */,

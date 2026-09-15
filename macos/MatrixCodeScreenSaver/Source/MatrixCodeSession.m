@@ -75,6 +75,41 @@ static BOOL MatrixCodePerDisplayMessages(ScreenSaverDefaults *defaults) {
     return (first - cells) * cellSize;
 }
 
++ (NSUInteger)screenIndexForPlaybackHostRect:(NSRect)hostRect screenFrames:(NSArray<NSValue *> *)screenFrames {
+    if (screenFrames.count == 0 || NSIsEmptyRect(hostRect) ||
+        !isfinite(hostRect.origin.x) || !isfinite(hostRect.origin.y) ||
+        !isfinite(hostRect.size.width) || !isfinite(hostRect.size.height)) return NSNotFound;
+
+    NSRect primaryFrame = screenFrames.firstObject.rectValue;
+    NSRect candidates[] = {
+        hostRect,
+        [self topLeftRectForFrame:hostRect desktopMaxY:NSMaxY(primaryFrame)],
+    };
+    // A full-display match is stronger evidence than incidental overlap in the
+    // other coordinate system. Prefer AppKit when both interpretations match.
+    for (NSUInteger candidateIndex = 0; candidateIndex < 2; candidateIndex++) {
+        for (NSUInteger screenIndex = 0; screenIndex < screenFrames.count; screenIndex++) {
+            if (NSEqualRects(candidates[candidateIndex], screenFrames[screenIndex].rectValue)) {
+                return screenIndex;
+            }
+        }
+    }
+
+    // Partial windows retain AppKit overlap semantics: their geometry alone
+    // cannot reliably establish that a legacy coordinate conversion is needed.
+    NSUInteger bestIndex = NSNotFound;
+    CGFloat bestArea = 0;
+    for (NSUInteger screenIndex = 0; screenIndex < screenFrames.count; screenIndex++) {
+        NSRect intersection = NSIntersectionRect(hostRect, screenFrames[screenIndex].rectValue);
+        CGFloat area = intersection.size.width * intersection.size.height;
+        if (area > bestArea) {
+            bestArea = area;
+            bestIndex = screenIndex;
+        }
+    }
+    return bestIndex;
+}
+
 + (NSString *)uniqueUnclaimedScreenIdentifierForSize:(NSSize)size
                                           descriptors:(NSArray<NSDictionary<NSString *,id> *> *)descriptors
                                               claimed:(NSSet<NSString *> *)claimed {

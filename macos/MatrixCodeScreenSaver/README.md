@@ -393,6 +393,10 @@ their top-origin coordinates, so existing message placements remain unchanged.
 
 Screen-saver host windows refresh their display slice when macOS moves them to
 another monitor, preserving the shared rain and message timeline.
+Legacy screen-saver hosts can report full-screen window bounds with vertical
+coordinates measured down from the primary display's top edge. Display matching
+checks both that form and native AppKit bounds before falling back to overlap,
+so a monitor above the primary display is not mistaken for a side monitor.
 
 Message randomness is a maximum offset in each direction, measured against the
 full placement region: position 50 with randomness 25 covers approximately
