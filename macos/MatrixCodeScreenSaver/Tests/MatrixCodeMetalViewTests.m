@@ -6,6 +6,7 @@
 #import "MatrixCodeRainSimulation.h"
 
 @interface MatrixCodeMetalView (MessageTesting)
+- (void)previewMessageDocument:(NSDictionary<NSString *, id> *)document atDate:(NSDate *)date;
 - (BOOL)ensureInstanceCapacity:(NSUInteger)capacity;
 - (void)refreshHolidayColors;
 - (void)holidayColorEnvironmentDidChange:(nullable NSNotification *)notification;
@@ -1882,6 +1883,70 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
                               full + (row * 40 + 20) * 4,
                               20 * 4),
                        0);
+    }
+}
+
+- (void)testSingleCenteredMessageUsesCorrectSliceOfTShapedDesktop {
+    NSArray *screens = @[
+        @{@"id": @"middle", @"left": @0, @"top": @1200,
+          @"width": @1710, @"height": @1112},
+        @{@"id": @"left", @"left": @-1920, @"top": @1200,
+          @"width": @1920, @"height": @1200},
+        @{@"id": @"upper", @"left": @-112, @"top": @0,
+          @"width": @1920, @"height": @1200},
+        @{@"id": @"right", @"left": @1710, @"top": @1200,
+          @"width": @1920, @"height": @1200},
+    ];
+    NSMutableDictionary *messages = [@{
+        @"enabled": @YES, @"messages": @[@"HELLO"], @"singleMonitor": @YES,
+        @"horizontalPosition": @0.5, @"horizontalJitter": @0,
+        @"verticalPosition": @0.75, @"verticalJitter": @0,
+        @"appearMs": @0, @"persistenceMs": @600000,
+        @"disappearMs": @0, @"flickerOut": @NO, @"brightnessFade": @NO,
+    } mutableCopy];
+    NSDictionary *controls = @{@"density": @20, @"glyphScale": @1};
+    for (NSNumber *verticalPosition in @[@0.75, @0.25]) {
+        messages[@"verticalPosition"] = verticalPosition;
+        NSString *expectedScreen = verticalPosition.doubleValue > 0.5 ? @"middle" : @"upper";
+        for (NSDictionary *screen in screens) {
+            NSUInteger width = [screen[@"width"] unsignedIntegerValue];
+            NSUInteger height = [screen[@"height"] unsignedIntegerValue];
+            MatrixCodeMetalView *view = [[MatrixCodeDeterministicMetalView alloc]
+                initWithFrame:NSMakeRect(0, 0, width, height)
+                session:@{@"seed": @12345, @"epoch": @1700000000000,
+                          @"currentScreenId": screen[@"id"], @"screens": screens}
+                storedValues:@{@"mx-controls": MatrixCodeJSONString(controls),
+                               @"mx-messages": MatrixCodeJSONString(messages)}];
+            [view diagnosticPackedStateWithWidth:width height:height];
+            MatrixCodeRainSimulation *simulation = [view valueForKey:@"rainSimulation"];
+            XCTAssertEqual(simulation.columns, 309);
+            XCTAssertEqual(simulation.rows, 134);
+            [view previewMessageDocument:messages atDate:[NSDate dateWithTimeIntervalSince1970:1700000002.5]];
+            NSInteger startColumn = (NSInteger)floor((simulation.columns - 5) * 0.5);
+            NSInteger targetRow = (NSInteger)floor((simulation.rows - 1) * verticalPosition.doubleValue + 0.5);
+            BOOL resolved = NO;
+            for (NSUInteger frame = 0; frame < 2500 && !resolved; frame++) {
+                [simulation updateWithDeltaTime:1.0 / 60.0 controls:controls];
+                const uint8_t *packed = simulation.stateData.bytes;
+                resolved = YES;
+                for (NSUInteger index = 0; index < 5; index++) {
+                    NSInteger glyph = MatrixCodeMessageGlyphIndexForCharacter(
+                        [@"HELLO" substringWithRange:NSMakeRange(index, 1)]);
+                    NSUInteger offset = (targetRow * simulation.columns + startColumn + index) * 4;
+                    resolved = resolved && packed[offset] == glyph && packed[offset + 1] > 0;
+                }
+            }
+            XCTAssertTrue(resolved, @"The message must occupy the center of the full desktop");
+            NSData *local = [view diagnosticPackedStateWithWidth:width height:height];
+            const uint8_t *bytes = local.bytes;
+            NSUInteger messageCells = 0;
+            NSInteger firstMessageGlyph = MatrixCodeMessageGlyphIndexForCharacter(@"H");
+            for (NSUInteger offset = 0; offset + 3 < local.length; offset += 4) {
+                if (bytes[offset] == firstMessageGlyph && bytes[offset + 1] > 0) messageCells++;
+            }
+            XCTAssertEqual(messageCells, [screen[@"id"] isEqual:expectedScreen] ? 1u : 0u,
+                           @"Only the selected center monitor should contain the message: %@", screen[@"id"]);
+        }
     }
 }
 

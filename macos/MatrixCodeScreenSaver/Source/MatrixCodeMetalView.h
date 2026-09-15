@@ -22,6 +22,8 @@ typedef void (^MatrixCodeMetalFrameHandler)(MatrixCodeMetalView *view,
 - (void)setAnimationActive:(BOOL)active;
 /// Permanently stops rendering and releases resources; create a new view to render again.
 - (void)invalidateRendering;
+/** Rebind a screen-saver slice without restarting the shared simulation timeline. */
+- (void)updateDisplayGeometryForScreen:(NSScreen *)screen;
 - (void)freezeAnimationAtDate:(NSDate *)date;
 - (void)setReducedMotionEnabled:(BOOL)enabled;
 - (void)prepareReducedMotionFrame;

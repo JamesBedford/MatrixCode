@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { MessageScheduler } from "../src/sim/messageScheduler.ts";
 import { createGlyphSet } from "../src/sim/glyphSet.ts";
 import { createRng } from "../src/util/rng.ts";
+import { computeVirtualGrid } from "../src/multimonitor/multiMonitorGrid.ts";
 import type { MessagesDoc } from "../src/types.ts";
 
 // A minimal stand-in for RainSim that records what the scheduler asks of it.
@@ -811,6 +812,40 @@ describe("MessageScheduler cross-language golden", () => {
 
 
 describe("multi-monitor placement modes", () => {
+  it.each([
+    { verticalPosition: 0.25, expectedDisplay: "upper", expectedRow: 30 },
+    { verticalPosition: 0.75, expectedDisplay: "middle", expectedRow: 89 },
+  ])("centers a single message on $expectedDisplay in a four-monitor arrangement", ({
+    verticalPosition, expectedDisplay, expectedRow,
+  }) => {
+    const virtual = computeVirtualGrid([
+      { id: "left", left: -1920, top: 0, width: 1920, height: 1200 },
+      { id: "middle", left: 0, top: 0, width: 1710, height: 1112 },
+      { id: "right", left: 1710, top: 0, width: 1920, height: 1200 },
+      { id: "upper", left: -112, top: -1200, width: 1920, height: 1200 },
+    ], 20);
+    const sim = new FakeSim(virtual.vCols, virtual.vRows);
+    sched().previewOne(0, sim, doc({
+      messages: ["AB"],
+      singleMonitor: true,
+      horizontalPosition: 0.5,
+      horizontalJitter: 0,
+      verticalPosition,
+      verticalJitter: 0,
+    }), Object.values(virtual.slices));
+
+    expect([...sim.last!.keys()]).toEqual([expectedRow * 278 + 138, expectedRow * 278 + 139]);
+    const containingDisplays = Object.entries(virtual.slices)
+      .filter(([, slice]) => [...sim.last!.keys()].every((index) => {
+        const col = index % sim.cols;
+        const row = Math.floor(index / sim.cols);
+        return col >= slice.colStart && col < slice.colStart + slice.cols &&
+          row >= slice.rowStart && row < slice.rowStart + slice.rows;
+      }))
+      .map(([id]) => id);
+    expect(containingDisplays).toEqual([expectedDisplay]);
+  });
+
   const regions = [
     { colStart: 0, rowStart: 0, cols: 40, rows: 40 },
     { colStart: 40, rowStart: 0, cols: 40, rows: 40 },

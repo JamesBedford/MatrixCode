@@ -384,6 +384,15 @@ With it off, every display receives the message at the same time.
 when either randomness setting is nonzero; otherwise displays share the same
 relative placement samples. These choices are independent of vignette.
 
+For three displays side by side with another above the middle, horizontal
+position 50 and horizontal randomness 0 keep the message centered horizontally
+across the desktop. Vertical position uses the combined height: 25 places it on
+the upper display, while 75 places it on the lower middle display (for roughly
+equal display heights).
+
+Screen-saver host windows refresh their display slice when macOS moves them to
+another monitor, preserving the shared rain and message timeline.
+
 Message randomness is a maximum offset in each direction, measured against the
 full placement region: position 50 with randomness 25 covers approximately
 25%–75% around the centre. Messages stay fully inside the region; their length

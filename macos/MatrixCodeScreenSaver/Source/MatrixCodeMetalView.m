@@ -1295,6 +1295,14 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     }
 }
 
+- (void)updateDisplayGeometryForScreen:(NSScreen *)screen {
+    NSMutableDictionary *session = [self.session mutableCopy];
+    session[@"currentScreenId"] = [MatrixCodeSession identifierForScreen:screen];
+    self.session = session;
+    self.hasResolvedDesktopGeometry = NO;
+    [self configureFramePacingForScreen:screen];
+}
+
 - (void)resolveDesktopGeometry {
     NSArray *screens = [self.session[@"screens"] isKindOfClass:NSArray.class] ? self.session[@"screens"] : @[];
     NSString *currentID = [self.session[@"currentScreenId"] isKindOfClass:NSString.class]

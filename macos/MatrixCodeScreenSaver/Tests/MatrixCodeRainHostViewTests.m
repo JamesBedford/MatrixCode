@@ -26,6 +26,7 @@
 - (void)showMetalFailureNotice;
 - (void)scheduleScreenResolutionRetry;
 - (void)claimScreen:(NSScreen *)screen;
+- (void)windowGeometryDidChange:(NSNotification *)notification;
 - (NSScreen *)screenForPlaybackHostWithRect:(NSRect *)resolvedRect;
 - (void)toggleUserPaused;
 - (void)updateFPSOverlayWithFramesPerSecond:(double)framesPerSecond;
@@ -2110,6 +2111,52 @@ suppressesIntroOverlay:YES];
     XCTAssertEqual([[host valueForKey:@"screenResolutionRetryCount"] unsignedIntegerValue], 7u);
     XCTAssertNil([host valueForKey:@"metalView"]);
     [host stopAnimation];
+}
+
+- (void)testPlaybackHostRemapsRendererAfterWindowMovesToAnotherScreen {
+    NSArray<NSScreen *> *screens = NSScreen.screens;
+    XCTSkipIf(screens.count < 2, @"Requires two physical displays to exercise host relocation");
+    NSScreen *initialScreen = screens.firstObject;
+    NSScreen *destinationScreen = screens.lastObject;
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:initialScreen.frame
+        styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
+    window.releasedWhenClosed = NO;
+    MatrixCodeRainHostView *host = [[MatrixCodeRainHostView alloc]
+        initWithFrame:NSMakeRect(0, 0, initialScreen.frame.size.width, initialScreen.frame.size.height)
+        mode:MatrixCodeRainHostModeScreenSaverPlayback];
+    window.contentView = host;
+    [window setFrame:initialScreen.frame display:NO];
+    [host startAnimation];
+    MatrixCodeMetalView *initialRenderer = [host valueForKey:@"metalView"];
+    XCTAssertNotNil(initialRenderer);
+    XCTAssertEqualObjects([host valueForKey:@"claimedScreenIdentifier"],
+                          [MatrixCodeSession identifierForScreen:initialScreen]);
+    [host windowGeometryDidChange:nil];
+    XCTAssertEqual([host valueForKey:@"metalView"], initialRenderer,
+                   @"The host must recognize its own claim without rebuilding");
+    NSDictionary *initialSession = [[initialRenderer valueForKey:@"session"] copy];
+    MatrixCodeRainHostView *startupClaim = [[MatrixCodeRainHostView alloc]
+        initWithFrame:NSZeroRect mode:MatrixCodeRainHostModeScreenSaverPlayback];
+    [startupClaim claimScreen:destinationScreen];
+    [window setFrame:destinationScreen.frame display:NO];
+    [host windowGeometryDidChange:nil];
+    MatrixCodeMetalView *relocatedRenderer = [host valueForKey:@"metalView"];
+    XCTAssertNotNil(relocatedRenderer);
+    XCTAssertEqual(relocatedRenderer, initialRenderer,
+                   @"Relocation must preserve the simulation and message timeline");
+    XCTAssertEqualObjects([host valueForKey:@"claimedScreenIdentifier"],
+                          [MatrixCodeSession identifierForScreen:destinationScreen]);
+    XCTAssertEqualObjects([[relocatedRenderer valueForKey:@"session"] objectForKey:@"currentScreenId"],
+                          [MatrixCodeSession identifierForScreen:destinationScreen]);
+    NSDictionary *relocatedSession = [relocatedRenderer valueForKey:@"session"];
+    XCTAssertEqualObjects(relocatedSession[@"seed"], initialSession[@"seed"]);
+    XCTAssertEqualObjects(relocatedSession[@"epoch"], initialSession[@"epoch"]);
+    [startupClaim stopAnimation];
+    [host windowGeometryDidChange:nil];
+    XCTAssertEqualObjects([host valueForKey:@"claimedScreenIdentifier"],
+                          [MatrixCodeSession identifierForScreen:destinationScreen]);
+    [host stopAnimation];
+    [window close];
 }
 
 - (void)testStoppingRetainedHostPreservesNewerDisplayClaim {

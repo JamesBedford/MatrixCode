@@ -326,6 +326,8 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 - (NSArray<NSNotificationName> *)windowGeometryNotificationNames {
     return @[
         NSWindowDidResizeNotification,
+        NSWindowDidMoveNotification,
+        NSWindowDidChangeScreenNotification,
         NSWindowDidEndLiveResizeNotification,
         NSWindowDidEnterFullScreenNotification,
         NSWindowDidExitFullScreenNotification,
@@ -410,12 +412,35 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     [self.configurationController refreshEmbeddedPresentationLayout];
 }
 
+- (void)refreshPlaybackScreenMapping {
+    if (![self isScreenSaverPlayback] || !self.hostActive || !self.window) return;
+    if (!self.metalView) {
+        [self ensureMetalView];
+        return;
+    }
+    NSRect screenRect = NSZeroRect;
+    NSScreen *screen = [self physicalPlaybackScreenWithRect:&screenRect];
+    if (!screen) return;
+    NSString *identifier = [MatrixCodeSession identifierForScreen:screen];
+    if ([identifier isEqualToString:self.claimedScreenIdentifier]) return;
+    // Established window geometry is authoritative even if another startup host
+    // claimed this display before the system finished arranging its windows.
+    [self releaseScreenClaim];
+    [self claimScreen:screen];
+    [self.metalView updateDisplayGeometryForScreen:screen];
+    os_log_info(OS_LOG_DEFAULT,
+                "MatrixCode native host remapped: screen=%{public}@ hostFrame=%{public}@ displayFrame=%{public}@",
+                identifier, NSStringFromRect(screenRect), NSStringFromRect(screen.frame));
+}
+
 - (void)windowGeometryDidChange:(NSNotification *)notification {
     (void)notification;
     [self syncPresentationLayoutToWindow];
+    [self refreshPlaybackScreenMapping];
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         [weakSelf syncPresentationLayoutToWindow];
+        [weakSelf refreshPlaybackScreenMapping];
     });
 }
 
@@ -489,7 +514,9 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     [self observeCurrentWindowGeometry];
     [self syncContentViewFrameToWindowIfNeeded];
     self.window.acceptsMouseMovedEvents = YES;
+    BOOL hadRenderer = self.metalView != nil;
     [self ensureMetalView];
+    if (hadRenderer) [self refreshPlaybackScreenMapping];
     [self syncHostedSubviewFrames];
     [self revealPresentationChromeForPointerActivity];
 }
@@ -557,8 +584,7 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     return nil;
 }
 
-- (NSScreen *)screenForPlaybackHostWithRect:(NSRect *)resolvedRect {
-    [self.class resetScreenClaimsIfStale];
+- (NSScreen *)physicalPlaybackScreenWithRect:(NSRect *)resolvedRect {
     NSScreen *screen = nil;
     NSRect screenRect = NSZeroRect;
     if (!NSIsEmptyRect(self.window.frame)) {
@@ -574,8 +600,18 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
             }
         }
     }
+    if (resolvedRect) *resolvedRect = screenRect;
+    return screen;
+}
+
+- (NSScreen *)screenForPlaybackHostWithRect:(NSRect *)resolvedRect {
+    [self.class resetScreenClaimsIfStale];
+    NSRect screenRect = NSZeroRect;
+    NSScreen *screen = [self physicalPlaybackScreenWithRect:&screenRect];
     if (!screen) screen = self.window.screen;
-    if (screen && MatrixCodeScreenClaims[[MatrixCodeSession identifierForScreen:screen]]) {
+    if (screen && MatrixCodeScreenClaims[[MatrixCodeSession identifierForScreen:screen]] &&
+        ![MatrixCodeScreenClaims[[MatrixCodeSession identifierForScreen:screen]]
+          isEqual:self.screenClaimToken]) {
         NSScreen *unclaimedMatch = [self unclaimedScreenMatchingViewSize];
         if (unclaimedMatch) {
             screen = unclaimedMatch;
@@ -639,10 +675,11 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     }
 
     os_log_info(OS_LOG_DEFAULT,
-                "MatrixCode native host mapped: mode=%{public}ld screen=%{public}@ frame=%{public}@",
+                "MatrixCode native host mapped: mode=%{public}ld screen=%{public}@ hostFrame=%{public}@ displayFrame=%{public}@",
                 (long)self.mode,
                 screen ? [MatrixCodeSession identifierForScreen:screen] : @"none",
-                screen ? NSStringFromRect(screen.frame) : NSStringFromRect(screenRect));
+                NSStringFromRect(screenRect),
+                screen ? NSStringFromRect(screen.frame) : @"none");
 
     NSDictionary<NSString *, NSString *> *storedValues = [self.preferences storedValues];
     self.runStartDate = [NSDate date];
