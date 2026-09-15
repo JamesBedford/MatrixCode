@@ -114,6 +114,11 @@ install/upgrade/uninstall verification on both architectures.
 
 ### Multi-monitor messages
 
+The message editor measures vertical position upward: 0 is the bottom, 50 is
+the centre, and 100 is the top. Saved `mx-messages.verticalPosition` values
+remain top-origin for portable settings compatibility; opening existing
+settings preserves message placement.
+
 Messages default to one copy per display, independently of vignette. Enable “Single message across monitors” to place one message using the entire combined monitor space. Disable it and enable “Independent random positions per monitor” to give each display its own deterministic placement; this control applies only when horizontal or vertical randomness is nonzero. Shared placement uses the same normalized random samples on every display. These options persist as `singleMonitor` and `independentMonitorPositions` in `mx-messages`.
 
 Message randomness is a maximum offset in each direction, measured against the

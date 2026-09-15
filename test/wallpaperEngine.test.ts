@@ -94,6 +94,14 @@ describe("Wallpaper Engine property contract", () => {
     }
   });
 
+  it.each([0, 0.25, 0.5, 1])("preserves legacy top-origin host message position %s", (position) => {
+    const bridge = createWallpaperEngineBridge({ host: {} });
+    bridge.listener.applyUserProperties({ messagesposition: property(position) });
+    expect(bridge.configuration().messages.verticalPosition).toBe(position);
+    bridge.listener.applyUserProperties({ messagesenabled: property(true) });
+    expect(bridge.configuration().messages.verticalPosition).toBe(position);
+  });
+
   it("ignores unknown envelopes and sanitizes malformed or out-of-range values", () => {
     const bridge = createWallpaperEngineBridge({ host: {} });
     bridge.listener.applyUserProperties({

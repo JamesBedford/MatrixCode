@@ -16,6 +16,11 @@ the wall stays clean while live rain settings can still be adjusted.
 
 ## Message placement
 
+The message editor's vertical position runs from **0 at the bottom** to **100 at
+the top**. Horizontal position runs from **0 at the left** to **100 at the right**.
+Changing the vertical control's direction preserves existing saved placements;
+their displayed value becomes 100 minus the previous value.
+
 In **In-Rain Messages**, enable **Single message across monitors** to show one
 copy across the combined desktop. Vertical and horizontal position and randomness
 then use the entire virtual monitor space, so a message can cross a display edge.

@@ -391,7 +391,7 @@ QWidget* SettingsDialog::BuildMessagesPage() {
   grid->addWidget(new QLabel(tr("Disappear over")), 1, 2); grid->addWidget(messageDisappear_, 1, 3);
   grid->addWidget(new QLabel(tr("Layout")), 2, 0); grid->addWidget(messageLayout_, 2, 1);
   grid->addWidget(new QLabel(tr("Direction")), 2, 2); grid->addWidget(messageDirection_, 2, 3);
-  grid->addWidget(new QLabel(tr("Vertical position")), 3, 0); grid->addWidget(messagePosition_, 3, 1);
+  grid->addWidget(new QLabel(tr("Vertical position (0 bottom–100 top)")), 3, 0); grid->addWidget(messagePosition_, 3, 1);
   grid->addWidget(new QLabel(tr("Vertical randomness")), 3, 2); grid->addWidget(messageJitter_, 3, 3);
   grid->addWidget(new QLabel(tr("Horizontal position")), 4, 0); grid->addWidget(messageHorizontalPosition_, 4, 1);
   grid->addWidget(new QLabel(tr("Horizontal randomness")), 4, 2); grid->addWidget(messageHorizontalJitter_, 4, 3);
@@ -534,7 +534,7 @@ void SettingsDialog::ReadDraft() {
   messages.layout = messageLayout_->currentIndex() == 0 ? MessageLayout::Row : MessageLayout::Drop;
   messages.direction = messageDirection_->currentIndex() == 0
     ? MessageDirection::TopToBottom : MessageDirection::BottomToTop;
-  messages.position = messagePosition_->value() / 100.0;
+  messages.position = 1.0 - messagePosition_->value() / 100.0;
   messages.jitter = messageJitter_->value() / 100.0;
   messages.horizontalPosition = messageHorizontalPosition_->value() / 100.0;
   messages.horizontalJitter = messageHorizontalJitter_->value() / 100.0;
@@ -619,7 +619,7 @@ void SettingsDialog::Populate(const SettingsSnapshot& settings) {
   messageBrightness_->setChecked(draft_.messages.brightnessFade);
   messageLayout_->setCurrentIndex(draft_.messages.layout == MessageLayout::Row ? 0 : 1);
   messageDirection_->setCurrentIndex(draft_.messages.direction == MessageDirection::TopToBottom ? 0 : 1);
-  messagePosition_->setValue(draft_.messages.position * 100.0);
+  messagePosition_->setValue((1.0 - draft_.messages.position) * 100.0);
   messageJitter_->setValue(draft_.messages.jitter * 100.0);
   messageHorizontalPosition_->setValue(draft_.messages.horizontalPosition * 100.0);
   messageHorizontalJitter_->setValue(draft_.messages.horizontalJitter * 100.0);

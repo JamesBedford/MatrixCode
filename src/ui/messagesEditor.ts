@@ -159,9 +159,9 @@ export class MessagesEditor extends ModalEditor {
     behaviour.appendChild(this.secondsField("Each stays for (s)", this.draft.persistenceMs, (ms) => (this.draft.persistenceMs = ms)));
     behaviour.appendChild(this.secondsField("Disappear over (s)", this.draft.disappearMs, (ms) => (this.draft.disappearMs = ms)));
     behaviour.appendChild(this.percentField(
-      "Vertical position (0 top–100 bottom)",
-      this.draft.verticalPosition,
-      (f) => (this.draft.verticalPosition = f),
+      "Vertical position (0 bottom–100 top)",
+      1 - this.draft.verticalPosition,
+      (f) => (this.draft.verticalPosition = 1 - f),
     ));
     behaviour.appendChild(this.percentField(
       "Vertical randomness (%)",

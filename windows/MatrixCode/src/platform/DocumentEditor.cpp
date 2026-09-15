@@ -653,8 +653,8 @@ void SaveGlobals(EditorState& state) {
         GetDlgItem(state.window, IdField3), state.draft.messages.appearMilliseconds, 0.0, 600000.0);
       state.draft.messages.disappearMilliseconds = NumberValue(
         GetDlgItem(state.window, IdField4), state.draft.messages.disappearMilliseconds, 0.0, 600000.0);
-      state.draft.messages.position = PercentValue(
-        GetDlgItem(state.window, IdField5), state.draft.messages.position);
+      state.draft.messages.position = 1.0 - PercentValue(
+        GetDlgItem(state.window, IdField5), 1.0 - state.draft.messages.position);
       state.draft.messages.jitter = PercentValue(
         GetDlgItem(state.window, IdField6), state.draft.messages.jitter);
       state.draft.messages.horizontalPosition = PercentValue(
@@ -740,8 +740,8 @@ void BuildMessagesPage(EditorState& state) {
   Label(state, L"Appear / disappear (ms)", 315, 137, 200);
   SetNumber(Edit(state, IdField3, 520, 134, 100, 10), state.draft.messages.appearMilliseconds);
   SetNumber(Edit(state, IdField4, 630, 134, 100, 10), state.draft.messages.disappearMilliseconds);
-  Label(state, L"Vertical position (0 top–100 bottom)", 315, 171, 325);
-  SetPercent(Edit(state, IdField5, 650, 168, 80, 10), state.draft.messages.position);
+  Label(state, L"Vertical position (0 bottom–100 top)", 315, 171, 325);
+  SetPercent(Edit(state, IdField5, 650, 168, 80, 10), 1.0 - state.draft.messages.position);
   Label(state, L"Vertical randomness (%)", 315, 200, 325);
   SetPercent(Edit(state, IdField6, 650, 197, 80, 10), state.draft.messages.jitter);
   Label(state, L"Horizontal position (0 left–100 right)", 315, 229, 325);

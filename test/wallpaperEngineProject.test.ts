@@ -46,7 +46,7 @@ describe("Wallpaper Engine generated project", () => {
     expect(properties.imagesdirectory).toMatchObject({ type: "directory", mode: "fetchall" });
     expect(properties.messagesposition).toMatchObject({
       order: 4091,
-      text: "Vertical position",
+      text: "Vertical position (0 top, 1 bottom)",
       value: 0.5,
     });
     expect(properties.messagesjitter).toMatchObject({

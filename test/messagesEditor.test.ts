@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessagesStore } from "../src/config/messagesStore.ts";
 import { MessagesEditor } from "../src/ui/messagesEditor.ts";
 
@@ -88,20 +88,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+beforeEach(() => {
+  vi.stubGlobal("document", {
+    createElement: (tagName: string) => new FakeElement(tagName),
+  });
+  vi.stubGlobal("window", {
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    setTimeout: () => 1,
+  });
+  vi.stubGlobal("CustomEvent", class {
+    constructor(readonly type: string, readonly init?: unknown) {}
+  });
+});
+
 describe("MessagesEditor placement controls", () => {
   it("shows both axes in order and gives Flicker dissolve its own row", () => {
     const parent = new FakeElement("div");
-    vi.stubGlobal("document", {
-      createElement: (tagName: string) => new FakeElement(tagName),
-    });
-    vi.stubGlobal("window", {
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      setTimeout: () => 1,
-    });
-    vi.stubGlobal("CustomEvent", class {
-      constructor(readonly type: string, readonly init?: unknown) {}
-    });
 
     const editor = new MessagesEditor(
       parent as unknown as HTMLElement,
@@ -115,7 +118,7 @@ describe("MessagesEditor placement controls", () => {
       .filter((element) => element.tagName === "LABEL")
       .map(fieldLabel);
     expect(labels.filter((label) => /^(Vertical|Horizontal)/.test(label))).toEqual([
-      "Vertical position (0 top–100 bottom)",
+      "Vertical position (0 bottom–100 top)",
       "Vertical randomness (%)",
       "Horizontal position (0 left–100 right)",
       "Horizontal randomness (%)",
@@ -153,6 +156,29 @@ describe("MessagesEditor placement controls", () => {
     expect(independent.disabled).toBe(false);
     expect(independent.getAttribute("aria-pressed")).toBe("true");
 
+    editor.destroy();
+  });
+
+  it.each([0, 27, 50, 100])("saves bottom-origin position %s without changing the portable coordinate contract", (percent) => {
+    const parent = new FakeElement("div");
+    const store = new MessagesStore(null);
+    store.set({ ...store.get(), verticalPosition: 0.73 });
+    const onSave = vi.fn();
+    const editor = new MessagesEditor(
+      parent as unknown as HTMLElement, store,
+      { onPreview: () => undefined, onSave, onCancel: () => undefined },
+      () => [],
+    );
+    editor.open();
+    const position = descendants(parent).find(
+      (element) => element.tagName === "LABEL" && fieldLabel(element) === "Vertical position (0 bottom–100 top)",
+    )!.querySelector("input")!;
+    expect(position.value).toBe("27");
+    position.value = String(percent);
+    position.trigger("input");
+    descendants(parent).find((element) => element.tagName === "BUTTON" && element.textContent === "Save")!.trigger("click");
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onSave.mock.calls[0]![0].verticalPosition).toBeCloseTo(1 - percent / 100);
     editor.destroy();
   });
 });

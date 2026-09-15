@@ -55,6 +55,15 @@ node scripts/wallpaper-engine/verify.mjs dist/wallpaper-engine
   Candidate indexing is defensively bounded at 4096 paths.
 - Host file paths are exposed to the renderer both raw and as escaped `file:///` URLs.
 
+## Message position scale
+
+Browser and native message editors show vertical position as 0 at the bottom and 100 at
+the top. Wallpaper Engine intentionally retains its normalized host property
+`messagesposition`: 0 is the top and 1 is the bottom. This preserves saved wallpaper
+placements; the host property pane cannot be migrated by rewriting its displayed value.
+For example, browser/native vertical position 75 corresponds to Wallpaper Engine 0.25.
+The portable `mx-messages.verticalPosition` value remains top-origin in all renderers.
+
 ## Multiple displays
 
 For continuous rain across monitors, select Wallpaper Engine's **Span** display mode. This

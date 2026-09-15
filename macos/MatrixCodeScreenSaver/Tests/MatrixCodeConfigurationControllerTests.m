@@ -1296,7 +1296,7 @@ restrictedToMultiMonitorControls:YES];
     XCTAssertTrue([direction isKindOfClass:NSPopUpButton.class]);
     XCTAssertEqualObjects([layout.itemArray valueForKey:@"representedObject"], (@[@"row", @"drop"]));
     XCTAssertFalse(direction.enabled);
-    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (0 top–100 bottom)"));
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (0 bottom–100 top)"));
     NSTextField *verticalPosition = (NSTextField *)MatrixCodeDescendantWithIdentifier(
         card, @"verticalPosition-percent");
     NSTextField *verticalJitter = (NSTextField *)MatrixCodeDescendantWithIdentifier(
@@ -1342,7 +1342,7 @@ restrictedToMultiMonitorControls:YES];
         controller.window.contentView, @"settings-editor-card-messages");
     direction = (NSPopUpButton *)MatrixCodeDescendantWithIdentifier(card, @"messageDirection");
     XCTAssertTrue(direction.enabled);
-    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (0 top–100 bottom)"));
+    XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical position (0 bottom–100 top)"));
     XCTAssertTrue(MatrixCodeContainsLabel(card, @"Vertical randomness (%)"));
     XCTAssertTrue(MatrixCodeContainsLabel(card, @"Horizontal position (0 left–100 right)"));
     XCTAssertTrue(MatrixCodeContainsLabel(card, @"Horizontal randomness (%)"));
@@ -1442,9 +1442,18 @@ restrictedToMultiMonitorControls:YES];
         controller.window.contentView, @"horizontalPosition-percent");
     NSTextField *horizontalJitter = (NSTextField *)MatrixCodeDescendantWithIdentifier(
         controller.window.contentView, @"horizontalJitter-percent");
-    XCTAssertEqualWithAccuracy(position.doubleValue, 37.5, 0.001);
+    XCTAssertEqualWithAccuracy(position.doubleValue, 62.5, 0.001);
     XCTAssertEqualWithAccuracy(horizontalPosition.doubleValue, 12.5, 0.001);
     XCTAssertEqualWithAccuracy(horizontalJitter.doubleValue, 75, 0.001);
+
+    for (NSNumber *percentage in @[@0, @27, @50, @100]) {
+        position.doubleValue = percentage.doubleValue;
+        [position sendAction:position.action to:position.target];
+        NSDictionary *updated = MatrixCodeJSONDictionary(
+            [controller serializedValues][@"mx-messages"]);
+        XCTAssertEqualWithAccuracy([updated[@"verticalPosition"] doubleValue],
+                                   1.0 - percentage.doubleValue / 100.0, 0.000001);
+    }
 }
 
 - (void)testMessagesEditorSanitizesInvalidLayoutChoicesToWebDefaults {

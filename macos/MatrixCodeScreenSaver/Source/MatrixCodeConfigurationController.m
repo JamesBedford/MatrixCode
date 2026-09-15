@@ -2452,14 +2452,16 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                               @[@"Appear over (s)", @"appearMs"],
                               @[@"Each stays for (s)", @"persistenceMs"],
                               @[@"Disappear over (s)", @"disappearMs"],
-                              @[@"Vertical position (0 top–100 bottom)", @"verticalPosition"],
+                              @[@"Vertical position (0 bottom–100 top)", @"verticalPosition"],
                               @[@"Vertical randomness (%)", @"verticalJitter"],
                               @[@"Horizontal position (0 left–100 right)", @"horizontalPosition"],
                               @[@"Horizontal randomness (%)", @"horizontalJitter"]]) {
         BOOL percent = [field[1] hasPrefix:@"vertical"] ||
             [field[1] hasPrefix:@"horizontal"];
+        double displayedValue = [self.messages[field[1]] doubleValue];
+        if ([field[1] isEqualToString:@"verticalPosition"]) displayedValue = 1.0 - displayedValue;
         NSTextField *number = percent
-            ? [self percentField:[self.messages[field[1]] doubleValue]
+            ? [self percentField:displayedValue
                       identifier:field[1] action:@selector(messageNumberChanged:)]
             : [self secondsField:[self.messages[field[1]] doubleValue]
                       identifier:field[1] action:@selector(messageNumberChanged:)];
@@ -2561,6 +2563,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSString *key = [[sender.identifier stringByReplacingOccurrencesOfString:@"-percent" withString:@""]
         stringByReplacingOccurrencesOfString:@"-seconds" withString:@""];
     double value = sender.doubleValue * (percent ? 0.01 : (seconds ? 1000.0 : 1.0));
+    if ([key isEqualToString:@"verticalPosition"]) value = 1.0 - value;
     if ([key hasPrefix:@"vertical"] || [key hasPrefix:@"horizontal"]) {
         value = MIN(1, MAX(0, value));
     } else {

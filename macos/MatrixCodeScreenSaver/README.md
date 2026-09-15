@@ -386,9 +386,10 @@ relative placement samples. These choices are independent of vignette.
 
 For three displays side by side with another above the middle, horizontal
 position 50 and horizontal randomness 0 keep the message centered horizontally
-across the desktop. Vertical position uses the combined height: 25 places it on
-the upper display, while 75 places it on the lower middle display (for roughly
-equal display heights).
+across the desktop. Vertical position runs from 0 at the bottom to 100 at the top and uses the
+combined height: 75 places it on the upper display, while 25 places it on the
+lower middle display (for roughly equal display heights). Saved documents retain
+their top-origin coordinates, so existing message placements remain unchanged.
 
 Screen-saver host windows refresh their display slice when macOS moves them to
 another monitor, preserving the shared rain and message timeline.
