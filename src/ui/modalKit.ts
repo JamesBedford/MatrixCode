@@ -50,6 +50,7 @@ export abstract class ModalEditor {
 
   protected show(): void {
     this.el.style.display = "grid";
+    this.dialog.scrollTop = 0;
     this.isOpen = true;
     this.previewing = false;
     this.el.dispatchEvent(new CustomEvent(MODAL_OPEN_CHANGE_EVENT, { detail: { open: true } }));
@@ -156,6 +157,7 @@ export abstract class ModalEditor {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "mx-toggle";
+    btn.setAttribute("aria-label", label);
     const render = (v: boolean): void => {
       btn.setAttribute("aria-pressed", String(v));
       btn.textContent = v ? "On" : "Off";

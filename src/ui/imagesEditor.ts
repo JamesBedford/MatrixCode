@@ -32,7 +32,7 @@ export class ImagesEditor extends ModalEditor {
     private readonly controls: ControlsStore,
     private readonly callbacks: ImagesEditorCallbacks,
   ) {
-    super(parent, "Edit images");
+    super(parent, "In-rain Images");
   }
 
   open(): void {
@@ -115,16 +115,20 @@ export class ImagesEditor extends ModalEditor {
 
   protected build(): void {
     this.dialog.replaceChildren();
-    this.dialog.appendChild(this.heading("h2", "Edit images"));
+    this.dialog.appendChild(this.heading("h2", "In-rain Images"));
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint";
     hint.textContent =
       "Images emerge from the stationary glyph grid as illumination sweeps down it. Imported files are stored as compact 96-cell luminance masks.";
     this.dialog.appendChild(hint);
 
+    const enabled = this.toggleField("Enable images", this.draft.enabled, (value) => (this.draft.enabled = value));
+    enabled.title = "Enable images (Shift+X)";
+    this.dialog.appendChild(enabled);
+
     const actions = document.createElement("div");
     actions.className = "mx-line-timings";
-    const add = this.textButton(`+ Add images (${this.draft.images.length}/${MAX_IMAGES})`, "mx-btn", () => {
+    const add = this.textButton(`Add Images (${this.draft.images.length}/${MAX_IMAGES})`, "mx-btn", () => {
       const picker = document.createElement("input");
       picker.type = "file";
       picker.accept = "image/png,image/jpeg,image/gif,image/bmp,image/tiff,image/heic,image/webp,image/svg+xml";
@@ -135,7 +139,7 @@ export class ImagesEditor extends ModalEditor {
     add.disabled = this.draft.images.length >= MAX_IMAGES;
     actions.append(
       add,
-      this.textButton("Max visibility", "mx-btn", () => this.applyMaxVisibility()),
+      this.textButton("Max Visibility", "mx-btn", () => this.applyMaxVisibility()),
     );
     this.dialog.appendChild(actions);
 
@@ -145,18 +149,15 @@ export class ImagesEditor extends ModalEditor {
 
     this.dialog.appendChild(this.heading("h3", "Behaviour"));
     const behaviour = document.createElement("div");
-    behaviour.className = "mx-line-timings";
-    const enabled = this.toggleField("Show images", this.draft.enabled, (value) => (this.draft.enabled = value));
-    enabled.title = "Show images (Shift+X)";
+    behaviour.className = "mx-settings-fields";
     behaviour.append(
-      enabled,
       this.secondsField("Show one every (s)", this.draft.frequencyMs, (value) => (this.draft.frequencyMs = value)),
-      this.secondsField("Each stays for (s)", this.draft.persistenceMs, (value) => (this.draft.persistenceMs = value)),
       this.secondsField("Appear over (s)", this.draft.appearMs, (value) => (this.draft.appearMs = value)),
+      this.secondsField("Each stays for (s)", this.draft.persistenceMs, (value) => (this.draft.persistenceMs = value)),
       this.secondsField("Disappear over (s)", this.draft.disappearMs, (value) => (this.draft.disappearMs = value)),
-      this.percentField("Screen width", this.draft.imageScale, (value) => (this.draft.imageScale = value)),
+      this.percentField("Screen width (%)", this.draft.imageScale, (value) => (this.draft.imageScale = value)),
       this.percentField(
-        "Placement randomness",
+        "Placement randomness (%)",
         this.draft.imagePlacementJitter,
         (value) => (this.draft.imagePlacementJitter = value),
       ),
@@ -164,6 +165,8 @@ export class ImagesEditor extends ModalEditor {
       this.toggleField("Brightness fade", this.draft.brightnessFade, (value) => (this.draft.brightnessFade = value)),
     );
     this.dialog.appendChild(behaviour);
+
+    this.dialog.appendChild(this.textButton("Preview Image", "mx-btn", () => this.preview()));
 
     this.dialog.appendChild(this.footer([
       {
@@ -175,7 +178,6 @@ export class ImagesEditor extends ModalEditor {
         },
       },
       { label: "Cancel", onClick: () => this.cancel() },
-      { label: "Preview image", onClick: () => this.preview() },
       { label: "Save", onClick: () => this.save() },
     ]));
   }

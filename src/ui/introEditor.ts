@@ -23,7 +23,7 @@ export class IntroEditor extends ModalEditor {
     private cb: IntroEditorCallbacks,
     private getMomentNames: () => string[],
   ) {
-    super(parent, "Edit intro");
+    super(parent, "Typed Intro");
     this.draft = cloneIntro(DEFAULT_INTRO);
     this.linesEl = document.createElement("div");
   }
@@ -61,8 +61,8 @@ export class IntroEditor extends ModalEditor {
   protected build(): void {
     this.dialog.replaceChildren();
 
-    this.dialog.appendChild(this.heading("h2", "Edit intro"));
-    this.dialog.appendChild(this.toggleField("Enable intro", this.draft.enabled, (v) => (this.draft.enabled = v)));
+    this.dialog.appendChild(this.heading("h2", "Typed Intro"));
+    this.dialog.appendChild(this.toggleField("Play intro on every launch", this.draft.enabled, (v) => (this.draft.enabled = v)));
 
     this.dialog.appendChild(this.heading("h3", "Lines"));
 
@@ -77,7 +77,7 @@ export class IntroEditor extends ModalEditor {
     this.dialog.appendChild(this.linesEl);
     this.renderLines();
 
-    const add = this.textButton("+ Add line", "mx-btn mx-modal-add", () => {
+    const add = this.textButton("Add Line", "mx-btn mx-modal-add", () => {
       this.draft.lines.push({ text: "", holdMs: DEFAULT_HOLD_MS, pauseMs: DEFAULT_PAUSE_MS });
       this.renderLines();
     });
@@ -85,15 +85,15 @@ export class IntroEditor extends ModalEditor {
 
     this.dialog.appendChild(this.heading("h3", "Timing"));
     const timing = document.createElement("div");
-    timing.className = "mx-line-timings";
-    timing.appendChild(this.numberField("Typing speed (ms/char)", this.draft.charMs, 10, 500, 5, (v) => (this.draft.charMs = v)));
+    timing.className = "mx-settings-fields";
+    timing.appendChild(this.numberField("Typing speed (ms/character)", this.draft.charMs, 10, 500, 5, (v) => (this.draft.charMs = v)));
     timing.appendChild(this.secondsField("Start delay (s)", this.draft.startDelayMs, (ms) => (this.draft.startDelayMs = ms)));
     timing.appendChild(this.secondsField("Fade out (s)", this.draft.fadeOutMs, (ms) => (this.draft.fadeOutMs = ms)));
     this.dialog.appendChild(timing);
 
     this.dialog.appendChild(this.heading("h3", "Rain"));
     const rain = document.createElement("div");
-    rain.className = "mx-line-timings";
+    rain.className = "mx-settings-fields";
     const delay = this.secondsField("Delay after intro (s)", this.draft.postIntroDelayMs, (ms) => (this.draft.postIntroDelayMs = ms));
     const delayInput = delay.querySelector("input");
     const applyDelayEnabled = (): void => {
@@ -107,10 +107,11 @@ export class IntroEditor extends ModalEditor {
     applyDelayEnabled();
     this.dialog.appendChild(rain);
 
+    this.dialog.appendChild(this.textButton("Preview Intro", "mx-btn", () => this.preview()));
+
     this.dialog.appendChild(this.footer([
       { label: "Reset to default", className: "mx-btn mx-reset", onClick: () => { this.draft = cloneIntro(DEFAULT_INTRO); this.build(); } },
       { label: "Cancel", onClick: () => this.cancel() },
-      { label: "Preview", onClick: () => this.preview() },
       { label: "Save", onClick: () => this.save() },
     ]));
   }

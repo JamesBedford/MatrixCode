@@ -15,7 +15,7 @@ const GLYPH_OPTIONS: [GlyphMode, string][] = [
 
 export class CharacterSettingsEditor extends ModalEditor {
   constructor(parent: HTMLElement, private controls: ControlsStore) {
-    super(parent, "Character settings");
+    super(parent, "Characters");
   }
 
   open(): void {
@@ -37,14 +37,16 @@ export class CharacterSettingsEditor extends ModalEditor {
     hint.textContent = "Controls for the ambient rain glyphs. In-rain messages keep their readable character set.";
     this.dialog.appendChild(hint);
 
-    this.dialog.appendChild(this.selectField("Character set", c.glyphMode, GLYPH_OPTIONS, (glyphMode) => {
+    const fields = document.createElement("div");
+    fields.className = "mx-settings-fields";
+    fields.appendChild(this.selectField("Character set", c.glyphMode, GLYPH_OPTIONS, (glyphMode) => {
       this.controls.set({ glyphMode, mirror: preferredMirrorForGlyphMode(glyphMode) });
       this.build();
     }));
-    this.dialog.appendChild(this.selectField<GlyphFont>("Font", c.glyphFont, GLYPH_FONT_OPTIONS, (glyphFont) => {
+    fields.appendChild(this.selectField<GlyphFont>("Font", c.glyphFont, GLYPH_FONT_OPTIONS, (glyphFont) => {
       this.controls.set({ glyphFont });
     }));
-    this.dialog.appendChild(this.rangeField(
+    fields.appendChild(this.rangeField(
       "Glyph change",
       "glyphRate",
       CONTROL_RANGES.glyphRate.min,
@@ -52,9 +54,11 @@ export class CharacterSettingsEditor extends ModalEditor {
       CONTROL_RANGES.glyphRate.step,
       (v) => `${v.toFixed(2)}x`,
     ));
-    this.dialog.appendChild(this.toggleField("Mirror glyphs", c.mirror, (mirror) => {
+    fields.appendChild(this.toggleField("Mirror glyphs", c.mirror, (mirror) => {
       this.controls.set({ mirror });
     }));
+
+    this.dialog.appendChild(fields);
 
     this.dialog.appendChild(this.footer([
       {

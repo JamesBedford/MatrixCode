@@ -1,6 +1,6 @@
 import type { Controls, PresetName, QualityTier } from "../types.ts";
 import { CONTROL_RANGES, DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
-import { isNativeConfiguration, nativeStorageDidChange } from "../platform/nativeHost.ts";
+import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 import { resolveDefaultUserName } from "../sim/messageOverlay.ts";
 
 export interface PanelCallbacks {
@@ -85,7 +85,7 @@ export class ControlsPanel {
     title.textContent = "Matrix";
     this.panel.appendChild(title);
 
-    if (isNativeConfiguration()) this.viewerName();
+    if (!options.multiMonitor) this.viewerName();
 
     this.range("Density", "density", CONTROL_RANGES.density.min, CONTROL_RANGES.density.max, CONTROL_RANGES.density.step, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =. Turn up past 20 (with Allow overlap on) to make raindrops overlap between columns.");
     this.range("Ramp-up", "rampUpMs", CONTROL_RANGES.rampUpMs.min, CONTROL_RANGES.rampUpMs.max, CONTROL_RANGES.rampUpMs.step, (v) => controls.set({ rampUpMs: v }), (v) => (v === 0 ? "off" : `${(v / 1000).toFixed(1)}s`), undefined, "How long the rain builds up to full density when it first starts, on load (0 = instant)");
@@ -126,39 +126,37 @@ export class ControlsPanel {
     this.toggle("Scanlines", c.scanlines, (v) => controls.set({ scanlines: v }));
     this.toggle("Allow overlap", c.allowOverlap, (v) => controls.set({ allowOverlap: v }));
 
+    const actions = document.createElement("div");
+    actions.className = "mx-panel-actions";
+    this.panel.appendChild(actions);
+
     const characters = this.button("▦ Characters", () => this.cb.onEditCharacters());
-    characters.style.marginTop = "6px";
-    this.panel.appendChild(characters);
+    actions.appendChild(characters);
 
     if (options.introControls !== false) {
       const replay = this.button("▷ Replay intro", () => {
         this.cb.onReplayIntro();
         this.forceHide(); // dismiss the panel so the replayed intro plays unobstructed
       });
-      replay.style.marginTop = "6px";
-      this.panel.appendChild(replay);
+      actions.appendChild(replay);
 
       const edit = this.button("✎ Edit intro", () => this.cb.onEditIntro());
       edit.title = "Edit intro (I)";
-      edit.style.marginTop = "6px";
-      this.panel.appendChild(edit);
+      actions.appendChild(edit);
     }
 
     if (options.documentEditors !== false) {
       const editMsgs = this.button("✎ Edit messages", () => this.cb.onEditMessages());
       editMsgs.title = "Edit messages (M)";
-      editMsgs.style.marginTop = "6px";
-      this.panel.appendChild(editMsgs);
+      actions.appendChild(editMsgs);
 
-      const editImages = this.button("✎ Edit images", () => this.cb.onEditImages?.());
+      const editImages = this.button("▧ Edit images", () => this.cb.onEditImages?.());
       editImages.title = "Edit images (X)";
-      editImages.style.marginTop = "6px";
-      this.panel.appendChild(editImages);
+      actions.appendChild(editImages);
 
       const editCountdown = this.button("⏱ Edit countdown", () => this.cb.onEditCountdown());
       editCountdown.title = "Edit countdown (C)";
-      editCountdown.style.marginTop = "6px";
-      this.panel.appendChild(editCountdown);
+      actions.appendChild(editCountdown);
     }
 
     // Resets the tunable controls only — the user's custom intro (mx-intro) and
@@ -168,8 +166,7 @@ export class ControlsPanel {
       controls.set(DEFAULT_CONTROLS);
       if (!options.multiMonitor) location.reload();
     });
-    reset.style.marginTop = "6px";
-    this.panel.appendChild(reset);
+    actions.appendChild(reset);
 
     const hint = document.createElement("p");
     hint.className = "mx-hint";
@@ -181,6 +178,8 @@ export class ControlsPanel {
     this.el.appendChild(this.panel);
     parent.appendChild(this.el);
 
+    this.panel.addEventListener("focusin", () => this.show());
+    this.panel.addEventListener("focusout", () => this.scheduleHide());
     this.panel.addEventListener("pointerenter", () => (this.pinned = true));
     this.panel.addEventListener("pointerleave", () => {
       this.pinned = false;
@@ -208,10 +207,12 @@ export class ControlsPanel {
 
   private viewerName(): void {
     const row = this.row("Viewer name");
+    row.classList.add("mx-row--inline");
     const input = document.createElement("input");
     input.className = "mx-name-input";
     input.type = "text";
     input.maxLength = 80;
+    input.setAttribute("aria-label", "Viewer name");
     input.placeholder = resolveDefaultUserName();
     try {
       input.value = localStorage.getItem("mx-user-name") ?? "";
@@ -259,6 +260,7 @@ export class ControlsPanel {
     row.appendChild(val);
     const input = document.createElement("input");
     input.type = "range";
+    input.setAttribute("aria-label", label);
     input.min = String(min);
     input.max = String(max);
     input.step = String(step);
@@ -286,6 +288,7 @@ export class ControlsPanel {
     const row = this.row(label);
     row.classList.add("mx-row--inline");
     const sel = document.createElement("select");
+    sel.setAttribute("aria-label", label);
     for (const [v, text] of options) {
       const opt = document.createElement("option");
       opt.value = v;
@@ -304,11 +307,12 @@ export class ControlsPanel {
     const controls = document.createElement("div");
     controls.className = "mx-color-controls";
     const select = document.createElement("select");
+    select.setAttribute("aria-label", "Color");
     const options: [PresetName, string][] = [
       ["classic", "Green (Classic)"],
       ["amber", "Amber"],
-      ["orange", "Orange"],
       ["gold", "Gold"],
+      ["orange", "Orange"],
       ["red", "Red"],
       ["pink", "Pink"],
       ["purple", "Purple"],
@@ -365,6 +369,7 @@ export class ControlsPanel {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "mx-toggle";
+    btn.setAttribute("aria-label", label);
     const render = (v: boolean): void => {
       btn.setAttribute("aria-pressed", String(v));
       btn.textContent = v ? "On" : "Off";
@@ -407,7 +412,7 @@ export class ControlsPanel {
   private scheduleHide(): void {
     window.clearTimeout(this.hideTimer);
     this.hideTimer = window.setTimeout(() => {
-      if (!this.pinned) this.forceHide();
+      if (!this.pinned && !this.panel.contains(document.activeElement)) this.forceHide();
     }, HIDE_DELAY_MS);
   }
 

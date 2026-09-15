@@ -18,7 +18,7 @@ export class CountdownEditor extends ModalEditor {
   private previewTimer: number | null = null;
 
   constructor(parent: HTMLElement, private store: CountdownStore, private cb: CountdownEditorCallbacks) {
-    super(parent, "Edit countdown");
+    super(parent, "Countdowns and Countups");
     this.draft = cloneCountdown(DEFAULT_COUNTDOWN);
   }
 
@@ -46,7 +46,7 @@ export class CountdownEditor extends ModalEditor {
   protected build(): void {
     this.dialog.replaceChildren();
 
-    this.dialog.appendChild(this.heading("h2", "Edit countdown"));
+    this.dialog.appendChild(this.heading("h2", "Countdowns and Countups"));
 
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint";
@@ -54,7 +54,7 @@ export class CountdownEditor extends ModalEditor {
     this.dialog.appendChild(hint);
 
     this.dialog.appendChild(
-      this.dateTimeField("Target date & time", this.draft.targetMs, (ms) => {
+      this.dateTimeField("Default target", this.draft.targetMs, (ms) => {
         this.draft.targetMs = ms;
         this.refreshPreview();
       }),
@@ -70,7 +70,7 @@ export class CountdownEditor extends ModalEditor {
     this.dialog.appendChild(this.momentsEl);
     this.renderMoments();
 
-    const addMoment = this.textButton("+ Add moment", "mx-btn mx-modal-add", () => {
+    const addMoment = this.textButton("Add Named Moment", "mx-btn mx-modal-add", () => {
       this.draft.moments.push({ name: "", targetMs: null });
       this.renderMoments();
     });

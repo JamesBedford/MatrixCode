@@ -27,7 +27,7 @@ export class MessagesEditor extends ModalEditor {
     private cb: MessagesEditorCallbacks,
     private getMomentNames: () => string[],
   ) {
-    super(parent, "Edit messages");
+    super(parent, "In-rain Messages");
     this.draft = cloneMessages(DEFAULT_MESSAGES);
     this.listEl = document.createElement("div");
   }
@@ -42,7 +42,7 @@ export class MessagesEditor extends ModalEditor {
     this.cancel();
   }
 
-  /** Reflect an externally-toggled "Show messages" (the keyboard shortcut) into an open editor, keeping other edits. */
+  /** Reflect an externally-toggled "Enable messages" (the keyboard shortcut) into an open editor, keeping other edits. */
   syncEnabled(enabled: boolean): void {
     if (!this.isOpen || this.draft.enabled === enabled) return;
     this.draft.enabled = enabled;
@@ -84,19 +84,44 @@ export class MessagesEditor extends ModalEditor {
   protected build(): void {
     this.dialog.replaceChildren();
 
-    this.dialog.appendChild(this.heading("h2", "Edit messages"));
+    this.dialog.appendChild(this.heading("h2", "In-rain Messages"));
     const settings = document.createElement("fieldset");
     settings.className = "mx-message-settings";
     settings.disabled = !this.draft.enabled;
-    const showMessages = this.toggleField("Show messages", this.draft.enabled, (v) => {
+    const showMessages = this.toggleField("Enable messages", this.draft.enabled, (v) => {
       this.draft.enabled = v;
       settings.disabled = !v;
       preview.disabled = !v;
       reset.disabled = !v;
     });
-    showMessages.title = "Show messages (N)";
+    showMessages.title = "Enable messages (N)";
     this.dialog.appendChild(showMessages);
     this.dialog.appendChild(settings);
+    const layout = document.createElement("div");
+    layout.className = "mx-settings-fields";
+    layout.appendChild(this.choiceField<MessageLayout>(
+      "Message layout",
+      this.draft.messageLayout,
+      [
+        { value: "row", label: "Row across rain" },
+        { value: "drop", label: "Single drop" },
+      ],
+      (v) => {
+        this.draft.messageLayout = v;
+        this.build();
+      },
+    ));
+    layout.appendChild(this.choiceField<MessageDirection>(
+      "Drop direction",
+      this.draft.messageDirection,
+      [
+        { value: "topToBottom", label: "Top to bottom" },
+        { value: "bottomToTop", label: "Bottom to top" },
+      ],
+      (v) => (this.draft.messageDirection = v),
+      this.draft.messageLayout !== "drop",
+    ));
+    settings.appendChild(layout);
     settings.appendChild(this.heading("h3", "Messages"));
 
     const hint = document.createElement("p");
@@ -116,10 +141,11 @@ export class MessagesEditor extends ModalEditor {
     settings.appendChild(hint);
 
     this.listEl = document.createElement("div");
+    this.listEl.className = "mx-message-list";
     settings.appendChild(this.listEl);
     this.renderMessages();
 
-    const add = this.textButton("+ Add message", "mx-btn mx-modal-add", () => {
+    const add = this.textButton("Add Message", "mx-btn mx-modal-add", () => {
       this.draft.messages.push("");
       this.renderMessages();
     });
@@ -127,32 +153,10 @@ export class MessagesEditor extends ModalEditor {
 
     settings.appendChild(this.heading("h3", "Behaviour"));
     const behaviour = document.createElement("div");
-    behaviour.className = "mx-line-timings";
-    behaviour.appendChild(this.choiceField<MessageLayout>(
-      "Message layout",
-      this.draft.messageLayout,
-      [
-        { value: "row", label: "Row across rain" },
-        { value: "drop", label: "Single drop" },
-      ],
-      (v) => {
-        this.draft.messageLayout = v;
-        this.build();
-      },
-    ));
-    behaviour.appendChild(this.choiceField<MessageDirection>(
-      "Drop direction",
-      this.draft.messageDirection,
-      [
-        { value: "topToBottom", label: "Top to bottom" },
-        { value: "bottomToTop", label: "Bottom to top" },
-      ],
-      (v) => (this.draft.messageDirection = v),
-      this.draft.messageLayout !== "drop",
-    ));
+    behaviour.className = "mx-settings-fields";
     behaviour.appendChild(this.secondsField("Show one every (s)", this.draft.frequencyMs, (ms) => (this.draft.frequencyMs = ms)));
-    behaviour.appendChild(this.secondsField("Each stays for (s)", this.draft.persistenceMs, (ms) => (this.draft.persistenceMs = ms)));
     behaviour.appendChild(this.secondsField("Appear over (s)", this.draft.appearMs, (ms) => (this.draft.appearMs = ms)));
+    behaviour.appendChild(this.secondsField("Each stays for (s)", this.draft.persistenceMs, (ms) => (this.draft.persistenceMs = ms)));
     behaviour.appendChild(this.secondsField("Disappear over (s)", this.draft.disappearMs, (ms) => (this.draft.disappearMs = ms)));
     behaviour.appendChild(this.percentField(
       "Vertical position (0 top–100 bottom)",
@@ -190,13 +194,13 @@ export class MessagesEditor extends ModalEditor {
       this.build();
     });
     reset.disabled = !this.draft.enabled;
-    const preview = this.textButton("Preview", "mx-btn", () => this.preview());
+    const preview = this.textButton("Preview Message", "mx-btn", () => this.preview());
     preview.disabled = !this.draft.enabled;
+    settings.appendChild(preview);
     const footer = this.footer([]);
     footer.append(
       reset,
       this.textButton("Cancel", "mx-btn", () => this.cancel()),
-      preview,
       this.textButton("Save", "mx-btn", () => this.save()),
     );
     this.dialog.appendChild(footer);
