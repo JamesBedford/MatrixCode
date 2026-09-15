@@ -467,6 +467,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 @property(nonatomic, copy, nullable) dispatch_block_t resetRainHandler;
 @property(nonatomic, strong) NSStackView *introLinesStack;
 @property(nonatomic, strong) NSStackView *messageLinesStack;
+@property(nonatomic, strong) NSStackView *messageSettingsStack;
+@property(nonatomic, weak) NSButton *messageResetButton;
 @property(nonatomic, strong) NSStackView *imageItemsStack;
 @property(nonatomic, strong) NSStackView *momentsStack;
 @property(nonatomic, strong) MatrixCodeNativePreviewController *previewController;
@@ -1471,6 +1473,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSButton *reset = [self settingsButton:[self editorResetButtonTitleForKind:kind]
                                     action:@selector(resetCurrentEditor:)
                                 identifier:@"editor-reset"];
+    if ([kind isEqualToString:@"messages"]) {
+        self.messageResetButton = reset;
+        reset.enabled = [self.messages[@"enabled"] boolValue];
+    }
     NSButton *cancel = [self editorKindShowsCancelButton:kind]
         ? [self settingsButton:@"Cancel"
                         action:@selector(closeEditorCancel:)
@@ -1718,6 +1724,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [self stopCountdownPreview];
     self.introLinesStack = nil;
     self.messageLinesStack = nil;
+    self.messageSettingsStack = nil;
+    self.messageResetButton = nil;
     self.imageItemsStack = nil;
     self.momentsStack = nil;
     self.postIntroDelayField = nil;
@@ -2324,6 +2332,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (NSView *)messagesTab {
     NSStackView *stack;
     NSView *scroll = [self scrollingStack:&stack];
+    self.messageSettingsStack = stack;
     [stack addArrangedSubview:[self heading:@"In-rain Messages"]];
     NSTextField *hint = [NSTextField wrappingLabelWithString:
         @"Messages support {name}, {greeting}, {uptime}, {fps}, {time}, {countdown}, {countup}, and named moments. ⓘ"];
@@ -2385,7 +2394,28 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         [stack addArrangedSubview:button];
     }
     [stack addArrangedSubview:[NSButton buttonWithTitle:@"Preview Message" target:self action:@selector(previewMessage:)]];
+    [self updateMessageSettingsEnabledInView:stack];
     return scroll;
+}
+
+- (void)updateMessageSettingsEnabledInView:(NSView *)view {
+    if ([view isKindOfClass:NSControl.class]) {
+        NSControl *control = (NSControl *)view;
+        if (control.action && ![control.identifier isEqualToString:@"enabled"]) {
+            BOOL enabled = [self.messages[@"enabled"] boolValue];
+            if ([control.identifier isEqualToString:@"messageDirection"]) {
+                enabled = enabled && [self.messages[@"messageLayout"] isEqualToString:@"drop"];
+            } else if (control.action == @selector(moveMessage:)) {
+                BOOL canMove = [control.identifier isEqualToString:@"up"]
+                    ? control.tag > 0 : control.tag + 1 < (NSInteger)self.messageLines.count;
+                enabled = enabled && canMove;
+            }
+            control.enabled = enabled;
+        }
+    }
+    for (NSView *subview in view.subviews) {
+        [self updateMessageSettingsEnabledInView:subview];
+    }
 }
 
 - (void)rebuildMessageLines {
@@ -2407,6 +2437,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         row.spacing = 6; row.alignment = NSLayoutAttributeCenterY;
         [self.messageLinesStack addArrangedSubview:[self settingsCardContainingView:row]];
     }];
+    [self updateMessageSettingsEnabledInView:self.messageSettingsStack];
     [self resizeScrollingDocumentContainingView:self.messageLinesStack];
 }
 - (void)messageLineChanged:(NSTextField *)sender {
@@ -2455,6 +2486,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (void)messageToggleChanged:(NSButton *)sender {
     self.messages[sender.identifier] =
         MatrixCodeSettingBoolObject(sender.state == NSControlStateValueOn);
+    self.messageResetButton.enabled = [self.messages[@"enabled"] boolValue];
+    [self updateMessageSettingsEnabledInView:self.messageSettingsStack];
     [self draftDidChange];
 }
 

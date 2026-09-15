@@ -85,7 +85,19 @@ export class MessagesEditor extends ModalEditor {
     this.dialog.replaceChildren();
 
     this.dialog.appendChild(this.heading("h2", "Edit messages"));
-    this.dialog.appendChild(this.heading("h3", "Messages"));
+    const settings = document.createElement("fieldset");
+    settings.className = "mx-message-settings";
+    settings.disabled = !this.draft.enabled;
+    const showMessages = this.toggleField("Show messages", this.draft.enabled, (v) => {
+      this.draft.enabled = v;
+      settings.disabled = !v;
+      preview.disabled = !v;
+      reset.disabled = !v;
+    });
+    showMessages.title = "Show messages (N)";
+    this.dialog.appendChild(showMessages);
+    this.dialog.appendChild(settings);
+    settings.appendChild(this.heading("h3", "Messages"));
 
     const hint = document.createElement("p");
     hint.className = "mx-modal-hint mx-modal-tooltip-trigger";
@@ -101,24 +113,21 @@ export class MessagesEditor extends ModalEditor {
     tooltip.setAttribute("role", "tooltip");
     tooltip.textContent = momentHint(this.getMomentNames());
     hint.appendChild(tooltip);
-    this.dialog.appendChild(hint);
+    settings.appendChild(hint);
 
     this.listEl = document.createElement("div");
-    this.dialog.appendChild(this.listEl);
+    settings.appendChild(this.listEl);
     this.renderMessages();
 
     const add = this.textButton("+ Add message", "mx-btn mx-modal-add", () => {
       this.draft.messages.push("");
       this.renderMessages();
     });
-    this.dialog.appendChild(add);
+    settings.appendChild(add);
 
-    this.dialog.appendChild(this.heading("h3", "Behaviour"));
+    settings.appendChild(this.heading("h3", "Behaviour"));
     const behaviour = document.createElement("div");
     behaviour.className = "mx-line-timings";
-    const showMessages = this.toggleField("Show messages", this.draft.enabled, (v) => (this.draft.enabled = v));
-    showMessages.title = "Show messages (N)";
-    behaviour.appendChild(showMessages);
     behaviour.appendChild(this.choiceField<MessageLayout>(
       "Message layout",
       this.draft.messageLayout,
@@ -165,23 +174,32 @@ export class MessagesEditor extends ModalEditor {
       this.draft.horizontalJitter,
       (f) => (this.draft.horizontalJitter = f),
     ));
-    this.dialog.appendChild(behaviour);
+    settings.appendChild(behaviour);
 
     const appendToggleRow = (label: string, value: boolean, onChange: (v: boolean) => void): void => {
       const row = document.createElement("div");
       row.className = "mx-line-timings";
       row.appendChild(this.toggleField(label, value, onChange));
-      this.dialog.appendChild(row);
+      settings.appendChild(row);
     };
     appendToggleRow("Flicker dissolve", this.draft.flickerOut, (v) => (this.draft.flickerOut = v));
     appendToggleRow("Brightness fade", this.draft.brightnessFade, (v) => (this.draft.brightnessFade = v));
 
-    this.dialog.appendChild(this.footer([
-      { label: "Reset to default", className: "mx-btn mx-reset", onClick: () => { this.draft = cloneMessages(DEFAULT_MESSAGES); this.build(); } },
-      { label: "Cancel", onClick: () => this.cancel() },
-      { label: "Preview", onClick: () => this.preview() },
-      { label: "Save", onClick: () => this.save() },
-    ]));
+    const reset = this.textButton("Reset to default", "mx-btn mx-reset", () => {
+      this.draft = cloneMessages(DEFAULT_MESSAGES);
+      this.build();
+    });
+    reset.disabled = !this.draft.enabled;
+    const preview = this.textButton("Preview", "mx-btn", () => this.preview());
+    preview.disabled = !this.draft.enabled;
+    const footer = this.footer([]);
+    footer.append(
+      reset,
+      this.textButton("Cancel", "mx-btn", () => this.cancel()),
+      preview,
+      this.textButton("Save", "mx-btn", () => this.save()),
+    );
+    this.dialog.appendChild(footer);
   }
 
   private renderMessages(): void {

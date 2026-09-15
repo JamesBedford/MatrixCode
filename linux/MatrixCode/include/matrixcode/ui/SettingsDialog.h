@@ -47,6 +47,7 @@ class SettingsDialog final : public QDialog {
   void Populate(const SettingsSnapshot& settings);
   void ResetCurrentPage();
   void PreviewCurrentPage();
+  void UpdatePreviewAvailability();
   void ImportImages();
   void ApplyMaximumImageVisibility();
   void UpdateImageTable();

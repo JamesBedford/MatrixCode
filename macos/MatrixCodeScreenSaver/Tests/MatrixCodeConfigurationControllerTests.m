@@ -15,6 +15,7 @@
 - (void)imageNumberChanged:(NSTextField *)sender;
 - (void)loadSettingsBackdropIfNeeded;
 - (void)messageChoiceChanged:(NSPopUpButton *)sender;
+- (void)messageToggleChanged:(NSButton *)sender;
 - (void)moveIntroLine:(NSButton *)sender;
 - (void)moveImage:(NSButton *)sender;
 - (void)moveMessage:(NSButton *)sender;
@@ -75,6 +76,8 @@ static NSArray<NSString *> *MatrixCodeTransientEditorReferenceKeys(void) {
     return @[
         @"introLinesStack",
         @"messageLinesStack",
+        @"messageSettingsStack",
+        @"messageResetButton",
         @"imageItemsStack",
         @"momentsStack",
         @"postIntroDelayField",
@@ -1061,6 +1064,43 @@ restrictedToMultiMonitorControls:YES];
         controller.window.contentView, @"messages-token-hint");
     XCTAssertNotNil(messagesHint);
     XCTAssertEqualObjects(messagesHint.toolTip, introHint.toolTip);
+}
+
+- (void)testMessageSettingsFollowEnableToggleAndPreserveReorderConstraints {
+    [self.preferences commitValues:@{@"mx-messages": MatrixCodeJSONString(@{
+        @"enabled": @NO, @"messages": @[@"FIRST", @"SECOND"], @"messageLayout": @"row"
+    })}];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller openEditorKind:@"messages"];
+    NSStackView *stack = [controller valueForKey:@"messageSettingsStack"];
+    NSButton *enabled = (NSButton *)MatrixCodeDescendantWithIdentifier(stack, @"enabled");
+    NSMutableArray<NSControl *> *controls = [NSMutableArray array];
+    NSMutableArray<NSView *> *pending = [NSMutableArray arrayWithObject:stack];
+    while (pending.count) {
+        NSView *view = pending.lastObject;
+        [pending removeLastObject];
+        [pending addObjectsFromArray:view.subviews];
+        if ([view isKindOfClass:NSControl.class] && [(NSControl *)view action] && view != enabled) {
+            [controls addObject:(NSControl *)view];
+        }
+    }
+    [controls addObject:[controller valueForKey:@"messageResetButton"]];
+    XCTAssertGreaterThan(controls.count, 15u);
+    XCTAssertTrue(enabled.enabled);
+    for (NSControl *control in controls) XCTAssertFalse(control.enabled, @"%@", control);
+    enabled.state = NSControlStateValueOn;
+    [controller messageToggleChanged:enabled];
+    for (NSControl *control in controls) {
+        BOOL applicable = ![control.identifier isEqualToString:@"messageDirection"] &&
+            !([control.identifier isEqualToString:@"up"] && control.tag == 0) &&
+            !([control.identifier isEqualToString:@"down"] && control.tag == 1);
+        XCTAssertEqual(control.enabled, applicable, @"%@", control);
+    }
+    enabled.state = NSControlStateValueOff;
+    [controller messageToggleChanged:enabled];
+    for (NSControl *control in controls) XCTAssertFalse(control.enabled, @"%@", control);
+    XCTAssertTrue(enabled.enabled);
 }
 
 - (void)testMessagesEditorPersistsDropLayoutAndKeepsBothAxisControls {

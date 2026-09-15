@@ -518,8 +518,15 @@ void PopulateList(EditorState& state, int selection) {
   state.updating = false;
 }
 
-void LoadSelected(EditorState& state) {
-  const bool hasItem = state.selected >= 0 && state.selected < ItemCount(state);
+void UpdateControlAvailability(EditorState& state) {
+  const bool enabled = state.page != Page::Messages || Checked(state.window, IdEnabled);
+  if (state.page == Page::Messages) {
+    for (const HWND control : state.pageControls) {
+      if (GetDlgCtrlID(control) != IdEnabled) EnableWindow(control, enabled);
+    }
+  }
+  EnableWindow(GetDlgItem(state.window, IdResetSection), enabled);
+  const bool hasItem = enabled && state.selected >= 0 && state.selected < ItemCount(state);
   EnableWindow(GetDlgItem(state.window, IdRemove),
     hasItem && !(state.page == Page::Intro && ItemCount(state) == 1));
   EnableWindow(GetDlgItem(state.window, IdUp), hasItem && state.selected > 0);
@@ -529,6 +536,11 @@ void LoadSelected(EditorState& state) {
   EnableWindow(GetDlgItem(state.window, IdName), hasItem);
   EnableWindow(GetDlgItem(state.window, IdItemDate), hasItem);
   EnableWindow(GetDlgItem(state.window, IdItemTime), hasItem);
+}
+
+void LoadSelected(EditorState& state) {
+  UpdateControlAvailability(state);
+  const bool hasItem = state.selected >= 0 && state.selected < ItemCount(state);
   state.updating = true;
   switch (state.page) {
     case Page::Intro:
@@ -1128,6 +1140,10 @@ LRESULT CALLBACK WindowProcedure(
         return 0;
       }
       switch (LOWORD(wParam)) {
+        case IdEnabled:
+          if (HIWORD(wParam) == BN_CLICKED && state->page == Page::Messages)
+            UpdateControlAvailability(*state);
+          return 0;
         case IdPreview: StartIntroPreview(*state); return 0;
         case IdAdd: AddItem(*state); return 0;
         case IdRemove: RemoveItem(*state); return 0;

@@ -190,6 +190,14 @@ SettingsDialog::SettingsDialog(
   footer->addStretch();
   footer->addWidget(buttons);
   root->addLayout(footer);
+  const auto updatePageActionAvailability = [this, reset] {
+    reset->setEnabled(static_cast<SettingsPage>(tabs_->currentIndex()) != SettingsPage::Messages ||
+      messagesEnabled_->isChecked());
+    UpdatePreviewAvailability();
+  };
+  connect(tabs_, &QTabWidget::currentChanged, this, updatePageActionAvailability);
+  connect(messagesEnabled_, &QCheckBox::toggled, this, updatePageActionAvailability);
+  updatePageActionAvailability();
   connect(reset, &QPushButton::clicked, this, [this] { ResetCurrentPage(); });
   connect(previewButton_, &QPushButton::clicked, this, [this] { PreviewCurrentPage(); });
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -203,7 +211,13 @@ SettingsDialog::SettingsDialog(
 
 void SettingsDialog::SetPreviewCallback(PreviewCallback callback) {
   previewCallback_ = std::move(callback);
-  previewButton_->setEnabled(static_cast<bool>(previewCallback_));
+  UpdatePreviewAvailability();
+}
+
+void SettingsDialog::UpdatePreviewAvailability() {
+  previewButton_->setEnabled(static_cast<bool>(previewCallback_) &&
+    (static_cast<SettingsPage>(tabs_->currentIndex()) != SettingsPage::Messages ||
+      messagesEnabled_->isChecked()));
 }
 
 QWidget* SettingsDialog::BuildRainPage() {
@@ -335,10 +349,16 @@ QWidget* SettingsDialog::BuildMessagesPage() {
   layout->addWidget(Hint(tr("Messages are revealed by the same falling glyphs as the rain. Double-click a line to edit it; drag or use the buttons to reorder.")));
   messagesEnabled_ = new QCheckBox(tr("Show messages (N or Shift+M)"));
   layout->addWidget(messagesEnabled_);
+  auto* settings = new QWidget;
+  auto* settingsLayout = new QVBoxLayout(settings);
+  settingsLayout->setContentsMargins(0, 0, 0, 0);
+  layout->addWidget(settings, 1);
+  settings->setEnabled(messagesEnabled_->isChecked());
+  connect(messagesEnabled_, &QCheckBox::toggled, settings, &QWidget::setEnabled);
   messages_ = new QListWidget;
   messages_->setAlternatingRowColors(true);
   messages_->setDragDropMode(QAbstractItemView::InternalMove);
-  layout->addWidget(WithActions(messages_, {
+  settingsLayout->addWidget(WithActions(messages_, {
     {tr("Add message"), [this] { AddMessage(); }},
     {tr("Remove"), [this] {
       delete messages_->takeItem(messages_->currentRow());
@@ -373,7 +393,7 @@ QWidget* SettingsDialog::BuildMessagesPage() {
   grid->addWidget(new QLabel(tr("Horizontal position")), 4, 0); grid->addWidget(messageHorizontalPosition_, 4, 1);
   grid->addWidget(new QLabel(tr("Horizontal randomness")), 4, 2); grid->addWidget(messageHorizontalJitter_, 4, 3);
   grid->addWidget(messageFlicker_, 5, 0, 1, 2); grid->addWidget(messageBrightness_, 5, 2, 1, 2);
-  layout->addWidget(behaviour);
+  settingsLayout->addWidget(behaviour);
   return page;
 }
 

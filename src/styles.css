@@ -554,3 +554,15 @@ html.mx-native-config .mx-panel {
   background: rgb(var(--mx-accent-rgb) / 0.22);
   border-color: var(--mx-green);
 }
+
+.mx-message-settings {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.mx-modal button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
