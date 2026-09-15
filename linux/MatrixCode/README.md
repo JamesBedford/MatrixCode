@@ -111,3 +111,7 @@ the repository parity threshold: no structural difference, SSIM of at least
 also require NVIDIA hardware and Mesa fallback runs, Wayland and X11 checks,
 mixed-DPI/mixed-refresh tests, suspend/resume, monitor hot-plug, and `.deb`
 install/upgrade/uninstall verification on both architectures.
+
+### Multi-monitor messages
+
+Messages default to one copy per display, independently of vignette. Enable “Single message across monitors” to place one message using the entire combined monitor space. Disable it and enable “Independent random positions per monitor” to give each display its own deterministic placement; this control applies only when horizontal or vertical randomness is nonzero. Shared placement uses the same normalized random samples on every display. These options persist as `singleMonitor` and `independentMonitorPositions` in `mx-messages`.

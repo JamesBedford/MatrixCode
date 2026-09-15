@@ -285,6 +285,82 @@ void RunMessageSchedulerTests() {
   }
 
   {
+    const std::array<MessageRegion, 2> regions{{{0, 0, 40, 30}, {40, 0, 40, 30}}};
+    auto shared = Document();
+    shared.jitter = 1.0;
+    shared.horizontalJitter = 1.0;
+    auto independent = shared;
+    independent.independentMonitorPositions = true;
+    MessageScheduler sharedScheduler(123u), independentScheduler(123u), oneScheduler(123u);
+    sharedScheduler.Configure(shared);
+    independentScheduler.Configure(independent);
+    oneScheduler.Configure(shared);
+    FakeMessageSink sharedSink(80, 30), independentSink(80, 30), oneSink(80, 30);
+    bool sawDifference = false;
+    for (int now = 0; now <= 20000; now += 100) {
+      sharedScheduler.Update(now, sharedSink, regions);
+      independentScheduler.Update(now, independentSink, regions);
+      oneScheduler.Update(now, oneSink);
+      MX_EXPECT_EQ(sharedSink.sets, independentSink.sets);
+      MX_EXPECT_EQ(sharedSink.sets, oneSink.sets);
+      MX_EXPECT_EQ(sharedSink.clears, independentSink.clears);
+      MX_EXPECT_EQ(sharedSink.intensity, independentSink.intensity);
+      for (const auto& [index, glyph] : sharedSink.targets) {
+        if (index % 80 < 40) {
+          MX_EXPECT(sharedSink.targets.contains(index + 40));
+          MX_EXPECT_EQ(sharedSink.targets.at(index + 40), glyph);
+        }
+      }
+      sawDifference |= sharedSink.targets != independentSink.targets;
+    }
+    MX_EXPECT(sawDifference);
+  }
+
+  {
+    const std::array<MessageRegion, 2> regions{{{0, 0, 40, 30}, {40, 0, 40, 30}}};
+    auto single = Document();
+    single.singleMonitor = true;
+    single.horizontalPosition = 1.0;
+    single.position = 1.0;
+    single.jitter = 0.0;
+    auto independent = single;
+    independent.singleMonitor = false;
+    independent.independentMonitorPositions = true;
+    auto shared = independent;
+    shared.independentMonitorPositions = false;
+    MessageScheduler singleScheduler(123u), fullScheduler(123u), sharedScheduler(123u), independentScheduler(123u);
+    singleScheduler.Configure(single);
+    fullScheduler.Configure(single);
+    sharedScheduler.Configure(shared);
+    independentScheduler.Configure(independent);
+    FakeMessageSink singleSink(80, 30), fullSink(80, 30), sharedSink(80, 30), independentSink(80, 30);
+    for (int now = 0; now <= 10000; now += 100) {
+      singleScheduler.Update(now, singleSink, regions);
+      fullScheduler.Update(now, fullSink);
+      sharedScheduler.Update(now, sharedSink, regions);
+      independentScheduler.Update(now, independentSink, regions);
+      MX_EXPECT_EQ(singleSink.targets, fullSink.targets);
+      MX_EXPECT_EQ(sharedSink.targets, independentSink.targets);
+    }
+  }
+
+  {
+    // Shared cross-platform fixture for independent region hashing.
+    const std::array<MessageRegion, 2> regions{{{0, 0, 40, 40}, {40, 0, 40, 40}}};
+    auto document = Document();
+    document.messages = {"A"};
+    document.jitter = 1.0;
+    document.horizontalJitter = 1.0;
+    document.independentMonitorPositions = true;
+    MessageScheduler scheduler(42u);
+    FakeMessageSink sink(80, 40);
+    scheduler.PreviewOne(0.0, sink, document, regions);
+    MX_EXPECT_EQ(sink.targets.size(), std::size_t{2});
+    MX_EXPECT(sink.targets.contains(1287));
+    MX_EXPECT(sink.targets.contains(2792));
+  }
+
+  {
     // Exact port of the browser's cross-language scheduler fixture.
     int tick = 0;
     FakeMessageSink sink(48, 30);
@@ -341,16 +417,16 @@ void RunMessageSchedulerTests() {
         hash = Feed(hash, glyph);
       }
     }
-    MX_EXPECT_EQ(hash, 539469798u);
+    MX_EXPECT_EQ(hash, 1319480896u);
     MX_EXPECT_EQ(sink.sets, 8u);
     MX_EXPECT_EQ(sink.updates, 3u);
     MX_EXPECT_EQ(sink.clears, 6u);
     const std::map<std::size_t, std::uint8_t> expectedTargets{
-      {std::size_t{380}, std::uint8_t{121}}, {std::size_t{381}, std::uint8_t{99}},
-      {std::size_t{382}, std::uint8_t{109}}, {std::size_t{383}, std::uint8_t{103}},
-      {std::size_t{385}, std::uint8_t{157}}, {std::size_t{562}, std::uint8_t{121}},
-      {std::size_t{563}, std::uint8_t{99}}, {std::size_t{564}, std::uint8_t{109}},
-      {std::size_t{565}, std::uint8_t{103}}, {std::size_t{567}, std::uint8_t{157}},
+      {std::size_t{743}, std::uint8_t{121}}, {std::size_t{744}, std::uint8_t{99}},
+      {std::size_t{745}, std::uint8_t{109}}, {std::size_t{746}, std::uint8_t{103}},
+      {std::size_t{748}, std::uint8_t{157}}, {std::size_t{769}, std::uint8_t{121}},
+      {std::size_t{770}, std::uint8_t{99}}, {std::size_t{771}, std::uint8_t{109}},
+      {std::size_t{772}, std::uint8_t{103}}, {std::size_t{774}, std::uint8_t{157}},
     };
     MX_EXPECT_EQ(sink.targets, expectedTargets);
   }

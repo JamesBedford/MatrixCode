@@ -166,7 +166,7 @@ export class MessagesEditor extends ModalEditor {
     behaviour.appendChild(this.percentField(
       "Vertical randomness (%)",
       this.draft.verticalJitter,
-      (f) => (this.draft.verticalJitter = f),
+      (f) => { this.draft.verticalJitter = f; refreshMonitorToggle(); },
     ));
     behaviour.appendChild(this.percentField(
       "Horizontal position (0 left–100 right)",
@@ -176,9 +176,29 @@ export class MessagesEditor extends ModalEditor {
     behaviour.appendChild(this.percentField(
       "Horizontal randomness (%)",
       this.draft.horizontalJitter,
-      (f) => (this.draft.horizontalJitter = f),
+      (f) => { this.draft.horizontalJitter = f; refreshMonitorToggle(); },
     ));
     settings.appendChild(behaviour);
+
+    settings.appendChild(this.heading("h3", "Multi-monitor placement"));
+    const monitorMode = this.toggleField("Single message across monitors", this.draft.singleMonitor, (value) => {
+      this.draft.singleMonitor = value;
+      refreshMonitorToggle();
+    });
+    const independent = this.toggleField("Independent random positions per monitor", this.draft.independentMonitorPositions,
+      (value) => { this.draft.independentMonitorPositions = value; });
+    const placementHint = document.createElement("p");
+    placementHint.className = "mx-modal-hint";
+    const refreshMonitorToggle = (): void => {
+      independent.querySelector("button")!.disabled = this.draft.singleMonitor ||
+        (this.draft.verticalJitter === 0 && this.draft.horizontalJitter === 0);
+      placementHint.textContent = this.draft.singleMonitor
+        ? "One message is positioned across the entire monitor space. Position and randomness use the full desktop."
+        : "Each monitor shows a copy. Separate positions apply when vertical or horizontal randomness is above zero.";
+    };
+    refreshMonitorToggle();
+    settings.append(monitorMode, independent, placementHint);
+
 
     const appendToggleRow = (label: string, value: boolean, onChange: (v: boolean) => void): void => {
       const row = document.createElement("div");

@@ -94,7 +94,7 @@ export class MessageScheduler {
 
   /**
    * Per-frame heartbeat: expire/clear an active message, or fire a new one when due. When `regions`
-   * is supplied, the same message is positioned independently in every region; otherwise it is
+   * is supplied, the same message is positioned in every region using the configured randomness mode; otherwise it is
    * positioned once across the whole grid.
    */
   update(nowMs: number, sim: MessageSink, regions?: readonly MessageRegion[]): void {
@@ -122,7 +122,7 @@ export class MessageScheduler {
 
     // RainSim drops message targets when its grid is resized because the cell indices become stale.
     // Re-layout an active message when the grid or placement regions change so fullscreen transitions
-    // do not make it disappear and changing vignette mode takes effect without restarting the delay.
+    // do not make it disappear and updated display geometry takes effect without restarting the delay.
     const placementChanged = placementKey !== this.placementKey;
     if (
       (sim.cols !== this.lastCols || sim.rows !== this.lastRows || placementChanged) &&
@@ -218,7 +218,7 @@ export class MessageScheduler {
 
   /** Clamp caller-provided regions to the simulation; an absent/empty list means the full grid. */
   private normalizeRegions(sim: MessageSink, regions?: readonly MessageRegion[]): MessageRegion[] {
-    if (!regions || regions.length === 0) {
+    if (this.cfg?.singleMonitor || !regions || regions.length === 0) {
       return [{ colStart: 0, rowStart: 0, cols: sim.cols, rows: sim.rows }];
     }
     const normalized: MessageRegion[] = [];
@@ -240,13 +240,16 @@ export class MessageScheduler {
     return regions.map((r) => `${r.colStart},${r.rowStart},${r.cols},${r.rows}`).join(";");
   }
 
-  /** Pick placement independently inside every target region. */
+  /** Consume one sample per randomized axis, independent of the number of displays. */
   private choosePlacements(regions: readonly MessageRegion[]): void {
     const cfg = this.cfg!;
+    const verticalSample = cfg.verticalJitter > 0 ? this.rng() : 0;
+    const horizontalSample = cfg.horizontalJitter > 0 ? this.rng() : 0;
+    const independent = cfg.independentMonitorPositions && !cfg.singleMonitor;
     this.activePlacements = regions.map((region) => ({
       region,
-      verticalSample: cfg.verticalJitter > 0 ? this.rng() : 0,
-      horizontalSample: cfg.horizontalJitter > 0 ? this.rng() : 0,
+      verticalSample: independent && cfg.verticalJitter > 0 ? regionSample(verticalSample, region) : verticalSample,
+      horizontalSample: independent && cfg.horizontalJitter > 0 ? regionSample(horizontalSample, region) : horizontalSample,
     }));
   }
 
@@ -376,4 +379,15 @@ export class MessageScheduler {
     }
     return 0; // hold
   }
+}
+
+/** Stable per-display randomness shared by the native implementations. */
+function regionSample(sample: number, region: MessageRegion): number {
+  let hash = Math.floor(sample * 4294967296) >>> 0;
+  for (const value of [region.colStart, region.rowStart, region.cols, region.rows]) {
+    hash = Math.imul(hash ^ value, 16777619) >>> 0;
+  }
+  hash = Math.imul(hash ^ (hash >>> 16), 0x7feb352d) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 15), 0x846ca68b) >>> 0;
+  return ((hash ^ (hash >>> 16)) >>> 0) / 4294967296;
 }

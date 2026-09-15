@@ -133,14 +133,14 @@ describe("MessagesStore", () => {
 
   it("persists across instances (round-trip)", () => {
     const a = new MessagesStore();
-    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "bottomToTop", verticalPosition: 0.2, verticalJitter: 0.4, horizontalPosition: 0.7, horizontalJitter: 0.3 });
+    a.set({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, singleMonitor: true, independentMonitorPositions: true, messageLayout: "drop", messageDirection: "bottomToTop", verticalPosition: 0.2, verticalJitter: 0.4, horizontalPosition: 0.7, horizontalJitter: 0.3 });
     const b = new MessagesStore();
-    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "bottomToTop", verticalPosition: 0.2, verticalJitter: 0.4, horizontalPosition: 0.7, horizontalJitter: 0.3 });
+    expect(b.get()).toEqual({ messages: ["NEO"], enabled: false, frequencyMs: 3000, persistenceMs: 1500, appearMs: 400, disappearMs: 900, flickerOut: true, brightnessFade: false, singleMonitor: true, independentMonitorPositions: true, messageLayout: "drop", messageDirection: "bottomToTop", verticalPosition: 0.2, verticalJitter: 0.4, horizontalPosition: 0.7, horizontalJitter: 0.3 });
   });
 
   it("reset clears storage and returns defaults", () => {
     const s = new MessagesStore();
-    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true, brightnessFade: false, messageLayout: "drop", messageDirection: "topToBottom", verticalPosition: 0.5, verticalJitter: 0, horizontalPosition: 0.5, horizontalJitter: 0 });
+    s.set({ messages: ["X"], enabled: false, frequencyMs: 1000, persistenceMs: 1000, appearMs: 0, disappearMs: 0, flickerOut: true, brightnessFade: false, singleMonitor: true, independentMonitorPositions: true, messageLayout: "drop", messageDirection: "topToBottom", verticalPosition: 0.5, verticalJitter: 0, horizontalPosition: 0.5, horizontalJitter: 0 });
     const after = s.reset();
     expect(after.messages).toEqual(DEFAULT_MESSAGES.messages);
     expect(new MessagesStore().get().messages).toEqual(DEFAULT_MESSAGES.messages);
@@ -149,5 +149,19 @@ describe("MessagesStore", () => {
   it("falls back to defaults on malformed stored JSON", () => {
     localStorage.setItem("mx-messages", "{not json");
     expect(new MessagesStore().get().frequencyMs).toBe(DEFAULT_MESSAGES.frequencyMs);
+  });
+});
+
+
+describe("monitor placement settings", () => {
+  it("defaults legacy documents to shared positions on all monitors", () => {
+    const value = sanitizeMessages({ messages: ["A"] });
+    expect(value.singleMonitor).toBe(false);
+    expect(value.independentMonitorPositions).toBe(false);
+  });
+  it("rejects non-boolean placement options", () => {
+    const value = sanitizeMessages({ singleMonitor: "true", independentMonitorPositions: 1 });
+    expect(value.singleMonitor).toBe(false);
+    expect(value.independentMonitorPositions).toBe(false);
   });
 });

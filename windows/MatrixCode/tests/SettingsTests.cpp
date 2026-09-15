@@ -114,11 +114,17 @@ void RunSettingsTests() {
   auto customPlacement = defaults;
   customPlacement.messages.horizontalPosition = 0.625;
   customPlacement.messages.horizontalJitter = 0.75;
+  customPlacement.messages.singleMonitor = true;
+  customPlacement.messages.independentMonitorPositions = true;
   const auto customPlacementRoundTrip = DecodeSettings(
     EncodeSettingsUtf8(customPlacement, false), &error);
   MX_EXPECT(customPlacementRoundTrip.has_value());
   MX_EXPECT_EQ(customPlacementRoundTrip->messages.horizontalPosition, 0.625);
   MX_EXPECT_EQ(customPlacementRoundTrip->messages.horizontalJitter, 0.75);
+  MX_EXPECT(customPlacementRoundTrip->messages.singleMonitor);
+  MX_EXPECT(customPlacementRoundTrip->messages.independentMonitorPositions);
+  MX_EXPECT(!defaults.messages.singleMonitor);
+  MX_EXPECT(!defaults.messages.independentMonitorPositions);
 
   const std::vector<std::uint8_t> bytes{0, 1, 2, 127, 128, 255};
   const auto base64 = EncodeBase64(bytes);

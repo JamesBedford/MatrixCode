@@ -174,3 +174,7 @@ document is sanitized.
 Wallpaper Engine is deliberately outside this directory. Its public Workshop
 artifact must remain a web wallpaper built from the browser source of truth;
 the native EXE is not used as its payload.
+
+### Multi-monitor messages
+
+Messages default to one copy per display, independently of vignette. Enable “Single message across monitors” to place one message using the entire combined monitor space. Disable it and enable “Independent random positions per monitor” to give each display its own deterministic placement; this control applies only when horizontal or vertical randomness is nonzero. Shared placement uses the same normalized random samples on every display. These options persist as `singleMonitor` and `independentMonitorPositions` in `mx-messages`.

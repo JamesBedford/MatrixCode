@@ -92,6 +92,65 @@ static void MatrixCodeFixtureFeed(uint32_t *hash, uint32_t value) {
     }
 }
 
+- (void)testMonitorPlacementOptionsSanitizeAndPersist {
+    NSDictionary *defaults = MatrixCodeSanitizeMessagesDocument(@{});
+    XCTAssertFalse([defaults[@"singleMonitor"] boolValue]);
+    XCTAssertFalse([defaults[@"independentMonitorPositions"] boolValue]);
+    NSDictionary *saved = MatrixCodeSanitizeMessagesDocument(@{
+        @"singleMonitor": @YES, @"independentMonitorPositions": @YES });
+    XCTAssertTrue([saved[@"singleMonitor"] boolValue]);
+    XCTAssertTrue([saved[@"independentMonitorPositions"] boolValue]);
+}
+
+- (void)testSharedAndIndependentMonitorPlacement {
+    for (NSNumber *independent in @[@NO, @YES]) {
+        MatrixCodeMessageRecordingSink *sink = [[MatrixCodeMessageRecordingSink alloc] init];
+        sink.columns = 90;
+        sink.rows = 40;
+        MatrixCodeMessageScheduler *scheduler = [[MatrixCodeMessageScheduler alloc] init];
+        [scheduler configureWithDocument:MatrixCodeMessageDocument(@{
+            @"messages": @[@"A"], @"verticalJitter": @1, @"horizontalJitter": @1,
+            @"independentMonitorPositions": independent })];
+        [scheduler previewOneAtTimeMilliseconds:0 sink:sink document:nil regions:MatrixCodeThreeDisplayRegions()];
+        NSMutableSet *localPositions = [NSMutableSet set];
+        for (NSNumber *target in sink.targets) {
+            NSInteger cell = target.integerValue;
+            [localPositions addObject:@((cell / 90) * 30 + (cell % 90) % 30)];
+        }
+        XCTAssertEqual(sink.targets.count, 3U);
+        if (independent.boolValue) XCTAssertGreaterThan(localPositions.count, 1U);
+        else XCTAssertEqual(localPositions.count, 1U);
+    }
+}
+
+- (void)testIndependentMonitorPositionMatchesWebFixture {
+    MatrixCodeMessageRecordingSink *sink = [[MatrixCodeMessageRecordingSink alloc] init];
+    sink.columns = 80;
+    sink.rows = 40;
+    MatrixCodeMessageScheduler *scheduler = [[MatrixCodeMessageScheduler alloc] initWithSeed:42];
+    [scheduler configureWithDocument:MatrixCodeMessageDocument(@{
+        @"messages": @[@"A"], @"verticalJitter": @1, @"horizontalJitter": @1,
+        @"independentMonitorPositions": @YES })];
+    [scheduler previewOneAtTimeMilliseconds:0 sink:sink document:nil regions:@[
+        [[MatrixCodeMessageRegion alloc] initWithColumnStart:0 rowStart:0 columns:40 rows:40],
+        [[MatrixCodeMessageRegion alloc] initWithColumnStart:40 rowStart:0 columns:40 rows:40]]];
+    XCTAssertEqualObjects(sink.targets, (@{ @1287: @99, @2792: @99 }));
+}
+
+- (void)testSingleMonitorPlacementUsesEntireVirtualGrid {
+    MatrixCodeMessageRecordingSink *sink = [[MatrixCodeMessageRecordingSink alloc] init];
+    sink.columns = 90;
+    sink.rows = 40;
+    MatrixCodeMessageScheduler *scheduler = [[MatrixCodeMessageScheduler alloc] init];
+    [scheduler configureWithDocument:MatrixCodeMessageDocument(@{
+        @"messages": @[@"A"], @"singleMonitor": @YES,
+        @"verticalJitter": @0, @"horizontalJitter": @0,
+        @"verticalPosition": @1, @"horizontalPosition": @1 })];
+    [scheduler previewOneAtTimeMilliseconds:0 sink:sink document:nil regions:MatrixCodeThreeDisplayRegions()];
+    XCTAssertEqual(sink.targets.count, 1U);
+    XCTAssertNotNil(sink.targets[@3599]);
+}
+
 - (void)testFixedSeedAndDedicatedMessageGlyphIndicesMatchWeb {
     XCTAssertEqual(MatrixCodeMessageSchedulerSeed, 0x5eed1eU);
     XCTAssertEqual(MatrixCodeMessageGlyphIndexForCharacter(@"A"), 99);
@@ -550,15 +609,15 @@ static void MatrixCodeFixtureFeed(uint32_t *hash, uint32_t value) {
         }
     }
 
-    XCTAssertEqual(hash, 539469798U);
+    XCTAssertEqual(hash, 1319480896U);
     XCTAssertEqual(sink.setCount, (NSUInteger)8);
     XCTAssertEqual(sink.updateCount, (NSUInteger)3);
     XCTAssertEqual(sink.clearCount, (NSUInteger)6);
     XCTAssertEqual(sink.targets.count, (NSUInteger)10);
-    XCTAssertEqualObjects(sink.targets[@380], @121);
-    XCTAssertEqualObjects(sink.targets[@385], @157);
-    XCTAssertEqualObjects(sink.targets[@562], @121);
-    XCTAssertEqualObjects(sink.targets[@567], @157);
+    XCTAssertEqualObjects(sink.targets[@743], @121);
+    XCTAssertEqualObjects(sink.targets[@748], @157);
+    XCTAssertEqualObjects(sink.targets[@769], @121);
+    XCTAssertEqualObjects(sink.targets[@774], @157);
 }
 
 @end

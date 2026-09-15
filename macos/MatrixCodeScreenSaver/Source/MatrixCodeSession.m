@@ -5,19 +5,20 @@
 #import <ScreenSaver/ScreenSaver.h>
 
 #import "MatrixCodeConstants.h"
+#import "MatrixCodeMessageScheduler.h"
 
 static const NSTimeInterval MatrixCodeSessionReuseSeconds = 15.0;
 static const NSTimeInterval MatrixCodeWarmupSeconds = 2.5;
 static const uint32_t MatrixCodeSingleDisplaySeed = 0x1a2b3cU;
 
 static BOOL MatrixCodePerDisplayMessages(ScreenSaverDefaults *defaults) {
-    NSString *raw = [defaults stringForKey:@"mx-controls"];
+    NSString *raw = [defaults stringForKey:@"mx-messages"];
     NSData *data = [raw isKindOfClass:NSString.class]
         ? [raw dataUsingEncoding:NSUTF8StringEncoding] : nil;
-    id parsedControls = data
+    id parsedMessages = data
         ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-    NSDictionary *controls = MatrixCodeSanitizeControlsDocument(parsedControls);
-    return [controls[@"vignette"] doubleValue] > 0;
+    NSDictionary *messages = MatrixCodeSanitizeMessagesDocument(parsedMessages);
+    return ![messages[@"singleMonitor"] boolValue];
 }
 
 @interface MatrixCodeSession ()

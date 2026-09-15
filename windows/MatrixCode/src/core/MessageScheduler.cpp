@@ -108,7 +108,7 @@ std::vector<MessageScheduler::NormalizedRegion> MessageScheduler::NormalizeRegio
   const auto full = [&sink] {
     return std::vector<NormalizedRegion>{{0, 0, sink.Columns(), sink.Rows()}};
   };
-  if (regions.empty()) return full();
+  if (regions.empty() || (configuration_ && configuration_->singleMonitor)) return full();
 
   std::vector<NormalizedRegion> normalized;
   normalized.reserve(regions.size());
@@ -151,10 +151,24 @@ std::string MessageScheduler::KeyForRegions(
 void MessageScheduler::ChoosePlacements(const std::span<const NormalizedRegion> regions) {
   activePlacements_.clear();
   activePlacements_.reserve(regions.size());
+  const double verticalSample = configuration_->jitter > 0.0 ? rng_.Next() : 0.0;
+  const double horizontalSample = configuration_->horizontalJitter > 0.0 ? rng_.Next() : 0.0;
+  const auto independentSample = [](const double sample, const NormalizedRegion& region) {
+    auto hash = static_cast<std::uint32_t>(sample * 4294967296.0);
+    for (const auto value : {region.columnStart, region.rowStart, region.columns, region.rows})
+      hash = (hash ^ static_cast<std::uint32_t>(value)) * 16777619u;
+    hash ^= hash >> 16;
+    hash *= 0x7feb352du;
+    hash ^= hash >> 15;
+    hash *= 0x846ca68bu;
+    hash ^= hash >> 16;
+    return static_cast<double>(hash) / 4294967296.0;
+  };
   for (const auto& region : regions) {
-    const double verticalSample = configuration_->jitter > 0.0 ? rng_.Next() : 0.0;
-    const double horizontalSample = configuration_->horizontalJitter > 0.0 ? rng_.Next() : 0.0;
-    activePlacements_.push_back({region, verticalSample, horizontalSample});
+    const bool independent = configuration_->independentMonitorPositions && !configuration_->singleMonitor;
+    activePlacements_.push_back({region,
+      independent && configuration_->jitter > 0.0 ? independentSample(verticalSample, region) : verticalSample,
+      independent && configuration_->horizontalJitter > 0.0 ? independentSample(horizontalSample, region) : horizontalSample});
   }
 }
 

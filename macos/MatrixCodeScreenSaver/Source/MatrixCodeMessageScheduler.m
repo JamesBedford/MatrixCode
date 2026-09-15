@@ -285,6 +285,8 @@ NSDictionary<NSString *, id> *MatrixCodeSanitizeMessagesDocument(id rawDocument)
             document, @"verticalPosition", 0, 1, 0.5)),
         @"verticalJitter": @(MatrixCodeSanitizedMessageNumber(
             document, @"verticalJitter", 0, 1, 0.25)),
+        @"singleMonitor": @(MatrixCodeSanitizedMessageBoolean(document, @"singleMonitor", NO)),
+        @"independentMonitorPositions": @(MatrixCodeSanitizedMessageBoolean(document, @"independentMonitorPositions", NO)),
         @"horizontalPosition": @(MatrixCodeSanitizedMessageNumber(
             document, @"horizontalPosition", 0, 1, 0.5)),
         @"horizontalJitter": @(MatrixCodeSanitizedMessageNumber(
@@ -447,7 +449,7 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
 - (NSArray<MatrixCodeNormalizedMessageRegion *> *)normalizeRegionsForSink:
         (id<MatrixCodeMessageSink>)sink
         regions:(NSArray<MatrixCodeMessageRegion *> *)regions {
-    if (regions.count == 0) {
+    if (regions.count == 0 || [self.schedulerState.configuration[@"singleMonitor"] boolValue]) {
         MatrixCodeNormalizedMessageRegion *full = [[MatrixCodeNormalizedMessageRegion alloc] init];
         full.columnStart = 0;
         full.rowStart = 0;
@@ -501,23 +503,37 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
     return [parts componentsJoinedByString:@";"];
 }
 
+static double MatrixCodeRegionalMessageSample(double sample, MatrixCodeNormalizedMessageRegion *region) {
+    uint32_t hash = (uint32_t)floor(sample * 4294967296.0);
+    NSInteger values[] = { region.columnStart, region.rowStart, region.columns, region.rows };
+    for (NSUInteger index = 0; index < 4; index++) {
+        hash = (hash ^ (uint32_t)values[index]) * 16777619U;
+    }
+    hash ^= hash >> 16;
+    hash *= 0x7feb352dU;
+    hash ^= hash >> 15;
+    hash *= 0x846ca68bU;
+    hash ^= hash >> 16;
+    return (double)hash / 4294967296.0;
+}
+
 - (void)choosePlacements:(NSArray<MatrixCodeNormalizedMessageRegion *> *)regions {
     NSDictionary *configuration = self.schedulerState.configuration;
-    double verticalJitter = MatrixCodeMessageNumber(
-        configuration, @"verticalJitter", 0.25);
-    double horizontalJitter = MatrixCodeMessageNumber(
-        configuration, @"horizontalJitter", 0);
+    double verticalJitter = MatrixCodeMessageNumber(configuration, @"verticalJitter", 0.25);
+    double horizontalJitter = MatrixCodeMessageNumber(configuration, @"horizontalJitter", 0);
+    double verticalSample = verticalJitter > 0 ? MatrixCodeMessageNextRandom(&_rngState) : 0;
+    double horizontalSample = horizontalJitter > 0 ? MatrixCodeMessageNextRandom(&_rngState) : 0;
+    BOOL independent = [configuration[@"independentMonitorPositions"] boolValue] &&
+        ![configuration[@"singleMonitor"] boolValue];
     NSMutableArray<MatrixCodeMessagePlacement *> *placements =
         [NSMutableArray arrayWithCapacity:regions.count];
     for (MatrixCodeNormalizedMessageRegion *region in regions) {
         MatrixCodeMessagePlacement *placement = [[MatrixCodeMessagePlacement alloc] init];
         placement.region = region;
-        if (verticalJitter > 0) {
-            placement.verticalSample = MatrixCodeMessageNextRandom(&_rngState);
-        }
-        if (horizontalJitter > 0) {
-            placement.horizontalSample = MatrixCodeMessageNextRandom(&_rngState);
-        }
+        placement.verticalSample = independent && verticalJitter > 0
+            ? MatrixCodeRegionalMessageSample(verticalSample, region) : verticalSample;
+        placement.horizontalSample = independent && horizontalJitter > 0
+            ? MatrixCodeRegionalMessageSample(horizontalSample, region) : horizontalSample;
         [placements addObject:placement];
     }
     self.schedulerState.activePlacements = placements;

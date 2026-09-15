@@ -374,3 +374,12 @@ Useful comparison points:
 - If a display is black or a monitor seam does not appear continuous, run the
   native test suite and verify the installed bundle is the one just built:
   `codesign --verify --deep --strict "$HOME/Library/Screen Savers/Matrix Code.saver"`.
+
+### Message placement across displays
+
+In-Rain Messages offers **Single message across monitors**, which places one copy
+using the entire virtual desktop for horizontal and vertical position/randomness.
+With it off, every display receives the message at the same time.
+**Independent random positions per monitor** gives each display its own position
+when either randomness setting is nonzero; otherwise displays share the same
+relative placement samples. These choices are independent of vignette.

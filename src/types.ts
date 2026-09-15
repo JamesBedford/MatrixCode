@@ -93,6 +93,10 @@ export interface MessagesDoc {
   messageLayout: MessageLayout;
   /** Reading direction for single-drop messages. */
   messageDirection: MessageDirection;
+  /** Show one message across the entire virtual desktop instead of a copy on every display. */
+  singleMonitor: boolean;
+  /** Give each display its own random placement when showing copies on all displays. */
+  independentMonitorPositions: boolean;
   /** Vertical anchor: the row in row mode, or the legal top row in drop mode. */
   verticalPosition: number;
   /** Random vertical variation around the configured anchor. */

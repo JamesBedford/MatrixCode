@@ -26,7 +26,7 @@
 + (NSInteger)diagnosticNormalGridDimensionForPoints:(float)points
                                            glyphScale:(float)glyphScale;
 + (BOOL)diagnosticMessagesUseLocalCoordinatesForSession:(NSDictionary *)session
-                                                controls:(NSDictionary *)controls;
+                                                messages:(NSDictionary *)messages;
 @end
 
 // Pixel fixtures exercise the selected palette independently of the machine's calendar date.
@@ -612,29 +612,13 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
                    8);
 }
 
-- (void)testMultiDisplayMessagePlacementUsesCapturedSessionMode {
-    NSDictionary *multiDisplay = @{ @"screens": @[@{}, @{}] };
-    NSDictionary *capturedPerDisplay = @{
-        @"screens": @[@{}, @{}],
-        @"perDisplayMessages": @YES,
-    };
-    NSDictionary *capturedVirtualGrid = @{
-        @"screens": @[@{}, @{}],
-        @"perDisplayMessages": @NO,
-    };
-
+- (void)testMultiDisplayMessagePlacementUsesExplicitMessageOption {
+    NSDictionary *session = @{ @"screens": @[@{}, @{}], @"perDisplayMessages": @NO };
     XCTAssertTrue([MatrixCodeMetalView
-        diagnosticMessagesUseLocalCoordinatesForSession:capturedPerDisplay
-                                              controls:@{ @"vignette": @0 }]);
+        diagnosticMessagesUseLocalCoordinatesForSession:session messages:@{}]);
     XCTAssertFalse([MatrixCodeMetalView
-        diagnosticMessagesUseLocalCoordinatesForSession:capturedVirtualGrid
-                                              controls:@{ @"vignette": @1 }]);
-    XCTAssertTrue([MatrixCodeMetalView
-        diagnosticMessagesUseLocalCoordinatesForSession:multiDisplay
-                                              controls:@{ @"vignette": @1 }]);
-    XCTAssertTrue([MatrixCodeMetalView
-        diagnosticMessagesUseLocalCoordinatesForSession:@{ @"screens": @[@{}] }
-                                              controls:@{ @"vignette": @1 }]);
+        diagnosticMessagesUseLocalCoordinatesForSession:session
+                                              messages:@{ @"singleMonitor": @YES }]);
 }
 
 - (void)testRainControlReloadPreservesUnchangedMessageAndImageTimelines {

@@ -14,6 +14,23 @@ the wall stays clean while live rain settings can still be adjusted.
 - On a single monitor — or any non-Chromium browser — multi-monitor mode falls
   back to ordinary fullscreen.
 
+## Message placement
+
+In **In-Rain Messages**, enable **Single message across monitors** to show one
+copy across the combined desktop. Vertical and horizontal position and randomness
+then use the entire virtual monitor space, so a message can cross a display edge.
+With this option off, every monitor shows a copy at the same time and the position
+controls apply within each monitor. This choice is independent of vignette.
+
+Enable **Independent random positions per monitor** to randomize each copy's
+position separately. Otherwise copies share the same relative random position.
+This option applies only when displaying a copy on every monitor and at least one
+axis has randomness above zero. Message text and timing remain synchronized.
+
+Wallpaper Engine Span mode provides one combined surface; it does not expose
+individual monitor boundaries, so these per-monitor choices cannot split that
+surface into separate copies. Separate wallpaper instances run independently.
+
 ## Requirements
 
 This uses the **Window Management API**, which only exists in **Chromium**

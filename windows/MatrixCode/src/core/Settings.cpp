@@ -181,6 +181,8 @@ SettingsSnapshot SanitizeSettings(const json::Value& root) {
   const auto* messages = Document(root, "mx-messages");
   if (root.Find("mx-messages") != nullptr) output.messages.messages.clear();
   output.messages.enabled = Boolean(messages, "enabled", false);
+  output.messages.singleMonitor = Boolean(messages, "singleMonitor", false);
+  output.messages.independentMonitorPositions = Boolean(messages, "independentMonitorPositions", false);
   output.messages.frequencyMilliseconds = Number(messages, "frequencyMs", 8000.0, 500.0, 600000.0);
   output.messages.persistenceMilliseconds = Number(messages, "persistenceMs", 10000.0, 500.0, 600000.0);
   output.messages.appearMilliseconds = Number(messages, "appearMs", 4000.0, 0.0, 600000.0);
@@ -306,6 +308,8 @@ json::Value EncodeSettings(const SettingsSnapshot& settings) {
     {"verticalPosition", settings.messages.position}, {"verticalJitter", settings.messages.jitter},
     {"horizontalPosition", settings.messages.horizontalPosition},
     {"horizontalJitter", settings.messages.horizontalJitter},
+    {"singleMonitor", settings.messages.singleMonitor},
+    {"independentMonitorPositions", settings.messages.independentMonitorPositions},
   };
   json::Array images;
   for (const auto& image : settings.images.images) {

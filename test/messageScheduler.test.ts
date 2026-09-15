@@ -52,6 +52,8 @@ const doc = (over: Partial<MessagesDoc> = {}): MessagesDoc => ({
   brightnessFade: true,
   messageLayout: "row",
   messageDirection: "topToBottom",
+  singleMonitor: false,
+  independentMonitorPositions: false,
   verticalPosition: 0.5,
   verticalJitter: 0.25,
   horizontalPosition: 0.5,
@@ -161,7 +163,7 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     expect(starts[1]).toBeLessThanOrEqual(51);
   });
 
-  it("draws vertical then horizontal placement randomness for each region", () => {
+  it("shares one vertical and horizontal sample across display regions", () => {
     const samples = [0, 0, 0.999, 0.25, 0.75];
     const s = new MessageScheduler({ glyphSet, rng: () => samples.shift() ?? 0 });
     const sim = new FakeSim(20, 20);
@@ -181,9 +183,9 @@ describe("MessageScheduler.fire (via previewOne)", () => {
       .map(([index]) => index);
     expect(starts).toEqual([
       8,
-      12 * sim.cols + 16,
+      10 * sim.cols + 18,
     ]);
-    expect(samples).toEqual([]);
+    expect(samples).toEqual([0.25, 0.75]);
   });
 
   it("places the row within the middle vertical band", () => {
@@ -787,7 +789,7 @@ describe("MessageScheduler cross-language golden", () => {
       }
     }
 
-    expect(hash).toBe(539469798);
+    expect(hash).toBe(1319480896);
     expect({
       sets: sim.sets,
       updates: sim.updates,
@@ -800,9 +802,46 @@ describe("MessageScheduler cross-language golden", () => {
       updates: 3,
       clears: 6,
       targets: [
-        [380, 121], [381, 99], [382, 109], [383, 103], [385, 157],
-        [562, 121], [563, 99], [564, 109], [565, 103], [567, 157],
+        [743, 121], [744, 99], [745, 109], [746, 103], [748, 157],
+        [769, 121], [770, 99], [771, 109], [772, 103], [774, 157],
       ],
     });
+  });
+});
+
+
+describe("multi-monitor placement modes", () => {
+  const regions = [
+    { colStart: 0, rowStart: 0, cols: 40, rows: 40 },
+    { colStart: 40, rowStart: 0, cols: 40, rows: 40 },
+  ];
+  it("positions a single copy using the whole desktop even when display regions are supplied", () => {
+    const sim = new FakeSim(80, 40);
+    sched().previewOne(0, sim, doc({ messages: ["AB"], singleMonitor: true, verticalJitter: 0, horizontalPosition: 0.75 }), regions);
+    expect(sim.last!.size).toBe(2);
+    expect(colOf(sim.last!, sim.cols)).toBe(59);
+  });
+  it("derives independent positions consistently across windows without extra scheduling draws", () => {
+    const snapshots: number[][] = [];
+    const draws: number[] = [];
+    for (const supplied of [regions, [regions[0]!], [regions[1]!]]) {
+      let count = 0;
+      const rng = createRng(42);
+      const scheduler = new MessageScheduler({ glyphSet, rng: () => { count++; return rng(); } });
+      const sim = new FakeSim(80, 40);
+      scheduler.previewOne(0, sim, doc({ messages: ["A"], independentMonitorPositions: true, verticalJitter: 1, horizontalJitter: 1 }), supplied);
+      snapshots.push([...sim.last!.keys()]);
+      draws.push(count);
+    }
+    expect(snapshots[0]).toEqual([1287, 2792]);
+    expect(snapshots[0]).toEqual([...snapshots[1]!, ...snapshots[2]!]);
+    expect(draws).toEqual([3, 3, 3]);
+    expect(snapshots[1]![0]).not.toBe(snapshots[2]![0]! - 40);
+  });
+  it("uses the same relative position by default", () => {
+    const sim = new FakeSim(80, 40);
+    sched().previewOne(0, sim, doc({ messages: ["A"], verticalJitter: 1, horizontalJitter: 1 }), regions);
+    const cells = [...sim.last!.keys()];
+    expect(cells[1]! - cells[0]!).toBe(40);
   });
 });

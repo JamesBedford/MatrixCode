@@ -376,6 +376,9 @@ QWidget* SettingsDialog::BuildMessagesPage() {
   auto* grid = new QGridLayout(behaviour);
   messageFrequency_ = Seconds(600.0, 0.5); messagePersistence_ = Seconds(600.0, 0.5);
   messageAppear_ = Seconds(); messageDisappear_ = Seconds();
+  messageSingleMonitor_ = new QCheckBox(tr("Single message across monitors"));
+  messageSingleMonitor_->setToolTip(tr("Position and randomness use the entire combined monitor space."));
+  messageIndependentPositions_ = new QCheckBox(tr("Independent random positions per monitor"));
   messageFlicker_ = new QCheckBox(tr("Flicker dissolve"));
   messageBrightness_ = new QCheckBox(tr("Brightness fade"));
   messageLayout_ = new QComboBox; messageLayout_->addItems({tr("Row"), tr("Drop")});
@@ -393,6 +396,16 @@ QWidget* SettingsDialog::BuildMessagesPage() {
   grid->addWidget(new QLabel(tr("Horizontal position")), 4, 0); grid->addWidget(messageHorizontalPosition_, 4, 1);
   grid->addWidget(new QLabel(tr("Horizontal randomness")), 4, 2); grid->addWidget(messageHorizontalJitter_, 4, 3);
   grid->addWidget(messageFlicker_, 5, 0, 1, 2); grid->addWidget(messageBrightness_, 5, 2, 1, 2);
+  grid->addWidget(messageSingleMonitor_, 6, 0, 1, 4);
+  grid->addWidget(messageIndependentPositions_, 7, 0, 1, 4);
+  const auto updatePositions = [this] {
+    messageIndependentPositions_->setEnabled(!messageSingleMonitor_->isChecked() &&
+      (messageJitter_->value() > 0.0 || messageHorizontalJitter_->value() > 0.0));
+  };
+  connect(messageSingleMonitor_, &QCheckBox::toggled, this, updatePositions);
+  connect(messageJitter_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, updatePositions);
+  connect(messageHorizontalJitter_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, updatePositions);
+  updatePositions();
   settingsLayout->addWidget(behaviour);
   return page;
 }
@@ -514,6 +527,8 @@ void SettingsDialog::ReadDraft() {
   messages.persistenceMilliseconds = messagePersistence_->value() * 1000.0;
   messages.appearMilliseconds = messageAppear_->value() * 1000.0;
   messages.disappearMilliseconds = messageDisappear_->value() * 1000.0;
+  messages.singleMonitor = messageSingleMonitor_->isChecked();
+  messages.independentMonitorPositions = messageIndependentPositions_->isChecked();
   messages.flickerOut = messageFlicker_->isChecked();
   messages.brightnessFade = messageBrightness_->isChecked();
   messages.layout = messageLayout_->currentIndex() == 0 ? MessageLayout::Row : MessageLayout::Drop;
@@ -598,6 +613,8 @@ void SettingsDialog::Populate(const SettingsSnapshot& settings) {
   messagePersistence_->setValue(draft_.messages.persistenceMilliseconds / 1000.0);
   messageAppear_->setValue(draft_.messages.appearMilliseconds / 1000.0);
   messageDisappear_->setValue(draft_.messages.disappearMilliseconds / 1000.0);
+  messageSingleMonitor_->setChecked(draft_.messages.singleMonitor);
+  messageIndependentPositions_->setChecked(draft_.messages.independentMonitorPositions);
   messageFlicker_->setChecked(draft_.messages.flickerOut);
   messageBrightness_->setChecked(draft_.messages.brightnessFade);
   messageLayout_->setCurrentIndex(draft_.messages.layout == MessageLayout::Row ? 0 : 1);

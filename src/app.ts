@@ -10,7 +10,7 @@ import type {
 } from "./types.ts";
 import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
-import { MessageScheduler } from "./sim/messageScheduler.ts";
+import { MessageScheduler, type MessageRegion } from "./sim/messageScheduler.ts";
 import { ImageScheduler, type ActiveImageFrame } from "./sim/imageScheduler.ts";
 import { buildImageRenderState } from "./sim/imageReveal.ts";
 import { imageUrlToMask } from "./sim/imageMask.ts";
@@ -117,6 +117,7 @@ const MULTI_CLICK_MS = 350;
 /** Active multi-monitor mode state for this window (controller or a panel). */
 interface MultiMonitorState {
   config: MultiMonitorConfig;
+  messageRegions: MessageRegion[];
   isController: boolean;
   openedWindows: Window[];
   localState: Uint8Array;
@@ -986,9 +987,7 @@ export async function mountMatrixRain(
         messageScheduler.update(
           (multiMonitorState.simClock + i * MULTI_MONITOR_FIXED_DT) * 1000,
           sim,
-          (multiMonitorState.config.perDisplayMessages ?? c.vignette > 0)
-            ? [multiMonitorState.config.slice]
-            : undefined,
+          multiMonitorState.messageRegions,
         );
         sim.update(MULTI_MONITOR_FIXED_DT, c);
       }
@@ -1227,6 +1226,7 @@ export async function mountMatrixRain(
     grid = { cols: lc, rows: lr };
     multiMonitorState = {
       config,
+      messageRegions: config.screens ? Object.values(computeVirtualGrid(config.screens, config.cell).slices) : [config.slice],
       isController,
       openedWindows,
       localState: new Uint8Array(lc * lr * 4),
@@ -1330,7 +1330,7 @@ export async function mountMatrixRain(
     const cell = DEFAULT_SIM_CONFIG.targetCellPx * controls.get().glyphScale;
     let res: MultiMonitorSessionResult;
     try {
-      res = await startMultiMonitorSession(container, cell, WARMUP_SECONDS, controls.get().vignette > 0);
+      res = await startMultiMonitorSession(container, cell, WARMUP_SECONDS, !messagesStore.get().singleMonitor);
     } catch {
       res = { kind: "fallback" };
     } finally {

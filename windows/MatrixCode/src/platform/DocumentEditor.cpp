@@ -40,6 +40,8 @@ enum ControlId : int {
   IdEnabled,
   IdCheck2,
   IdCheck3,
+  IdSingleMonitor,
+  IdIndependentPositions,
   IdField1,
   IdField2,
   IdField3,
@@ -525,6 +527,12 @@ void UpdateControlAvailability(EditorState& state) {
       if (GetDlgCtrlID(control) != IdEnabled) EnableWindow(control, enabled);
     }
   }
+  if (state.page == Page::Messages) {
+    EnableWindow(GetDlgItem(state.window, IdIndependentPositions), enabled &&
+      !Checked(state.window, IdSingleMonitor) &&
+      (PercentValue(GetDlgItem(state.window, IdField6), state.draft.messages.jitter) > 0.0 ||
+       PercentValue(GetDlgItem(state.window, IdField8), state.draft.messages.horizontalJitter) > 0.0));
+  }
   EnableWindow(GetDlgItem(state.window, IdResetSection), enabled);
   const bool hasItem = enabled && state.selected >= 0 && state.selected < ItemCount(state);
   EnableWindow(GetDlgItem(state.window, IdRemove),
@@ -633,6 +641,8 @@ void SaveGlobals(EditorState& state) {
       break;
     case Page::Messages:
       state.draft.messages.enabled = Checked(state.window, IdEnabled);
+      state.draft.messages.singleMonitor = Checked(state.window, IdSingleMonitor);
+      state.draft.messages.independentMonitorPositions = Checked(state.window, IdIndependentPositions);
       state.draft.messages.flickerOut = Checked(state.window, IdCheck2);
       state.draft.messages.brightnessFade = Checked(state.window, IdCheck3);
       state.draft.messages.frequencyMilliseconds = NumberValue(
@@ -746,8 +756,10 @@ void BuildMessagesPage(EditorState& state) {
     state.draft.messages.direction == MessageDirection::BottomToTop ? 1 : 0);
   SetChecked(Check(state, IdCheck2, L"Flicker dissolve", 315, 324, 180), state.draft.messages.flickerOut);
   SetChecked(Check(state, IdCheck3, L"Brightness fade", 315, 353, 180), state.draft.messages.brightnessFade);
-  Label(state, L"Selected message", 315, 386);
-  Edit(state, IdText, 315, 409, 430, 120, true);
+  SetChecked(Check(state, IdSingleMonitor, L"Single message across monitors", 315, 380, 430), state.draft.messages.singleMonitor);
+  SetChecked(Check(state, IdIndependentPositions, L"Independent random positions per monitor", 315, 407, 430), state.draft.messages.independentMonitorPositions);
+  Label(state, L"Selected message", 315, 440);
+  Edit(state, IdText, 315, 463, 430, 66, true);
 }
 
 void BuildImagesPage(EditorState& state) {
@@ -1140,6 +1152,11 @@ LRESULT CALLBACK WindowProcedure(
         return 0;
       }
       switch (LOWORD(wParam)) {
+        case IdSingleMonitor:
+        case IdField6:
+        case IdField8:
+          if (state->page == Page::Messages && !state->updating) UpdateControlAvailability(*state);
+          return 0;
         case IdEnabled:
           if (HIWORD(wParam) == BN_CLICKED && state->page == Page::Messages)
             UpdateControlAvailability(*state);

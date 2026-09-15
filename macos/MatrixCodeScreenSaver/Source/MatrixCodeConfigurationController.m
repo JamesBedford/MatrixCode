@@ -957,6 +957,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                                      @[@"topToBottom", @"bottomToTop"], @"topToBottom"),
         @"verticalPosition": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalPosition", 0.5, 0, 1)),
         @"verticalJitter": @(MatrixCodeSettingNumber(storedMessageDoc, @"verticalJitter", 0.25, 0, 1)),
+        @"singleMonitor": MatrixCodeSettingBoolObject(MatrixCodeSettingBool(storedMessageDoc, @"singleMonitor", NO)),
+        @"independentMonitorPositions": MatrixCodeSettingBoolObject(MatrixCodeSettingBool(storedMessageDoc, @"independentMonitorPositions", NO)),
         @"horizontalPosition": @(MatrixCodeSettingNumber(storedMessageDoc, @"horizontalPosition", 0.5, 0, 1)),
         @"horizontalJitter": @(MatrixCodeSettingNumber(storedMessageDoc, @"horizontalJitter", 0, 0, 1)),
     } mutableCopy];
@@ -2476,7 +2478,9 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                             control:number
                                          labelWidth:labelWidth]];
     }
-    for (NSArray *toggle in @[@[@"Flicker dissolve", @"flickerOut"],
+    for (NSArray *toggle in @[@[@"Single message across monitors", @"singleMonitor"],
+                               @[@"Independent random positions per monitor", @"independentMonitorPositions"],
+                               @[@"Flicker dissolve", @"flickerOut"],
                                @[@"Brightness fade", @"brightnessFade"]]) {
         NSButton *button = [NSButton checkboxWithTitle:toggle[0] target:self action:@selector(messageToggleChanged:)];
         button.identifier = toggle[1];
@@ -2495,6 +2499,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
             BOOL enabled = [self.messages[@"enabled"] boolValue];
             if ([control.identifier isEqualToString:@"messageDirection"]) {
                 enabled = enabled && [self.messages[@"messageLayout"] isEqualToString:@"drop"];
+            } else if ([control.identifier isEqualToString:@"independentMonitorPositions"]) {
+                enabled = enabled && ![self.messages[@"singleMonitor"] boolValue] &&
+                    ([self.messages[@"verticalJitter"] doubleValue] > 0 ||
+                     [self.messages[@"horizontalJitter"] doubleValue] > 0);
             } else if (control.action == @selector(moveMessage:)) {
                 BOOL canMove = [control.identifier isEqualToString:@"up"]
                     ? control.tag > 0 : control.tag + 1 < (NSInteger)self.messageLines.count;
@@ -2571,6 +2579,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         value = MIN(600000, MAX(minimumGap ? 500 : 0, value));
     }
     self.messages[key] = @(value);
+    [self updateMessageSettingsEnabledInView:self.messageSettingsStack];
     [self draftDidChange];
 }
 - (void)messageToggleChanged:(NSButton *)sender {

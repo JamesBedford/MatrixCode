@@ -99,6 +99,8 @@ class SettingsDialog final : public QDialog {
   QDoubleSpinBox* messagePersistence_ = nullptr;
   QDoubleSpinBox* messageAppear_ = nullptr;
   QDoubleSpinBox* messageDisappear_ = nullptr;
+  QCheckBox* messageSingleMonitor_ = nullptr;
+  QCheckBox* messageIndependentPositions_ = nullptr;
   QCheckBox* messageFlicker_ = nullptr;
   QCheckBox* messageBrightness_ = nullptr;
   QComboBox* messageLayout_ = nullptr;

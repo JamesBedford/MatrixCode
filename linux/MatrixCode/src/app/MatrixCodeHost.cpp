@@ -201,7 +201,9 @@ bool SameMessages(const MessagesDocument& left, const MessagesDocument& right) {
     left.layout == right.layout && left.direction == right.direction &&
     left.position == right.position && left.jitter == right.jitter &&
     left.horizontalPosition == right.horizontalPosition &&
-    left.horizontalJitter == right.horizontalJitter;
+    left.horizontalJitter == right.horizontalJitter &&
+    left.singleMonitor == right.singleMonitor &&
+    left.independentMonitorPositions == right.independentMonitorPositions;
 }
 
 bool SameImages(const ImagesDocument& left, const ImagesDocument& right) {
@@ -894,7 +896,7 @@ void MatrixCodeHost::UpdateMessages() {
   if (simulations_.empty() || reducedMotion_ || introActive_) return;
   RainSimulationMessageSink sink(*simulations_.front());
   std::vector<MessageRegion> regions;
-  if (windows_.size() > 1 && settings_.controls.vignette > 0.0) {
+  if (windows_.size() > 1 && !settings_.messages.singleMonitor) {
     const double cellPixels = SimConfig{}.targetCellPixels * settings_.controls.glyphScale;
     for (const auto& window : windows_) {
       const QRectF display = window->rain->VirtualGeometry();

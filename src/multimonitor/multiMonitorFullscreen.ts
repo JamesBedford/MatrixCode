@@ -22,7 +22,7 @@ export interface MultiMonitorConfig {
   cell: number;
   vCols: number;
   vRows: number;
-  /** Session-wide placement rule captured from the controller's vignette setting. */
+  /** Legacy hash compatibility flag; current placement uses the shared messages document. */
   perDisplayMessages?: boolean;
   /** Physical screen this config renders; used for rebuilding geometry when glyph size changes. */
   screenId?: string;

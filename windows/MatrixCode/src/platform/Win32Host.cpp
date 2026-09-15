@@ -190,7 +190,9 @@ struct LocalCalendarDayCache {
     left.layout == right.layout && left.direction == right.direction &&
     left.position == right.position && left.jitter == right.jitter &&
     left.horizontalPosition == right.horizontalPosition &&
-    left.horizontalJitter == right.horizontalJitter;
+    left.horizontalJitter == right.horizontalJitter &&
+    left.singleMonitor == right.singleMonitor &&
+    left.independentMonitorPositions == right.independentMonitorPositions;
 }
 
 [[nodiscard]] bool SameImages(
@@ -683,7 +685,7 @@ void NativeHost::UpdateMessages() {
   if (simulations_.empty() || reducedMotion_ || introActive_) return;
   RainSimulationMessageSink sink(*simulations_.front());
   std::vector<MessageRegion> regions;
-  if (windows_.size() > 1 && settings_.controls.vignette > 0.0) {
+  if (windows_.size() > 1 && !settings_.messages.singleMonitor) {
     const double cellPixels = SimConfig{}.targetCellPixels * settings_.controls.glyphScale;
     regions.reserve(windows_.size());
     for (const auto& window : windows_) {

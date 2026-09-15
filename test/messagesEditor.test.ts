@@ -51,7 +51,12 @@ class FakeElement {
     return this.attributes.get(name) ?? null;
   }
 
-  addEventListener(): void {}
+  private listeners = new Map<string, () => void>();
+  addEventListener(event: string, callback: () => void): void { this.listeners.set(event, callback); }
+  trigger(event: string): void { this.listeners.get(event)?.(); }
+  querySelector(tag: string): FakeElement | null {
+    return descendants(this).find((element) => element !== this && element.tagName === tag.toUpperCase()) ?? null;
+  }
 
   dispatchEvent(): boolean {
     return true;
@@ -125,6 +130,28 @@ describe("MessagesEditor placement controls", () => {
     );
     expect(flickerField?.parentElement?.className).toBe("mx-line-timings");
     expect(flickerField?.parentElement?.children).toEqual([flickerField]);
+
+    const field = (label: string): FakeElement => descendants(parent).find(
+      (element) => element.tagName === "LABEL" && fieldLabel(element) === label,
+    )!;
+    const single = field("Single message across monitors").querySelector("button")!;
+    const independent = field("Independent random positions per monitor").querySelector("button")!;
+    expect(independent.disabled).toBe(false);
+    independent.trigger("click");
+    expect(independent.getAttribute("aria-pressed")).toBe("true");
+    single.trigger("click");
+    expect(independent.disabled).toBe(true);
+    single.trigger("click");
+    expect(independent.disabled).toBe(false);
+    const vertical = field("Vertical randomness (%)").querySelector("input")!;
+    vertical.value = "0";
+    vertical.trigger("input");
+    expect(independent.disabled).toBe(true);
+    const horizontal = field("Horizontal randomness (%)").querySelector("input")!;
+    horizontal.value = "10";
+    horizontal.trigger("input");
+    expect(independent.disabled).toBe(false);
+    expect(independent.getAttribute("aria-pressed")).toBe("true");
 
     editor.destroy();
   });

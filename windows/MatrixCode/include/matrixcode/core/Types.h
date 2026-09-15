@@ -99,6 +99,8 @@ struct MessagesDocument {
   double jitter = 0.25;
   double horizontalPosition = 0.5;
   double horizontalJitter = 0.0;
+  bool singleMonitor = false;
+  bool independentMonitorPositions = false;
 };
 
 struct ImageMask {

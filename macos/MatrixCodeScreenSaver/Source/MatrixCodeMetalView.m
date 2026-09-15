@@ -278,6 +278,8 @@ static NSDictionary<NSString *, id> *MatrixCodeDefaultMessages(void) {
         @"messageDirection": @"topToBottom",
         @"verticalPosition": @0.5,
         @"verticalJitter": @0.25,
+        @"singleMonitor": @NO,
+        @"independentMonitorPositions": @NO,
         @"horizontalPosition": @0.5,
         @"horizontalJitter": @0,
     };
@@ -549,18 +551,8 @@ static double MatrixCodeVignette(NSDictionary *dictionary) {
     return MatrixCodeNumber(dictionary, @"vignette", 0, 0, 1);
 }
 
-static BOOL MatrixCodeMessagesUseLocalCoordinates(NSDictionary *session,
-                                                  NSDictionary *controls) {
-    NSArray *screens = [session[@"screens"] isKindOfClass:NSArray.class]
-        ? session[@"screens"] : @[];
-    if (screens.count > 1) {
-        id capturedMode = session[@"perDisplayMessages"];
-        if ([capturedMode isKindOfClass:NSNumber.class] &&
-            CFGetTypeID((__bridge CFTypeRef)capturedMode) == CFBooleanGetTypeID()) {
-            return [capturedMode boolValue];
-        }
-    }
-    return MatrixCodeVignette(controls) > 0;
+static BOOL MatrixCodeMessagesUseLocalCoordinates(NSDictionary *messages) {
+    return !MatrixCodeBool(messages, @"singleMonitor", NO);
 }
 
 static BOOL MatrixCodeAdaptiveResolutionIsEnabled(NSDictionary *session) {
@@ -2063,14 +2055,33 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                                                                    columns:(NSInteger)columns
                                                                       rows:(NSInteger)rows {
     if (!sharedDisplayGrid ||
-        !MatrixCodeMessagesUseLocalCoordinates(self.session, self.controls)) {
+        !MatrixCodeMessagesUseLocalCoordinates(self.messages)) {
         return nil;
     }
-    return @[[[MatrixCodeMessageRegion alloc]
-        initWithColumnStart:firstColumn
-                   rowStart:firstRow
-                    columns:columns
-                       rows:rows]];
+    CGFloat cellPoints = MatrixCodeRainSimulationDefaultConfig().targetCellPx *
+        MatrixCodeNumber(self.controls, @"glyphScale", 1, 0.5, 10);
+    NSMutableArray<MatrixCodeMessageRegion *> *regions = [NSMutableArray array];
+    NSArray *screens = [self.session[@"screens"] isKindOfClass:NSArray.class]
+        ? self.session[@"screens"] : @[];
+    for (NSDictionary *screen in screens) {
+        if (![screen isKindOfClass:NSDictionary.class]) continue;
+        NSInteger columnStart = 0, rowStart = 0;
+        CGFloat originX = [MatrixCodeSession
+            localOriginForVirtualOffset:[screen[@"left"] doubleValue] - self.virtualLeft
+                               cellSize:cellPoints firstCell:&columnStart];
+        CGFloat originY = [MatrixCodeSession
+            localOriginForVirtualOffset:[screen[@"top"] doubleValue] - self.virtualTop
+                               cellSize:cellPoints firstCell:&rowStart];
+        [regions addObject:[[MatrixCodeMessageRegion alloc]
+            initWithColumnStart:columnStart rowStart:rowStart
+            columns:MAX(1, ceil(([screen[@"width"] doubleValue] - originX) / cellPoints))
+            rows:MAX(1, ceil(([screen[@"height"] doubleValue] - originY) / cellPoints))]];
+    }
+    if (regions.count == 0) {
+        [regions addObject:[[MatrixCodeMessageRegion alloc]
+            initWithColumnStart:firstColumn rowStart:firstRow columns:columns rows:rows]];
+    }
+    return regions;
 }
 
 - (NSData *)extractSharedSimulationStateAtColumn:(NSInteger)firstColumn
@@ -2672,8 +2683,8 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 }
 
 + (BOOL)diagnosticMessagesUseLocalCoordinatesForSession:(NSDictionary *)session
-                                                controls:(NSDictionary *)controls {
-    return MatrixCodeMessagesUseLocalCoordinates(session ?: @{}, controls ?: @{});
+                                                messages:(NSDictionary *)messages {
+    return MatrixCodeMessagesUseLocalCoordinates(messages ?: @{});
 }
 
 + (uint32_t)diagnosticNormalRainSeed {
