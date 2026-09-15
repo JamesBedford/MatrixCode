@@ -325,25 +325,46 @@ static NSString *MatrixCodeHostShortcutToastText(MatrixCodeRainHostView *hostVie
     return label.stringValue;
 }
 
-- (void)testSeparateScreenSaverHostsShareOneConfigurationWindow {
-    MatrixCodeRainHostView *previewHost =
+- (void)testScreenSaverOptionsBelongToTheirHostSession {
+    MatrixCodeRainHostView *firstHost =
         [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
                                                  mode:MatrixCodeRainHostModeScreenSaverPreview];
-    MatrixCodeRainHostView *playbackHost =
-        [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
-                                                 mode:MatrixCodeRainHostModeScreenSaverPlayback];
-    MatrixCodeRainHostView *secondPreviewHost =
+    MatrixCodeRainHostView *nextHost =
         [[MatrixCodeRainHostView alloc] initWithFrame:NSZeroRect
                                                  mode:MatrixCodeRainHostModeScreenSaverPreview];
+    NSWindow *firstSheet = [firstHost configureWindow];
+    XCTAssertEqual([firstHost configureWindow], firstSheet);
+    NSWindow *firstParent = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 800, 600)
+                  styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+    NSWindow *nextParent = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 800, 600)
+                  styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+    [firstParent orderFront:nil];
+    [nextParent orderFront:nil];
+    XCTestExpectation *firstEnded = [self expectationWithDescription:@"old host finished"];
+    [firstParent beginSheet:firstSheet completionHandler:^(NSModalResponse response) {
+        [firstEnded fulfill];
+    }];
 
-    NSWindow *firstWindow = [previewHost configureWindow];
-    NSWindow *secondWindow = [playbackHost configureWindow];
-    NSWindow *thirdWindow = [secondPreviewHost configureWindow];
-
-    XCTAssertEqual(firstWindow, secondWindow);
-    XCTAssertEqual(secondWindow, thirdWindow);
-    XCTAssertEqual(firstWindow.windowController, secondWindow.windowController);
-    [firstWindow.windowController cancelOperation:nil];
+    // A new extension session can start while the old session still owns its sheet.
+    NSWindow *nextSheet = [nextHost configureWindow];
+    XCTAssertNotEqual(nextSheet, firstSheet);
+    XCTAssertEqual([nextHost configureWindow], nextSheet);
+    if (nextSheet != firstSheet) {
+        XCTestExpectation *nextEnded = [self expectationWithDescription:@"new host finished"];
+        [nextParent beginSheet:nextSheet completionHandler:^(NSModalResponse response) {
+            [nextEnded fulfill];
+        }];
+        XCTAssertEqual(firstSheet.sheetParent, firstParent);
+        XCTAssertEqual(nextSheet.sheetParent, nextParent);
+        [nextParent endSheet:nextSheet returnCode:NSModalResponseOK];
+        [self waitForExpectations:@[nextEnded] timeout:2];
+    }
+    [firstParent endSheet:firstSheet returnCode:NSModalResponseOK];
+    [self waitForExpectations:@[firstEnded] timeout:2];
+    [firstParent orderOut:nil];
+    [nextParent orderOut:nil];
 }
 
 - (void)testEscapeKeyExitsStandaloneFullScreen {

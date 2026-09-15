@@ -102,6 +102,7 @@
 @property(nonatomic, strong) MatrixCodeMetalView *metalView;
 @property(nonatomic, strong) MatrixCodePreferences *preferences;
 @property(nonatomic, strong) MatrixCodeConfigurationController *configurationController;
+@property(nonatomic, strong) MatrixCodeConfigurationController *screenSaverConfigurationController;
 @property(nonatomic, strong) MatrixCodeIntroOverlayView *introOverlay;
 @property(nonatomic, strong) MatrixCodeTokenResolver *tokenResolver;
 @property(nonatomic, strong) NSDate *runStartDate;
@@ -1565,7 +1566,12 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 }
 
 - (NSWindow *)configureWindow {
-    return [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
+    // Each extension session owns a separate parent window. Reuse only within this view.
+    if (!self.screenSaverConfigurationController) {
+        self.screenSaverConfigurationController =
+            [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    }
+    return [self.screenSaverConfigurationController screenSaverConfigurationWindow];
 }
 
 - (void)showSettingsOverlay {

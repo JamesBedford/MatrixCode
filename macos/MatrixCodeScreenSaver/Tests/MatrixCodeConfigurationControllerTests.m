@@ -303,13 +303,12 @@ static void MatrixCodeAssertNoTransientEditorReferences(
 }
 
 - (void)testScreenSaverConfigurationWindowIsReusedThroughRealSheetDismissal {
-    NSWindow *firstWindow =
-        [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
-    NSWindow *secondWindow =
-        [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
-    XCTAssertEqual(firstWindow, secondWindow);
     MatrixCodeConfigurationController *controller =
-        (MatrixCodeConfigurationController *)firstWindow.windowController;
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSWindow *firstWindow = [controller screenSaverConfigurationWindow];
+    NSWindow *secondWindow =
+        [controller screenSaverConfigurationWindow];
+    XCTAssertEqual(firstWindow, secondWindow);
     XCTAssertTrue([controller isKindOfClass:MatrixCodeConfigurationController.class]);
 
     NSWindow *parent = [[NSWindow alloc]
@@ -330,13 +329,13 @@ static void MatrixCodeAssertNoTransientEditorReferences(
 
     [controller cancel:nil];
     NSWindow *windowWhileDismissing =
-        [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
+        [controller screenSaverConfigurationWindow];
     XCTAssertEqual(windowWhileDismissing, firstWindow);
 
     [self waitForExpectations:@[completion, didEnd] timeout:2];
 
     NSWindow *reopenedWindow =
-        [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
+        [controller screenSaverConfigurationWindow];
     XCTAssertEqual(reopenedWindow, firstWindow);
     XCTAssertEqual(reopenedWindow.windowController, controller);
     XCTAssertFalse([[controller valueForKey:@"configurationDismissalStarted"] boolValue]);
@@ -346,9 +345,9 @@ static void MatrixCodeAssertNoTransientEditorReferences(
 }
 
 - (void)testOptionsCanBePresentedRepeatedlyAfterDoneAndCancel {
-    NSWindow *sheet = [MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow];
     MatrixCodeConfigurationController *controller =
-        (MatrixCodeConfigurationController *)sheet.windowController;
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSWindow *sheet = [controller screenSaverConfigurationWindow];
     NSWindow *parent = [[NSWindow alloc]
         initWithContentRect:NSMakeRect(0, 0, 800, 600)
                   styleMask:NSWindowStyleMaskTitled
@@ -356,7 +355,7 @@ static void MatrixCodeAssertNoTransientEditorReferences(
                       defer:NO];
     [parent orderFront:nil];
     for (NSUInteger cycle = 0; cycle < 3; cycle++) {
-        XCTAssertEqual([MatrixCodeConfigurationController sharedScreenSaverConfigurationWindow], sheet);
+        XCTAssertEqual([controller screenSaverConfigurationWindow], sheet);
         XCTAssertFalse([[controller valueForKey:@"configurationDismissalStarted"] boolValue]);
         NSModalResponse expectedResponse = cycle == 1 ? NSModalResponseCancel : NSModalResponseOK;
         XCTestExpectation *completed = [self expectationWithDescription:@"host finished Options sheet"];

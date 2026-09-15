@@ -17,8 +17,6 @@ NSNotificationName const MatrixCodePreviewValuesDidChangeNotification =
     @"MatrixCodePreviewValuesDidChangeNotification";
 NSString * const MatrixCodePreviewValuesKey = @"values";
 
-static MatrixCodeConfigurationController *MatrixCodeSharedScreenSaverConfigurationController;
-
 /** Matches the web viewer-name field's maxLength, so mx-user-name round-trips unchanged. */
 static const NSUInteger MatrixCodeUserNameMaximumLength = 80;
 
@@ -519,16 +517,10 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 
 @implementation MatrixCodeConfigurationController
 
-+ (NSWindow *)sharedScreenSaverConfigurationWindow {
+- (NSWindow *)screenSaverConfigurationWindow {
     NSAssert(NSThread.isMainThread, @"Screen saver configuration must be created on the main thread");
-    if (!MatrixCodeSharedScreenSaverConfigurationController) {
-        MatrixCodeSharedScreenSaverConfigurationController =
-            [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
-    } else {
-        [MatrixCodeSharedScreenSaverConfigurationController
-            prepareForScreenSaverConfigurationPresentation];
-    }
-    return MatrixCodeSharedScreenSaverConfigurationController.window;
+    [self prepareForScreenSaverConfigurationPresentation];
+    return self.window;
 }
 
 - (instancetype)initWithCloseHandler:(dispatch_block_t)closeHandler {
