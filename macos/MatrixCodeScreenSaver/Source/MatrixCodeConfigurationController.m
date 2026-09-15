@@ -501,6 +501,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 @property(nonatomic, strong, nullable) NSButton *settingsCloseButton;
 @property(nonatomic, weak) NSView *embeddedHostView;
 @property(nonatomic) BOOL embeddedPresentation;
+@property(nonatomic, strong) id settingsKeyboardMonitor;
 @property(nonatomic) BOOL restrictedToMultiMonitorControls;
 @property(nonatomic) BOOL settingsBackdropLoadScheduled;
 @property(nonatomic) BOOL settingsBackdropLoadAttempted;
@@ -636,6 +637,93 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return self;
 }
 
+// Build the focus order from the current form so rebuilt rows and disabled
+// controls are reflected without depending on the system's keyboard-access mode.
+- (void)appendSettingsControlsInView:(NSView *)view toArray:(NSMutableArray<NSControl *> *)controls {
+    if (!view || view.hidden || view.alphaValue <= 0.01) return;
+    if ([view isKindOfClass:NSControl.class]) {
+        NSControl *control = (NSControl *)view;
+        BOOL editable = ![control isKindOfClass:NSTextField.class] || [(NSTextField *)control isEditable];
+        if (editable && control.enabled && control.acceptsFirstResponder) [controls addObject:control];
+        return;
+    }
+    if ([view isKindOfClass:NSScrollView.class]) {
+        [self appendSettingsControlsInView:((NSScrollView *)view).documentView toArray:controls];
+        return;
+    }
+    NSArray<NSView *> *children = [view isKindOfClass:NSStackView.class]
+        ? ((NSStackView *)view).arrangedSubviews : view.subviews;
+    for (NSView *child in children) [self appendSettingsControlsInView:child toArray:controls];
+}
+
+- (BOOL)settingsControl:(NSControl *)control containsResponder:(NSResponder *)responder {
+    return responder == control || (responder && control.currentEditor == responder) ||
+        ([responder isKindOfClass:NSView.class] && [(NSView *)responder isDescendantOf:control]);
+}
+
+- (BOOL)settingsPanelContainsKeyboardFocus {
+    NSMutableArray<NSControl *> *controls = [NSMutableArray array];
+    [self appendSettingsControlsInView:self.settingsPanel toArray:controls];
+    NSResponder *responder = self.settingsPanel.window.firstResponder;
+    for (NSControl *control in controls) {
+        if ([self settingsControl:control containsResponder:responder]) return YES;
+    }
+    return NO;
+}
+
+- (BOOL)handleSettingsTabEvent:(NSEvent *)event {
+    NSEventModifierFlags excluded = NSEventModifierFlagCommand | NSEventModifierFlagControl |
+        NSEventModifierFlagOption;
+    if (event.type != NSEventTypeKeyDown || event.keyCode != 48 ||
+        (event.modifierFlags & excluded) || self.configurationDismissalStarted) return NO;
+    NSWindow *window = [self presentationContentView].window;
+    if (!window || event.window != window || window.attachedSheet) return NO;
+    NSView *root = self.editorCard ?: self.settingsOverlayView;
+    if (self.editorBackdrop) {
+        if (self.editorBackdrop.hidden || self.editorBackdrop.alphaValue <= 0.01) return NO;
+    } else if (!self.settingsPanelVisible || self.settingsPanel.hidden) {
+        return NO;
+    }
+    NSMutableArray<NSControl *> *controls = [NSMutableArray array];
+    [self appendSettingsControlsInView:root toArray:controls];
+    if (!controls.count) return NO;
+    NSInteger current = NSNotFound;
+    for (NSUInteger index = 0; index < controls.count; index++) {
+        if ([self settingsControl:controls[index] containsResponder:window.firstResponder]) {
+            current = (NSInteger)index;
+            break;
+        }
+    }
+    BOOL backwards = (event.modifierFlags & NSEventModifierFlagShift) != 0;
+    NSInteger count = (NSInteger)controls.count;
+    NSInteger next = current == NSNotFound ? (backwards ? count - 1 : 0)
+        : (current + (backwards ? -1 : 1) + count) % count;
+    NSControl *target = controls[(NSUInteger)next];
+    if ([window makeFirstResponder:target]) {
+        if ([target isKindOfClass:NSTextField.class]) [(NSTextField *)target selectText:self];
+        [target scrollRectToVisible:target.bounds];
+        [self scheduleSettingsPanelHide];
+    }
+    // Consume Tab even when validation refuses to end editing, so focus cannot
+    // escape to the rain or another form behind the active editor.
+    return YES;
+}
+
+- (void)installSettingsKeyboardMonitor {
+    if (self.settingsKeyboardMonitor) return;
+    __weak typeof(self) weakSelf = self;
+    self.settingsKeyboardMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+        handler:^NSEvent *(NSEvent *event) {
+            return [weakSelf handleSettingsTabEvent:event] ? nil : event;
+        }];
+}
+
+- (void)removeSettingsKeyboardMonitor {
+    if (!self.settingsKeyboardMonitor) return;
+    [NSEvent removeMonitor:self.settingsKeyboardMonitor];
+    self.settingsKeyboardMonitor = nil;
+}
+
 - (NSView *)presentationContentView {
     return self.embeddedPresentation ? self.embeddedHostView : self.window.contentView;
 }
@@ -732,7 +820,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
                                           block:^(NSTimer *timer) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
-        if (self.editorBackdrop || [self settingsPanelContainsMouse]) {
+        if (self.editorBackdrop || [self settingsPanelContainsMouse] ||
+            [self settingsPanelContainsKeyboardFocus]) {
             [self scheduleSettingsPanelHide];
             return;
         }
@@ -989,6 +1078,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     NSView *content = [self presentationContentView];
     if (!content) return;
     content.window.acceptsMouseMovedEvents = YES;
+    [self installSettingsKeyboardMonitor];
     MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
     [theme applyControls:self.controls];
     [self.settingsAnimationTimer invalidate];
@@ -3108,6 +3198,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 }
 
 - (void)stopConfigurationPresentation {
+    [self removeSettingsKeyboardMonitor];
     self.settingsBackdropLoadGeneration++;
     self.settingsBackdropLoadScheduled = NO;
     [self.settingsHideTimer invalidate];
@@ -3209,6 +3300,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 }
 
 - (void)dealloc {
+    if (_settingsKeyboardMonitor) [NSEvent removeMonitor:_settingsKeyboardMonitor];
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [_settingsHideTimer invalidate];
     [_settingsAnimationTimer invalidate];

@@ -9,6 +9,7 @@
 #import "MatrixCodeTokenResolver.h"
 
 @interface MatrixCodeConfigurationController (Testing)
+- (BOOL)handleSettingsTabEvent:(NSEvent *)event;
 - (void)addMessage:(id)sender;
 - (void)cancel:(id)sender;
 - (void)controlChanged:(id)sender;
@@ -38,6 +39,19 @@ static NSView *MatrixCodeDescendantWithIdentifier(NSView *view, NSString *identi
         if (match) return match;
     }
     return nil;
+}
+
+static NSEvent *MatrixCodeSettingsTabEvent(NSWindow *window, NSEventModifierFlags modifiers) {
+    return [NSEvent keyEventWithType:NSEventTypeKeyDown
+                           location:NSZeroPoint
+                      modifierFlags:modifiers
+                          timestamp:0
+                       windowNumber:window.windowNumber
+                            context:nil
+                         characters:(modifiers & NSEventModifierFlagShift) ? @"\x19" : @"\t"
+        charactersIgnoringModifiers:@"\t"
+                          isARepeat:NO
+                            keyCode:48];
 }
 
 static void MatrixCodeSelectRepresentedValue(NSPopUpButton *popup, NSString *value) {
@@ -115,6 +129,104 @@ static void MatrixCodeAssertNoTransientEditorReferences(
     self.originalStoredValues = nil;
     self.preferences = nil;
     [super tearDown];
+}
+
+- (void)testTabNavigatesViewerNameAndSlidersInBothSettingsPresentations {
+    for (NSNumber *embedded in @[@NO, @YES]) {
+        NSWindow *hostWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 920, 700)
+            styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+        MatrixCodeConfigurationController *controller = embedded.boolValue
+            ? [[MatrixCodeConfigurationController alloc] initEmbeddedInView:hostWindow.contentView
+                closeHandler:^{}]
+            : [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+        NSWindow *window = embedded.boolValue ? hostWindow : controller.window;
+        [controller setSettingsPanelVisible:YES immediate:YES];
+        [window.contentView layoutSubtreeIfNeeded];
+        NSTextField *name = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+            window.contentView, @"mx-user-name");
+        NSSlider *density = (NSSlider *)MatrixCodeDescendantWithIdentifier(window.contentView, @"density");
+        NSSlider *ramp = (NSSlider *)MatrixCodeDescendantWithIdentifier(window.contentView, @"rampUpMs");
+        [window makeFirstResponder:nil];
+        XCTAssertTrue([controller handleSettingsTabEvent:MatrixCodeSettingsTabEvent(window, 0)]);
+        XCTAssertEqual(window.firstResponder, name.currentEditor);
+        XCTAssertNotNil(name.currentEditor);
+        XCTAssertTrue([controller handleSettingsTabEvent:MatrixCodeSettingsTabEvent(window, 0)]);
+        XCTAssertEqual(window.firstResponder, density);
+        XCTAssertTrue([controller handleSettingsTabEvent:MatrixCodeSettingsTabEvent(window, 0)]);
+        XCTAssertEqual(window.firstResponder, ramp);
+        XCTAssertTrue([controller handleSettingsTabEvent:
+            MatrixCodeSettingsTabEvent(window, NSEventModifierFlagShift)]);
+        XCTAssertEqual(window.firstResponder, density);
+        [controller cancelOperation:nil];
+    }
+}
+
+- (void)testTabMovesFromIntroTextToNextValueAndPreservesEdits {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller openEditorKind:@"intro"];
+    NSWindow *window = controller.window;
+    [window.contentView layoutSubtreeIfNeeded];
+    NSTextField *text = (NSTextField *)MatrixCodeDescendantWithIdentifier(window.contentView, @"text");
+    NSTextField *hold = (NSTextField *)MatrixCodeDescendantWithIdentifier(window.contentView, @"holdMs-seconds");
+    XCTAssertTrue([window makeFirstResponder:text]);
+    NSTextView *editor = (NSTextView *)text.currentEditor;
+    XCTAssertNotNil(editor);
+    [editor selectAll:nil];
+    [editor insertText:@"TAB KEEPS THIS TEXT" replacementRange:editor.selectedRange];
+    XCTAssertTrue([controller handleSettingsTabEvent:MatrixCodeSettingsTabEvent(window, 0)]);
+    XCTAssertEqual(window.firstResponder, hold.currentEditor);
+    XCTAssertNotNil(hold.currentEditor);
+    XCTAssertEqualObjects(text.stringValue, @"TAB KEEPS THIS TEXT");
+    NSDictionary *intro = MatrixCodeJSONDictionary([controller serializedValues][@"mx-intro"]);
+    XCTAssertEqualObjects(intro[@"lines"][0][@"text"], @"TAB KEEPS THIS TEXT");
+    XCTAssertTrue([controller handleSettingsTabEvent:
+        MatrixCodeSettingsTabEvent(window, NSEventModifierFlagShift)]);
+    XCTAssertEqual(window.firstResponder, text.currentEditor);
+    [controller cancelOperation:nil];
+}
+
+- (void)testTabSkipsDisabledMessagesAndWrapsInsideEditor {
+    [self.preferences commitValues:@{@"mx-messages": MatrixCodeJSONString(@{
+        @"enabled": @NO, @"messages": @[@"FIRST"]
+    })}];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller openEditorKind:@"messages"];
+    NSWindow *window = controller.window;
+    NSView *card = [controller valueForKey:@"editorCard"];
+    NSButton *enabled = (NSButton *)MatrixCodeDescendantWithIdentifier(card, @"enabled");
+    NSButton *cancel = (NSButton *)MatrixCodeDescendantWithIdentifier(card, @"editor-cancel");
+    NSButton *save = (NSButton *)MatrixCodeDescendantWithIdentifier(card, @"editor-save");
+    XCTAssertTrue([window makeFirstResponder:enabled]);
+    XCTAssertTrue([controller handleSettingsTabEvent:MatrixCodeSettingsTabEvent(window, 0)]);
+    XCTAssertEqual(window.firstResponder, cancel);
+    XCTAssertTrue([controller handleSettingsTabEvent:MatrixCodeSettingsTabEvent(window, 0)]);
+    XCTAssertEqual(window.firstResponder, save);
+    XCTAssertTrue([controller handleSettingsTabEvent:MatrixCodeSettingsTabEvent(window, 0)]);
+    XCTAssertEqual(window.firstResponder, enabled);
+    XCTAssertTrue([controller handleSettingsTabEvent:
+        MatrixCodeSettingsTabEvent(window, NSEventModifierFlagShift)]);
+    XCTAssertEqual(window.firstResponder, save);
+    [controller cancelOperation:nil];
+}
+
+- (void)testSettingsTabIgnoresOtherWindowsAndModifiedTab {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSWindow *window = controller.window;
+    NSWindow *otherWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 100, 100)
+        styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+    NSSlider *density = (NSSlider *)MatrixCodeDescendantWithIdentifier(window.contentView, @"density");
+    XCTAssertTrue([window makeFirstResponder:density]);
+    XCTAssertFalse([controller handleSettingsTabEvent:MatrixCodeSettingsTabEvent(otherWindow, 0)]);
+    for (NSNumber *modifier in @[@(NSEventModifierFlagCommand), @(NSEventModifierFlagControl),
+                                 @(NSEventModifierFlagOption)]) {
+        XCTAssertFalse([controller handleSettingsTabEvent:
+            MatrixCodeSettingsTabEvent(window, modifier.unsignedIntegerValue)]);
+        XCTAssertEqual(window.firstResponder, density);
+    }
+    [controller cancelOperation:nil];
 }
 
 - (void)testNativeConfigurationSheetBuildsPanelBeforeDeferredRainBackdrop {
