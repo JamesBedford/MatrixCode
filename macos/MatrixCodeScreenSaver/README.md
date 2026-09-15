@@ -386,7 +386,10 @@ relative placement samples. These choices are independent of vignette.
 
 For three displays side by side with another above the middle, horizontal
 position 50 and horizontal randomness 0 keep the message centered horizontally
-across the desktop. Vertical position runs from 0 at the bottom to 100 at the top and uses the
+across the desktop. Position percentages anchor the centre of the message, including
+when live tokens change its length, with at most half a glyph cell of rounding.
+Near an edge the anchor is clamped to keep the complete message visible.
+Vertical position runs from 0 at the bottom to 100 at the top and uses the
 combined height: 75 places it on the upper display, while 25 places it on the
 lower middle display (for roughly equal display heights). Saved documents retain
 their top-origin coordinates, so existing message placements remain unchanged.

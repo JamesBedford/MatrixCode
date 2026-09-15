@@ -438,7 +438,8 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
     NSDictionary *configuration = self.schedulerState.configuration;
     double position = MatrixCodeMessageNumber(configuration, positionKey, 0.5);
     double jitter = MatrixCodeMessageNumber(configuration, jitterKey, 0);
-    NSInteger anchor = (NSInteger)floor(position * maximumStart + 0.5);
+    NSInteger anchor = MAX(0, MIN(maximumStart,
+        (NSInteger)floor(position * size - extent / 2.0 + 0.5)));
     if (jitter <= 0) return anchor;
     NSInteger halfSpan = (NSInteger)floor(jitter * size + 0.5);
     NSInteger low = MAX(0, anchor - halfSpan);

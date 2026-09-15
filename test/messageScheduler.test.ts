@@ -66,6 +66,42 @@ const rowOf = (m: Map<number, number>, cols: number): number => Math.floor([...m
 const colOf = (m: Map<number, number>, cols: number): number => [...m.keys()][0]! % cols;
 
 describe("MessageScheduler.fire (via previewOne)", () => {
+  it.each(["row", "drop"] as const)("anchors %s message centres independently of length", (messageLayout) => {
+    const region = { colStart: 10, rowStart: 20, cols: 80, rows: 80 };
+    for (const position of [0.25, 0.5, 0.75]) {
+      for (const length of [1, 2, 9, 30]) {
+        const sim = new FakeSim(100, 120);
+        sched().previewOne(0, sim, doc({
+          messages: ["A".repeat(length)], messageLayout,
+          horizontalPosition: position, verticalPosition: position,
+          horizontalJitter: 0, verticalJitter: 0,
+        }), [region]);
+        const columns = [...sim.last!.keys()].map((index) => index % sim.cols);
+        const rows = [...sim.last!.keys()].map((index) => Math.floor(index / sim.cols));
+        const centreX = (Math.min(...columns) + Math.max(...columns) + 1) / 2;
+        const centreY = (Math.min(...rows) + Math.max(...rows) + 1) / 2;
+        expect(Math.abs(centreX - (region.colStart + position * region.cols))).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(centreY - (region.rowStart + position * region.rows))).toBeLessThanOrEqual(0.5);
+      }
+    }
+  });
+
+  it("keeps a changing token centred on its chosen desktop coordinate", () => {
+    let text = "AAA";
+    const scheduler = new MessageScheduler({ glyphSet, rng: createRng(1), resolveText: () => text });
+    const sim = new FakeSim(120, 80);
+    scheduler.previewOne(0, sim, doc({
+      messages: ["{tick}"], singleMonitor: true,
+      horizontalPosition: 0.25, horizontalJitter: 0, verticalJitter: 0,
+    }));
+    for (const length of [3, 20, 9, 40]) {
+      text = "A".repeat(length);
+      scheduler.update(100, sim);
+      const columns = [...sim.last!.keys()].map((index) => index % sim.cols);
+      expect(Math.abs((Math.min(...columns) + Math.max(...columns) + 1) / 2 - 30)).toBeLessThanOrEqual(0.5);
+    }
+  });
+
   it("centers a message horizontally and maps chars to glyph indices", () => {
     const s = sched();
     const sim = new FakeSim(20, 40);
@@ -790,7 +826,7 @@ describe("MessageScheduler cross-language golden", () => {
       }
     }
 
-    expect(hash).toBe(2080860176);
+    expect(hash).toBe(1085214760);
     expect({
       sets: sim.sets,
       updates: sim.updates,
@@ -803,8 +839,8 @@ describe("MessageScheduler cross-language golden", () => {
       updates: 3,
       clears: 6,
       targets: [
-        [793, 121], [794, 99], [795, 109], [796, 103], [798, 157],
-        [819, 121], [820, 99], [821, 109], [822, 103], [824, 157],
+        [794, 121], [795, 99], [796, 109], [797, 103], [799, 157],
+        [820, 121], [821, 99], [822, 109], [823, 103], [825, 157],
       ],
     });
   });
@@ -814,9 +850,10 @@ describe("MessageScheduler cross-language golden", () => {
 describe("multi-monitor placement modes", () => {
   it.each([
     { verticalPosition: 0.25, expectedDisplay: "upper", expectedRow: 30 },
-    { verticalPosition: 0.75, expectedDisplay: "middle", expectedRow: 89 },
-  ])("centers a single message on $expectedDisplay in a four-monitor arrangement", ({
-    verticalPosition, expectedDisplay, expectedRow,
+    { verticalPosition: 0.75, expectedDisplay: "middle", expectedRow: 90 },
+  ].flatMap((placement) => [1, 2, 9, 60].map((length) => ({ ...placement, length }))))(
+    "centers a $length-character message on $expectedDisplay in a four-monitor arrangement", ({
+    verticalPosition, expectedDisplay, expectedRow, length,
   }) => {
     const virtual = computeVirtualGrid([
       { id: "left", left: -1920, top: 0, width: 1920, height: 1200 },
@@ -826,7 +863,7 @@ describe("multi-monitor placement modes", () => {
     ], 20);
     const sim = new FakeSim(virtual.vCols, virtual.vRows);
     sched().previewOne(0, sim, doc({
-      messages: ["AB"],
+      messages: ["A".repeat(length)],
       singleMonitor: true,
       horizontalPosition: 0.5,
       horizontalJitter: 0,
@@ -834,7 +871,10 @@ describe("multi-monitor placement modes", () => {
       verticalJitter: 0,
     }), Object.values(virtual.slices));
 
-    expect([...sim.last!.keys()]).toEqual([expectedRow * 278 + 138, expectedRow * 278 + 139]);
+    const columns = [...sim.last!.keys()].map((index) => index % sim.cols);
+    expect(sim.last!.size).toBe(length);
+    expect(Math.abs((Math.min(...columns) + Math.max(...columns) + 1) / 2 - 139)).toBeLessThanOrEqual(0.5);
+    expect([...sim.last!.keys()].every((index) => Math.floor(index / sim.cols) === expectedRow)).toBe(true);
     const containingDisplays = Object.entries(virtual.slices)
       .filter(([, slice]) => [...sim.last!.keys()].every((index) => {
         const col = index % sim.cols;

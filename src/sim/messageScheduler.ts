@@ -205,11 +205,11 @@ export class MessageScheduler {
     return this.cfg!.frequencyMs * (JITTER_MIN + JITTER_SPAN * this.rng());
   }
 
-  /** Randomness is a ± fraction of the full axis size; keep the entire message inside the region. */
+  /** Position anchors the message centre; randomness is ± a fraction of the full axis size. Clamp to fit. */
   private pickAxisIndex(size: number, messageSize: number, position: number, jitter: number, sample: number): number {
     const maxStart = size - messageSize;
     if (maxStart <= 0) return 0;
-    const anchor = Math.round(position * maxStart);
+    const anchor = Math.max(0, Math.min(maxStart, Math.round(position * size - messageSize / 2)));
     const halfSpan = Math.round(jitter * size);
     if (halfSpan === 0) return anchor;
     const lo = Math.max(0, anchor - halfSpan);

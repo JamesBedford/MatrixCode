@@ -114,6 +114,11 @@ install/upgrade/uninstall verification on both architectures.
 
 ### Multi-monitor messages
 
+Position percentages select the centre of the message in its placement region,
+independent of text length. Horizontal 50 centres it across the combined desktop
+in single-message mode, or within each display in per-display mode. Placement
+is rounded to the nearest glyph cell and clamped at edges to keep text visible.
+
 The message editor measures vertical position upward: 0 is the bottom, 50 is
 the centre, and 100 is the top. Saved `mx-messages.verticalPosition` values
 remain top-origin for portable settings compatibility; opening existing

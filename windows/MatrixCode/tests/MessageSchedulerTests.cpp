@@ -114,6 +114,41 @@ std::uint32_t Feed(std::uint32_t hash, const std::uint32_t value) noexcept {
 void RunMessageSchedulerTests() {
   using namespace matrixcode;
 
+  // Percentage positions anchor the message centre within the whole region.
+  for (const auto layout : {MessageLayout::Row, MessageLayout::Drop}) {
+    for (const double position : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+      std::string dynamic = "ABCD";
+      FakeMessageSink sink(100, 100);
+      MessageScheduler scheduler(13u, [&dynamic](std::string_view) { return dynamic; });
+      auto document = Document();
+      document.messages = {"{dynamic}"};
+      document.layout = layout;
+      document.position = position;
+      document.horizontalPosition = position;
+      document.jitter = 0.0;
+      document.horizontalJitter = 0.0;
+      const std::array<MessageRegion, 1> region{{{10.0, 20.0, 80.0, 60.0}}};
+      scheduler.PreviewOne(0.0, sink, document, region);
+      for (const std::string text : {"ABCD", "ABCDE", "ABCDEFGHIJKL"}) {
+        dynamic = text;
+        scheduler.Update(100.0, sink, region);
+        const auto bounds = TargetBounds(sink);
+        const double columnExtent = layout == MessageLayout::Row ? text.size() : 1;
+        const double rowExtent = layout == MessageLayout::Drop ? text.size() : 1;
+        // Quantization can move a centre by at most half a cell; edges clamp.
+        const double expectedColumnCentre = std::clamp(position * 80.0,
+          columnExtent / 2.0, 80.0 - columnExtent / 2.0);
+        const double expectedRowCentre = std::clamp(position * 60.0,
+          rowExtent / 2.0, 60.0 - rowExtent / 2.0);
+        const double columnCentre = (bounds.firstColumn + bounds.lastColumn + 1) / 2.0 - 10.0;
+        const double rowCentre = (bounds.firstRow + bounds.lastRow + 1) / 2.0 - 20.0;
+        MX_EXPECT(std::abs(columnCentre - expectedColumnCentre) <= 0.5);
+        MX_EXPECT(std::abs(rowCentre - expectedRowCentre) <= 0.5);
+        MX_EXPECT_EQ(sink.targets.size(), text.size());
+      }
+    }
+  }
+
   {
     auto document = Document();
     document.messages = {"A B"};
@@ -463,16 +498,16 @@ void RunMessageSchedulerTests() {
         hash = Feed(hash, glyph);
       }
     }
-    MX_EXPECT_EQ(hash, 2080860176u);
+    MX_EXPECT_EQ(hash, 1085214760u);
     MX_EXPECT_EQ(sink.sets, 8u);
     MX_EXPECT_EQ(sink.updates, 3u);
     MX_EXPECT_EQ(sink.clears, 6u);
     const std::map<std::size_t, std::uint8_t> expectedTargets{
-      {std::size_t{793}, std::uint8_t{121}}, {std::size_t{794}, std::uint8_t{99}},
-      {std::size_t{795}, std::uint8_t{109}}, {std::size_t{796}, std::uint8_t{103}},
-      {std::size_t{798}, std::uint8_t{157}}, {std::size_t{819}, std::uint8_t{121}},
-      {std::size_t{820}, std::uint8_t{99}}, {std::size_t{821}, std::uint8_t{109}},
-      {std::size_t{822}, std::uint8_t{103}}, {std::size_t{824}, std::uint8_t{157}},
+      {std::size_t{794}, std::uint8_t{121}}, {std::size_t{795}, std::uint8_t{99}},
+      {std::size_t{796}, std::uint8_t{109}}, {std::size_t{797}, std::uint8_t{103}},
+      {std::size_t{799}, std::uint8_t{157}}, {std::size_t{820}, std::uint8_t{121}},
+      {std::size_t{821}, std::uint8_t{99}}, {std::size_t{822}, std::uint8_t{109}},
+      {std::size_t{823}, std::uint8_t{103}}, {std::size_t{825}, std::uint8_t{157}},
     };
     MX_EXPECT_EQ(sink.targets, expectedTargets);
   }

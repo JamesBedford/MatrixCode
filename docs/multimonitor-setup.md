@@ -21,6 +21,12 @@ the top**. Horizontal position runs from **0 at the left** to **100 at the right
 Changing the vertical control's direction preserves existing saved placements;
 their displayed value becomes 100 minus the previous value.
 
+Position percentages anchor the **centre of the message**, regardless of its
+length, including when a live countdown changes width. Horizontal 50 centres the
+message across the combined desktop in single-message mode. Placement snaps to
+the nearest glyph cell (at most half a cell from the requested centre) and clamps
+at the edges to keep the whole message visible.
+
 In **In-Rain Messages**, enable **Single message across monitors** to show one
 copy across the combined desktop. Vertical and horizontal position and randomness
 then use the entire virtual monitor space, so a message can cross a display edge.

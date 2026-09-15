@@ -270,6 +270,46 @@ static void MatrixCodeFixtureFeed(uint32_t *hash, uint32_t value) {
     }
 }
 
+- (void)testPositionAnchorsMessageCentreForBothLayoutsAndLiveLengths {
+    for (NSString *layout in @[@"row", @"drop"]) {
+        for (NSNumber *position in @[@0.25, @0.5, @0.75]) {
+            __block NSString *display = @"AB";
+            MatrixCodeMessageScheduler *scheduler = [[MatrixCodeMessageScheduler alloc]
+                initWithSeed:4 glyphIndexResolver:nil
+                textResolver:^NSString *(NSString *rawText) { return display; }];
+            MatrixCodeMessageRecordingSink *sink = [[MatrixCodeMessageRecordingSink alloc] init];
+            sink.columns = 120;
+            sink.rows = 120;
+            MatrixCodeMessageRegion *region = [[MatrixCodeMessageRegion alloc]
+                initWithColumnStart:10 rowStart:20 columns:80 rows:80];
+            [scheduler previewOneAtTimeMilliseconds:0 sink:sink
+                document:MatrixCodeMessageDocument(@{
+                    @"messages": @[@"TOKEN"], @"persistenceMs": @100000,
+                    @"messageLayout": layout,
+                    @"horizontalPosition": position, @"verticalPosition": position,
+                    @"horizontalJitter": @0, @"verticalJitter": @0,
+                }) regions:@[region]];
+            for (NSString *message in @[@"AB", @"ABCDE", @"ABCDEFGHIJ"]) {
+                display = message;
+                [scheduler updateAtTimeMilliseconds:message.length * 1000 sink:sink regions:@[region]];
+                NSInteger left = 120, right = 0, top = 120, bottom = 0;
+                for (NSNumber *index in sink.targets) {
+                    NSInteger column = index.integerValue % 120, row = index.integerValue / 120;
+                    left = MIN(left, column); right = MAX(right, column);
+                    top = MIN(top, row); bottom = MAX(bottom, row);
+                }
+                XCTAssertEqual(sink.targets.count, message.length);
+                // Integer grid placement allows at most half a cell of rounding.
+                XCTAssertEqualWithAccuracy((left + right + 1) / 2.0,
+                    10 + position.doubleValue * 80, 0.5);
+                XCTAssertEqualWithAccuracy((top + bottom + 1) / 2.0,
+                    20 + position.doubleValue * 80, 0.5);
+            }
+            XCTAssertEqual(sink.setCount, (NSUInteger)1);
+        }
+    }
+}
+
 - (void)testRowLayoutHorizontalJitterStaysWithinLegalStartRange {
     MatrixCodeMessageScheduler *scheduler =
         [[MatrixCodeMessageScheduler alloc] initWithSeed:1];
@@ -667,15 +707,15 @@ static void MatrixCodeFixtureFeed(uint32_t *hash, uint32_t value) {
         }
     }
 
-    XCTAssertEqual(hash, 2080860176U);
+    XCTAssertEqual(hash, 1085214760U);
     XCTAssertEqual(sink.setCount, (NSUInteger)8);
     XCTAssertEqual(sink.updateCount, (NSUInteger)3);
     XCTAssertEqual(sink.clearCount, (NSUInteger)6);
     XCTAssertEqual(sink.targets.count, (NSUInteger)10);
-    XCTAssertEqualObjects(sink.targets[@793], @121);
-    XCTAssertEqualObjects(sink.targets[@798], @157);
-    XCTAssertEqualObjects(sink.targets[@819], @121);
-    XCTAssertEqualObjects(sink.targets[@824], @157);
+    XCTAssertEqualObjects(sink.targets[@794], @121);
+    XCTAssertEqualObjects(sink.targets[@799], @157);
+    XCTAssertEqualObjects(sink.targets[@820], @121);
+    XCTAssertEqualObjects(sink.targets[@825], @157);
 }
 
 @end

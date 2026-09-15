@@ -92,8 +92,9 @@ std::size_t MessageScheduler::PickAxisStart(
     const double sample) {
   const std::size_t maximumStart = size > extent ? size - extent : 0;
   if (maximumStart == 0) return 0;
-  const auto anchor = static_cast<long long>(std::floor(
-    position * static_cast<double>(maximumStart) + 0.5));
+  const auto anchor = std::clamp(static_cast<long long>(std::floor(
+    position * static_cast<double>(size) - static_cast<double>(extent) / 2.0 + 0.5)),
+    0LL, static_cast<long long>(maximumStart));
   const auto halfSpan = static_cast<long long>(std::floor(
     jitter * static_cast<double>(size) + 0.5));
   const auto low = std::max(0LL, anchor - halfSpan);
