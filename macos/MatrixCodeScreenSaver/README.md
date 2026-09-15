@@ -144,10 +144,16 @@ Mac only. These contributor builds are not notarized. The established `build/Mat
 For a distributable Release, use the repository-root entry point:
 
 ```sh
+npm run release:macos                             # sign, notarize, staple, and install the saver
 ./scripts/build-release.sh --release               # sign, notarize, and staple
 ./scripts/build-release.sh --release --skip-notarize
 ./scripts/build-release.sh --debug
 ```
+
+`npm run release:macos` invokes `install.sh --notarize --no-open`: it runs the
+distribution workflow before replacing `~/Library/Screen Savers/Matrix Code.saver`.
+If signing or notarization fails, installation does not proceed. `npm run build:macos`
+keeps the local build/install workflow without notarization.
 
 The distribution workflow mirrors the SpotifyCDFinder release script. It uses
 the `Developer ID Application: James Bedford (7NBMEUUG5K)` identity and the

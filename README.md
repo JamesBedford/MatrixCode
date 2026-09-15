@@ -173,7 +173,13 @@ cd macos/MatrixCodeScreenSaver
 ./install.sh
 ```
 
-For a distributable build, run `./scripts/build-release.sh --release` from the
+Run `npm run release:macos` from the repository root to build a Developer ID
+signed, notarized Release app and DMG, then replace the installed screen saver.
+This requires the signing identity and `notarytool` Keychain profile described
+in the native macOS README. `npm run build:macos` builds and installs locally
+without notarization.
+
+For a distributable build without installation, run `./scripts/build-release.sh --release` from the
 repository root. The script signs with Developer ID, notarizes, and staples the
 DMG; `--skip-notarize` omits the Apple round trip, and `--debug` creates a local
 Debug build. It detects Xcode even when installed outside `/Applications`,

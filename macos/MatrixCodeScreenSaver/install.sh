@@ -87,18 +87,23 @@ matrixcode_invalidate_thumbnail_cache() {
 }
 
 OPEN_BUILD_PRODUCTS=true
+NOTARIZE=false
 for argument in "$@"; do
   case "${argument}" in
+    --notarize)
+      NOTARIZE=true
+      ;;
     --no-open)
       OPEN_BUILD_PRODUCTS=false
       ;;
     -h|--help)
       cat <<'USAGE'
-Usage: ./install.sh [--no-open]
+Usage: ./install.sh [--notarize] [--no-open]
 
 Build and install Matrix Code.saver, then open the Release products in Finder.
 
 Options:
+  --notarize Developer ID sign and notarize the Release app and DMG before installation.
   --no-open   Do not open the build products directory in Finder.
   -h, --help  Show this help.
 USAGE
@@ -106,13 +111,17 @@ USAGE
       ;;
     *)
       echo "Unknown option: ${argument}" >&2
-      echo "Usage: ./install.sh [--no-open]" >&2
+      echo "Usage: ./install.sh [--notarize] [--no-open]" >&2
       exit 2
       ;;
   esac
 done
 
-"${SCRIPT_DIR}/build.sh" --release
+if [[ "${NOTARIZE}" == true ]]; then
+  "${REPO_ROOT}/scripts/build-release.sh" --release
+else
+  "${SCRIPT_DIR}/build.sh" --release
+fi
 
 INSTALL_DIR="${HOME}/Library/Screen Savers"
 mkdir -p "${INSTALL_DIR}"
