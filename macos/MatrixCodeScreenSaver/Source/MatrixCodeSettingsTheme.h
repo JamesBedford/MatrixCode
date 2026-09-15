@@ -31,6 +31,8 @@ FOUNDATION_EXPORT NSNotificationName const MatrixCodeSettingsThemeDidChangeNotif
 - (void)styleLabel:(NSTextField *)label;
 - (void)styleHintLabel:(NSTextField *)label;
 - (void)styleButton:(NSButton *)button;
+/// Keeps native checkbox states and sentence-case labels on the dark settings surface.
+- (void)styleCheckbox:(NSButton *)button;
 - (void)styleIconButton:(NSButton *)button;
 /// High-contrast floating dismiss button that stays legible over black rain.
 - (void)styleCloseButton:(NSButton *)button;

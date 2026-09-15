@@ -1515,18 +1515,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
         else [theme styleLabel:field];
     } else if ([view isKindOfClass:NSButton.class]) {
         NSButton *button = (NSButton *)view;
-        BOOL switchLike =
-            [button.title isEqualToString:@"Rain during intro"] ||
-            [button.title isEqualToString:@"Enable messages"] ||
-            [button.title isEqualToString:@"Enable images"] ||
-            [button.title isEqualToString:@"Flicker dissolve"] ||
-            [button.title isEqualToString:@"Brightness fade"] ||
-            [button.title isEqualToString:@"Enable default target"] ||
-            [button.title isEqualToString:@"Set"] ||
-            [button.title isEqualToString:@"Mirror glyphs"];
-        if (switchLike) {
-            button.font = [theme monospacedFontOfSize:11 weight:NSFontWeightRegular];
-            button.contentTintColor = theme.accentColor;
+        if ([button.cell.accessibilityRole isEqualToString:NSAccessibilityCheckBoxRole]) {
+            [theme styleCheckbox:button];
         } else {
             [theme styleButton:button];
         }
@@ -1833,7 +1823,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 - (NSStackView *)rowWithLabel:(NSString *)label
                       control:(NSView *)control
                    labelWidth:(CGFloat)labelWidth {
-    NSTextField *text = [NSTextField labelWithString:label];
+    NSTextField *text = [NSTextField wrappingLabelWithString:label];
     [text.widthAnchor constraintEqualToConstant:labelWidth].active = YES;
     NSStackView *row = [NSStackView stackViewWithViews:@[text, control]];
     row.orientation = NSUserInterfaceLayoutOrientationHorizontal;

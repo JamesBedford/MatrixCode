@@ -13,6 +13,7 @@ typedef NS_ENUM(NSInteger, MatrixCodeStyledControlRole) {
     MatrixCodeStyledControlRoleLabel,
     MatrixCodeStyledControlRoleHint,
     MatrixCodeStyledControlRoleButton,
+    MatrixCodeStyledControlRoleCheckbox,
     MatrixCodeStyledControlRoleCloseButton,
     MatrixCodeStyledControlRoleIconButton,
     MatrixCodeStyledControlRoleToggle,
@@ -224,6 +225,16 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
     button.layer.shadowOpacity = 0.0;
 }
 
+- (void)styleCheckbox:(NSButton *)button {
+    [self registerView:button role:MatrixCodeStyledControlRoleCheckbox];
+    [self preserveAccessibilityForControl:button originalTitle:button.title];
+    button.font = [self monospacedFontOfSize:11 weight:NSFontWeightRegular];
+    button.contentTintColor = self.accentColor;
+    // The custom settings surface is dark even when macOS uses a light appearance.
+    // Let AppKit draw the checkmark, focus ring, and readable disabled label.
+    button.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+}
+
 - (void)styleCloseButton:(NSButton *)button {
     [self registerView:button role:MatrixCodeStyledControlRoleCloseButton];
     button.bordered = NO;
@@ -330,6 +341,7 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
             case MatrixCodeStyledControlRoleLabel: [self styleLabel:(NSTextField *)view]; break;
             case MatrixCodeStyledControlRoleHint: [self styleHintLabel:(NSTextField *)view]; break;
             case MatrixCodeStyledControlRoleButton: [self styleButton:(NSButton *)view]; break;
+            case MatrixCodeStyledControlRoleCheckbox: [self styleCheckbox:(NSButton *)view]; break;
             case MatrixCodeStyledControlRoleCloseButton: [self styleCloseButton:(NSButton *)view]; break;
             case MatrixCodeStyledControlRoleIconButton: [self styleIconButton:(NSButton *)view]; break;
             case MatrixCodeStyledControlRoleToggle:

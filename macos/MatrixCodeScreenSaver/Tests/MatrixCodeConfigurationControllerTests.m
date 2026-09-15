@@ -4,6 +4,7 @@
 #import "MatrixCodeIntroOverlayView.h"
 #import "MatrixCodeMetalView.h"
 #import "MatrixCodePreferences.h"
+#import "MatrixCodeSettingsTheme.h"
 #import "MatrixCodeRainLifecycle.h"
 #import "MatrixCodeRainSimulation.h"
 #import "MatrixCodeTokenResolver.h"
@@ -11,6 +12,7 @@
 @interface MatrixCodeConfigurationController (Testing)
 - (BOOL)handleSettingsTabEvent:(NSEvent *)event;
 - (void)addMessage:(id)sender;
+- (void)styleEditorViewHierarchy:(NSView *)view;
 - (void)cancel:(id)sender;
 - (void)controlChanged:(id)sender;
 - (void)imageNumberChanged:(NSTextField *)sender;
@@ -1176,6 +1178,71 @@ restrictedToMultiMonitorControls:YES];
         controller.window.contentView, @"messages-token-hint");
     XCTAssertNotNil(messagesHint);
     XCTAssertEqualObjects(messagesHint.toolTip, introHint.toolTip);
+}
+
+- (void)testEditorCheckboxStylingUsesControlTypeRatherThanTitle {
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    NSButton *checkbox = [NSButton checkboxWithTitle:@"A future message option"
+        target:nil action:nil];
+    NSButton *action = [NSButton buttonWithTitle:@"Preview message" target:nil action:nil];
+    NSStackView *container = [NSStackView stackViewWithViews:@[checkbox, action]];
+    [controller styleEditorViewHierarchy:container];
+    [controller styleEditorViewHierarchy:container];
+
+    XCTAssertEqualObjects(checkbox.title, @"A future message option");
+    XCTAssertEqualObjects(checkbox.cell.accessibilityRole, NSAccessibilityCheckBoxRole);
+    XCTAssertEqualWithAccuracy(checkbox.layer.borderWidth, 0, 0.001);
+    XCTAssertEqualObjects(checkbox.contentTintColor, MatrixCodeSettingsTheme.sharedTheme.accentColor);
+    XCTAssertEqualObjects(action.title, @"PREVIEW MESSAGE");
+    XCTAssertGreaterThan(action.layer.borderWidth, 0);
+    MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
+    NSString *originalPreset = theme.presetName;
+    theme.presetName = @"amber";
+    XCTAssertEqualObjects(checkbox.contentTintColor, theme.accentColor);
+    XCTAssertEqualObjects(checkbox.title, @"A future message option");
+    theme.presetName = originalPreset;
+}
+
+- (void)testMultiMonitorMessageCheckboxesKeepThemeAndReadableTitlesWhenDisabled {
+    [self.preferences commitValues:@{@"mx-messages": MatrixCodeJSONString(@{
+        @"enabled": @YES, @"singleMonitor": @YES, @"verticalJitter": @0.25
+    })}];
+    MatrixCodeConfigurationController *controller =
+        [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
+    [controller openEditorKind:@"messages"];
+    NSView *stack = [controller valueForKey:@"messageSettingsStack"];
+    NSTextField *horizontalPosition = (NSTextField *)MatrixCodeDescendantWithIdentifier(
+        stack, @"horizontalPosition-percent");
+    NSTextField *positionLabel = nil;
+    for (NSView *sibling in horizontalPosition.superview.subviews) {
+        if ([sibling isKindOfClass:NSTextField.class] && sibling != horizontalPosition) {
+            positionLabel = (NSTextField *)sibling;
+        }
+    }
+    XCTAssertNotNil(positionLabel);
+    XCTAssertTrue(((NSTextFieldCell *)positionLabel.cell).wraps);
+    XCTAssertEqual(positionLabel.lineBreakMode, NSLineBreakByWordWrapping);
+    NSDictionary<NSString *, NSString *> *titles = @{
+        @"singleMonitor": @"Single message across monitors",
+        @"independentMonitorPositions": @"Independent random positions per monitor",
+    };
+    for (NSString *identifier in titles) {
+        NSButton *checkbox = (NSButton *)MatrixCodeDescendantWithIdentifier(stack, identifier);
+        XCTAssertNotNil(checkbox);
+        XCTAssertEqualObjects(checkbox.title, titles[identifier]);
+        XCTAssertEqualObjects(checkbox.cell.accessibilityRole, NSAccessibilityCheckBoxRole);
+        XCTAssertEqualWithAccuracy(checkbox.layer.borderWidth, 0, 0.001);
+        XCTAssertEqualObjects(checkbox.contentTintColor, MatrixCodeSettingsTheme.sharedTheme.accentColor);
+    }
+    NSButton *single = (NSButton *)MatrixCodeDescendantWithIdentifier(stack, @"singleMonitor");
+    NSButton *independent = (NSButton *)MatrixCodeDescendantWithIdentifier(stack, @"independentMonitorPositions");
+    XCTAssertFalse(independent.enabled);
+    XCTAssertEqualObjects(independent.appearance.name, NSAppearanceNameDarkAqua);
+    single.state = NSControlStateValueOff;
+    [controller messageToggleChanged:single];
+    XCTAssertTrue(independent.enabled);
+    XCTAssertEqualObjects(independent.title, titles[@"independentMonitorPositions"]);
 }
 
 - (void)testMessageSettingsFollowEnableToggleAndPreserveReorderConstraints {
