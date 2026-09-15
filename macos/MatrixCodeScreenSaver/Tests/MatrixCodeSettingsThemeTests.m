@@ -98,6 +98,40 @@
     XCTAssertNotEqual(selected, toggle.layer.backgroundColor);
 }
 
+- (void)testStaticLabelsCannotEnterFieldEditorOrLoseThemeColors {
+    MatrixCodeSettingsTheme *theme = MatrixCodeSettingsTheme.sharedTheme;
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 500, 120)
+                                                 styleMask:NSWindowStyleMaskBorderless
+                                                   backing:NSBackingStoreBuffered defer:NO];
+    window.releasedWhenClosed = NO;
+    NSTextField *label = [NSTextField wrappingLabelWithString:@"Horizontal randomness (%)"];
+    NSTextField *hint = [NSTextField wrappingLabelWithString:@"Randomness applies across the desktop."];
+    [window.contentView addSubview:label];
+    [window.contentView addSubview:hint];
+    [theme styleLabel:label];
+    [theme styleHintLabel:hint];
+
+    for (NSString *preset in @[@"gold", @"classic", @"purple"]) {
+        theme.presetName = preset;
+        for (NSTextField *field in @[label, hint]) {
+            XCTAssertFalse(field.isEditable);
+            XCTAssertFalse(field.isSelectable);
+            XCTAssertFalse(field.acceptsFirstResponder);
+            NSAttributedString *before = [field.attributedStringValue copy];
+            [field selectText:nil];
+            [window makeFirstResponder:field];
+            XCTAssertNil(field.currentEditor);
+            XCTAssertEqualObjects(field.attributedStringValue, before);
+        }
+        NSColor *labelColor = [label.attributedStringValue attribute:NSForegroundColorAttributeName
+                                                            atIndex:0 effectiveRange:nil];
+        XCTAssertEqualObjects(labelColor, theme.labelColor);
+        XCTAssertEqualObjects(hint.textColor, [theme.accentColor colorWithAlphaComponent:0.5]);
+        XCTAssertEqualObjects(label.accessibilityLabel, @"Horizontal randomness (%)");
+    }
+    [window close];
+}
+
 - (void)testPanelAndCardExposeExpectedGeometry {
     MatrixCodeSettingsPanelView *panel =
         [[MatrixCodeSettingsPanelView alloc] initWithFrame:NSMakeRect(0, 0, 560, 400)];

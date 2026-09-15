@@ -135,10 +135,10 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     ];
     s.previewOne(0, sim, doc({ messages: ["A"], verticalPosition: 0.5, verticalJitter: 0.5 }), regions);
     const rows = [...sim.last!.keys()].map((idx) => Math.floor(idx / sim.cols));
-    expect(rows[0]).toBeGreaterThanOrEqual(7);
-    expect(rows[0]).toBeLessThanOrEqual(22);
-    expect(rows[1]).toBeGreaterThanOrEqual(49);
-    expect(rows[1]).toBeLessThanOrEqual(70);
+    expect(rows[0]).toBeGreaterThanOrEqual(0);
+    expect(rows[0]).toBeLessThanOrEqual(29);
+    expect(rows[1]).toBeGreaterThanOrEqual(40);
+    expect(rows[1]).toBeLessThanOrEqual(79);
   });
 
   it("applies horizontal position and jitter to the legal start range in every display region", () => {
@@ -157,10 +157,10 @@ describe("MessageScheduler.fire (via previewOne)", () => {
     const starts = [...sim.last!.keys()]
       .filter((index) => sim.last!.get(index) === glyphSet.charToGlyphIndex("A"))
       .map((index) => index % sim.cols);
-    expect(starts[0]).toBeGreaterThanOrEqual(7);
-    expect(starts[0]).toBeLessThanOrEqual(21);
-    expect(starts[1]).toBeGreaterThanOrEqual(37);
-    expect(starts[1]).toBeLessThanOrEqual(51);
+    expect(starts[0]).toBeGreaterThanOrEqual(0);
+    expect(starts[0]).toBeLessThanOrEqual(27);
+    expect(starts[1]).toBeGreaterThanOrEqual(30);
+    expect(starts[1]).toBeLessThanOrEqual(57);
   });
 
   it("shares one vertical and horizontal sample across display regions", () => {
@@ -194,8 +194,8 @@ describe("MessageScheduler.fire (via previewOne)", () => {
       const sim = new FakeSim(20, 40);
       s.previewOne(0, sim, doc({ messages: ["AB"] }));
       const row = rowOf(sim.last!, 20);
-      expect(row).toBeGreaterThanOrEqual(Math.floor(40 * 0.35));
-      expect(row).toBeLessThanOrEqual(Math.floor(40 * 0.6));
+      expect(row).toBeGreaterThanOrEqual(10);
+      expect(row).toBeLessThanOrEqual(30);
     }
   });
 
@@ -258,10 +258,10 @@ describe("MessageScheduler.fire (via previewOne)", () => {
       horizontalJitter: 0.5,
     }), regions);
     const cols = [...sim.last!.keys()].map((idx) => idx % sim.cols);
-    expect(cols[0]).toBeGreaterThanOrEqual(7);
-    expect(cols[0]).toBeLessThanOrEqual(22);
-    expect(cols[1]).toBeGreaterThanOrEqual(37);
-    expect(cols[1]).toBeLessThanOrEqual(52);
+    expect(cols[0]).toBeGreaterThanOrEqual(0);
+    expect(cols[0]).toBeLessThanOrEqual(29);
+    expect(cols[1]).toBeGreaterThanOrEqual(30);
+    expect(cols[1]).toBeLessThanOrEqual(59);
   });
 
   it("honours the horizontal anchor in single-drop mode with no jitter", () => {
@@ -789,7 +789,7 @@ describe("MessageScheduler cross-language golden", () => {
       }
     }
 
-    expect(hash).toBe(1319480896);
+    expect(hash).toBe(2080860176);
     expect({
       sets: sim.sets,
       updates: sim.updates,
@@ -802,8 +802,8 @@ describe("MessageScheduler cross-language golden", () => {
       updates: 3,
       clears: 6,
       targets: [
-        [743, 121], [744, 99], [745, 109], [746, 103], [748, 157],
-        [769, 121], [770, 99], [771, 109], [772, 103], [774, 157],
+        [793, 121], [794, 99], [795, 109], [796, 103], [798, 157],
+        [819, 121], [820, 99], [821, 109], [822, 103], [824, 157],
       ],
     });
   });
@@ -843,5 +843,38 @@ describe("multi-monitor placement modes", () => {
     sched().previewOne(0, sim, doc({ messages: ["A"], verticalJitter: 1, horizontalJitter: 1 }), regions);
     const cells = [...sim.last!.keys()];
     expect(cells[1]! - cells[0]!).toBe(40);
+  });
+});
+
+
+describe("message randomness as a maximum offset in each direction", () => {
+  it.each([0, 0.999999])("uses 25 percent of the full width and height at sample %s", (sample) => {
+    const scheduler = new MessageScheduler({ glyphSet, rng: () => sample });
+    const sim = new FakeSim(200, 100);
+    scheduler.previewOne(0, sim, doc({ messages: ["A".repeat(20)],
+      horizontalPosition: 0.5, horizontalJitter: 0.25,
+      verticalPosition: 0.5, verticalJitter: 0.25 }));
+    const start = Math.min(...sim.last!.keys());
+    // The centre of a 20-cell message reaches 25% and 75% of the 200-cell width.
+    expect(start % 200).toBe(sample === 0 ? 40 : 140);
+    expect(Math.floor(start / 200)).toBe(sample === 0 ? 25 : 75);
+  });
+
+  it("can reach all three displays across repeated single-message activations", () => {
+    const scheduler = sched(42);
+    const sim = new FakeSim(300, 100);
+    const regions = [0, 100, 200].map((colStart) => ({ colStart, rowStart: 0, cols: 100, rows: 100 }));
+    const counts = [0, 0, 0];
+    for (let i = 0; i < 200; i++) {
+      scheduler.previewOne(i * 1000, sim, doc({ messages: ["A".repeat(20)], singleMonitor: true,
+        horizontalPosition: 0.5, horizontalJitter: 0.25,
+        verticalPosition: 0.5, verticalJitter: 0.25 }), regions);
+      expect(sim.last!.size).toBe(20);
+      const centre = colOf(sim.last!, 300) + 10;
+      expect(centre).toBeGreaterThanOrEqual(75);
+      expect(centre).toBeLessThanOrEqual(225);
+      counts[Math.floor(centre / 100)]!++;
+    }
+    expect(counts.every((count) => count > 0)).toBe(true);
   });
 });

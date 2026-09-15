@@ -99,11 +99,11 @@ export interface MessagesDoc {
   independentMonitorPositions: boolean;
   /** Vertical anchor: the row in row mode, or the legal top row in drop mode. */
   verticalPosition: number;
-  /** Random vertical variation around the configured anchor. */
+  /** Maximum random vertical offset in either direction, as a fraction of the region height. */
   verticalJitter: number;
   /** Horizontal anchor: the legal start column in row mode, or the column in drop mode. */
   horizontalPosition: number;
-  /** Random horizontal variation around the configured anchor. */
+  /** Maximum random horizontal offset in either direction, as a fraction of the region width. */
   horizontalJitter: number;
 }
 

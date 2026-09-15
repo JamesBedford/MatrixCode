@@ -194,6 +194,7 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
     label.bordered = NO;
     label.drawsBackground = NO;
     label.editable = NO;
+    label.selectable = NO;
 }
 
 - (void)styleHintLabel:(NSTextField *)label {
@@ -203,6 +204,7 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
     label.bordered = NO;
     label.drawsBackground = NO;
     label.editable = NO;
+    label.selectable = NO;
 }
 
 - (void)prepareLayerForControl:(NSControl *)control radius:(CGFloat)radius {

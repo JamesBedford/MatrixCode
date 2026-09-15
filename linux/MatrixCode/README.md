@@ -115,3 +115,9 @@ install/upgrade/uninstall verification on both architectures.
 ### Multi-monitor messages
 
 Messages default to one copy per display, independently of vignette. Enable “Single message across monitors” to place one message using the entire combined monitor space. Disable it and enable “Independent random positions per monitor” to give each display its own deterministic placement; this control applies only when horizontal or vertical randomness is nonzero. Shared placement uses the same normalized random samples on every display. These options persist as `singleMonitor` and `independentMonitorPositions` in `mx-messages`.
+
+Message randomness is a maximum offset in each direction, measured against the
+full placement region: position 50 with randomness 25 covers approximately
+25%–75% around the centre. Messages stay fully inside the region; their length
+does not shrink the random offset. In single-message mode the region is the
+combined desktop. Position 50 with randomness 50 covers the full region.

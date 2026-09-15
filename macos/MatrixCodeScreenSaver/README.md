@@ -383,3 +383,9 @@ With it off, every display receives the message at the same time.
 **Independent random positions per monitor** gives each display its own position
 when either randomness setting is nonzero; otherwise displays share the same
 relative placement samples. These choices are independent of vignette.
+
+Message randomness is a maximum offset in each direction, measured against the
+full placement region: position 50 with randomness 25 covers approximately
+25%–75% around the centre. Messages stay fully inside the region; their length
+does not shrink the random offset. In single-message mode the region is the
+combined desktop. Position 50 with randomness 50 covers the full region.

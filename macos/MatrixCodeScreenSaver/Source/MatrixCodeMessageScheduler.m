@@ -440,7 +440,7 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
     double jitter = MatrixCodeMessageNumber(configuration, jitterKey, 0);
     NSInteger anchor = (NSInteger)floor(position * maximumStart + 0.5);
     if (jitter <= 0) return anchor;
-    NSInteger halfSpan = (NSInteger)floor((jitter * maximumStart) / 2 + 0.5);
+    NSInteger halfSpan = (NSInteger)floor(jitter * size + 0.5);
     NSInteger low = MAX(0, anchor - halfSpan);
     NSInteger high = MIN(maximumStart, anchor + halfSpan);
     return low + (NSInteger)floor(sample * (double)(high - low + 1));

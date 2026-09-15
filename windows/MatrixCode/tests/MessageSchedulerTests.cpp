@@ -239,7 +239,7 @@ void RunMessageSchedulerTests() {
       MessageScheduler rowScheduler(seed);
       rowScheduler.PreviewOne(0.0, rowSink, row, region);
       const auto rowBounds = TargetBounds(rowSink);
-      MX_EXPECT(rowBounds.firstColumn >= 6 && rowBounds.firstColumn <= 10);
+      MX_EXPECT(rowBounds.firstColumn >= 3 && rowBounds.firstColumn <= 10);
       MX_EXPECT(rowBounds.lastColumn <= 12);
       firstHorizontalStart = std::min(firstHorizontalStart, rowBounds.firstColumn);
       lastHorizontalStart = std::max(lastHorizontalStart, rowBounds.firstColumn);
@@ -254,13 +254,59 @@ void RunMessageSchedulerTests() {
       MessageScheduler dropScheduler(seed);
       dropScheduler.PreviewOne(0.0, dropSink, drop, region);
       const auto dropBounds = TargetBounds(dropSink);
-      MX_EXPECT(dropBounds.firstRow >= 7 && dropBounds.firstRow <= 11);
+      MX_EXPECT(dropBounds.firstRow >= 4 && dropBounds.firstRow <= 11);
       MX_EXPECT(dropBounds.lastRow <= 13);
       firstVerticalStart = std::min(firstVerticalStart, dropBounds.firstRow);
       lastVerticalStart = std::max(lastVerticalStart, dropBounds.firstRow);
     }
     MX_EXPECT(firstHorizontalStart < lastHorizontalStart);
     MX_EXPECT(firstVerticalStart < lastVerticalStart);
+  }
+
+  {
+    // Jitter is a radius measured against the entire physical region, even for wide text.
+    for (const auto layout : {MessageLayout::Row, MessageLayout::Drop}) {
+      std::size_t minimum = 100, maximum = 0;
+      for (std::uint32_t seed = 1; seed <= 2048; ++seed) {
+        auto document = Document();
+        document.messages = {std::string(20, 'A')};
+        document.layout = layout;
+        document.jitter = 0.25;
+        document.horizontalJitter = 0.25;
+        FakeMessageSink sink(100, 100);
+        MessageScheduler scheduler(seed);
+        scheduler.PreviewOne(0.0, sink, document);
+        const auto bounds = TargetBounds(sink);
+        const auto start = layout == MessageLayout::Row ? bounds.firstColumn : bounds.firstRow;
+        MX_EXPECT(start >= 15 && start <= 65);
+        minimum = std::min(minimum, start);
+        maximum = std::max(maximum, start);
+      }
+      MX_EXPECT_EQ(minimum, std::size_t{15});
+      MX_EXPECT_EQ(maximum, std::size_t{65});
+    }
+  }
+
+  {
+    const std::array<MessageRegion, 3> regions{{{0, 0, 40, 40}, {40, 0, 40, 40}, {80, 0, 40, 40}}};
+    auto document = Document();
+    document.messages = {"A"};
+    document.singleMonitor = true;
+    document.horizontalJitter = 0.25;
+    std::size_t minimum = 120, maximum = 0;
+    for (std::uint32_t seed = 1; seed <= 2048; ++seed) {
+      FakeMessageSink sink(120, 40);
+      MessageScheduler scheduler(seed);
+      scheduler.PreviewOne(0.0, sink, document, regions);
+      MX_EXPECT_EQ(sink.targets.size(), std::size_t{1});
+      const auto bounds = TargetBounds(sink);
+      MX_EXPECT(bounds.firstColumn >= 30 && bounds.firstColumn <= 90);
+      MX_EXPECT(bounds.firstRow >= 10 && bounds.firstRow <= 30);
+      minimum = std::min(minimum, bounds.firstColumn);
+      maximum = std::max(maximum, bounds.firstColumn);
+    }
+    MX_EXPECT_EQ(minimum, std::size_t{30});
+    MX_EXPECT_EQ(maximum, std::size_t{90});
   }
 
   {
@@ -417,16 +463,16 @@ void RunMessageSchedulerTests() {
         hash = Feed(hash, glyph);
       }
     }
-    MX_EXPECT_EQ(hash, 1319480896u);
+    MX_EXPECT_EQ(hash, 2080860176u);
     MX_EXPECT_EQ(sink.sets, 8u);
     MX_EXPECT_EQ(sink.updates, 3u);
     MX_EXPECT_EQ(sink.clears, 6u);
     const std::map<std::size_t, std::uint8_t> expectedTargets{
-      {std::size_t{743}, std::uint8_t{121}}, {std::size_t{744}, std::uint8_t{99}},
-      {std::size_t{745}, std::uint8_t{109}}, {std::size_t{746}, std::uint8_t{103}},
-      {std::size_t{748}, std::uint8_t{157}}, {std::size_t{769}, std::uint8_t{121}},
-      {std::size_t{770}, std::uint8_t{99}}, {std::size_t{771}, std::uint8_t{109}},
-      {std::size_t{772}, std::uint8_t{103}}, {std::size_t{774}, std::uint8_t{157}},
+      {std::size_t{793}, std::uint8_t{121}}, {std::size_t{794}, std::uint8_t{99}},
+      {std::size_t{795}, std::uint8_t{109}}, {std::size_t{796}, std::uint8_t{103}},
+      {std::size_t{798}, std::uint8_t{157}}, {std::size_t{819}, std::uint8_t{121}},
+      {std::size_t{820}, std::uint8_t{99}}, {std::size_t{821}, std::uint8_t{109}},
+      {std::size_t{822}, std::uint8_t{103}}, {std::size_t{824}, std::uint8_t{157}},
     };
     MX_EXPECT_EQ(sink.targets, expectedTargets);
   }

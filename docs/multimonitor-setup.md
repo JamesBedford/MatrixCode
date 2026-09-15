@@ -24,8 +24,17 @@ controls apply within each monitor. This choice is independent of vignette.
 
 Enable **Independent random positions per monitor** to randomize each copy's
 position separately. Otherwise copies share the same relative random position.
-This option applies only when displaying a copy on every monitor and at least one
-axis has randomness above zero. Message text and timing remain synchronized.
+Randomness is a maximum offset in **each direction**, measured against the full
+width or height of the placement area. At position 50 and randomness 25, a
+message can move ±25% from the centre (roughly 25%–75% of the area, rounded to
+glyph cells). Message length does not reduce the random offset; positions near
+the edges are bounded so the whole message remains visible. Set position 50
+and randomness 50 to cover the entire area. In single-message mode this means
+the combined desktop; a narrow band may still exclude outer monitors in an
+uneven physical arrangement.
+
+The independent-position option applies only when displaying a copy on every
+monitor and at least one axis has randomness above zero. Message text and timing remain synchronized.
 
 Wallpaper Engine Span mode provides one combined surface; it does not expose
 individual monitor boundaries, so these per-monitor choices cannot split that

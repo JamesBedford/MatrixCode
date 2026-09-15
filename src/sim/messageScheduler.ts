@@ -205,11 +205,12 @@ export class MessageScheduler {
     return this.cfg!.frequencyMs * (JITTER_MIN + JITTER_SPAN * this.rng());
   }
 
-  /** Pick a legal start from an axis anchor plus random jitter, clamped to the region. */
-  private pickAxisIndex(maxStart: number, position: number, jitter: number, sample: number): number {
+  /** Randomness is a ± fraction of the full axis size; keep the entire message inside the region. */
+  private pickAxisIndex(size: number, messageSize: number, position: number, jitter: number, sample: number): number {
+    const maxStart = size - messageSize;
     if (maxStart <= 0) return 0;
     const anchor = Math.round(position * maxStart);
-    const halfSpan = Math.round((jitter * maxStart) / 2);
+    const halfSpan = Math.round(jitter * size);
     if (halfSpan === 0) return anchor;
     const lo = Math.max(0, anchor - halfSpan);
     const hi = Math.min(maxStart, anchor + halfSpan);
@@ -289,13 +290,15 @@ export class MessageScheduler {
       const messageRows = dropLayout ? width : 1;
       const messageCols = dropLayout ? 1 : width;
       const startRow = region.rowStart + this.pickAxisIndex(
-        region.rows - messageRows,
+        region.rows,
+        messageRows,
         cfg.verticalPosition,
         cfg.verticalJitter,
         verticalSample,
       );
       const startCol = region.colStart + this.pickAxisIndex(
-        region.cols - messageCols,
+        region.cols,
+        messageCols,
         cfg.horizontalPosition,
         cfg.horizontalJitter,
         horizontalSample,
