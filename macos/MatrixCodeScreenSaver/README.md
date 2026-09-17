@@ -231,6 +231,38 @@ extension sessions must not share a sheet attached to another session's parent. 
 rain backdrop is initialized; the backdrop starts after the sheet's first
 window update so GPU setup cannot hold up the Options response.
 
+### Tahoe Options reopening investigation
+
+On macOS 26.6.2 (25G83), closing Apple's outer Screen Saver panel with **Done**
+can prevent a subsequent **Options…** sheet from appearing until System Settings
+is quit and reopened. Repeated Options use within the same outer panel works.
+
+Matrix Code is native Objective-C/AppKit/Metal throughout: the saver, live
+thumbnail, standalone app, and configuration previews use `MatrixCodeMetalView`.
+There is no WebKit, HTML, or JavaScript runtime in this implementation.
+
+The failure was reproduced with a plain `ScreenSaverView`, an empty black
+preview, and a deferred `NSWindow` containing only a label and close button:
+no Matrix Code renderer, settings controller, or custom animation lifecycle.
+The full-interface trace also shows the second configure request returning a new
+sheet that becomes visible and key in `legacyScreenSaver`, without a corresponding
+Options sheet appearing in System Settings. Focus and per-session window ownership
+changes did not resolve the reported failure. This points to the legacy host's
+remote-sheet presentation path; local AppKit sheet tests do not verify that path.
+
+**Workaround:** quit System Settings completely and reopen it before opening
+Options again. To avoid triggering this during editing, keep Apple's outer Screen
+Saver panel open until finished. The exact internal cause and a reliable
+in-saver fix remain unverified. Another screen-saver maintainer documents a
+similar Tahoe [Options/restart workaround](https://github.com/liquidx/webviewscreensaver).
+That project uses a web renderer, but the comparison concerns the shared native
+ScreenSaver/AppKit hosting path, not its rendering technology or code. Our
+native-only reproduction is the evidence relevant to Matrix Code.
+Apple's developer forums also track
+[Tahoe screen-saver hosting issues](https://developer.apple.com/forums/thread/787444).
+
+### Settings interface
+
 The settings UI mirrors the browser's Matrix-terminal surface with
 preset-coloured native controls and centered Characters, Intro, Messages,
 Images, and Countdown editor cards. Root-panel edits apply live to the running
