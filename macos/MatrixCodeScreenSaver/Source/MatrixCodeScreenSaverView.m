@@ -9,9 +9,11 @@
 @property(nonatomic, strong) MatrixCodeRainHostView *rainHostView;
 @property(nonatomic, strong) NSNotificationCenter *stopNotificationCenter;
 @property(nonatomic, copy) NSArray<id> *stopNotificationObservers;
+@property(nonatomic) BOOL retiresLegacyScreenSaverHost;
 + (BOOL)resolvedPreviewForRequestedPreview:(BOOL)isPreview
                                      frame:(NSRect)frame
                operatingSystemMajorVersion:(NSInteger)majorVersion;
++ (BOOL)retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:(NSInteger)majorVersion;
 - (void)terminateLegacyScreenSaverHost;
 @end
 
@@ -31,13 +33,15 @@
         _rainHostView = [[MatrixCodeRainHostView alloc] initWithFrame:self.bounds mode:mode];
         [self addSubview:_rainHostView];
         if (!resolvedPreview) {
+            _retiresLegacyScreenSaverHost =
+                [self.class retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:majorVersion];
             _stopNotificationCenter = [self screenSaverNotificationCenter];
             __weak typeof(self) weakSelf = self;
-            // Sonoma and Sequoia can retain the entire legacyScreenSaver view/window stack
-            // without calling stopAnimation. Releasing our renderer alone leaves that opaque
-            // black view above the next activation, so retire the faulty extension host after
-            // cleanup. didstop is intentionally ignored because distributed delivery may lag
-            // behind a subsequent activation and tear down its new renderer.
+            // legacyScreenSaver can retain the entire view/window stack without calling
+            // stopAnimation, so run the repeatable cleanup from this notification. On the
+            // affected systems the faulty host is also retired afterwards. didstop is
+            // intentionally ignored because distributed delivery may lag behind a subsequent
+            // activation and tear down its new renderer.
             id observer = [_stopNotificationCenter
                 addObserverForName:@"com.apple.screensaver.willstop"
                             object:nil
@@ -47,7 +51,9 @@
                 MatrixCodeScreenSaverView *screenSaver = weakSelf;
                 if (!screenSaver) return;
                 [screenSaver stopAnimation];
-                [screenSaver terminateLegacyScreenSaverHost];
+                if (screenSaver.retiresLegacyScreenSaverHost) {
+                    [screenSaver terminateLegacyScreenSaverHost];
+                }
             }];
             _stopNotificationObservers = observer ? @[observer] : @[];
         }
@@ -64,6 +70,15 @@
         return NO;
     }
     return isPreview;
+}
+
++ (BOOL)retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:(NSInteger)majorVersion {
+    // Sonoma and Sequoia retain an opaque black view above the next activation even after the
+    // renderer is released, so their faulty host is retired and macOS launches a clean one.
+    // Tahoe relaunches the extension as soon as the host exits and starts a fresh set of saver
+    // views for the session that is already ending. Nothing ever stops those views: they render
+    // forever and leave every display black on the next activation, so cleanup runs alone there.
+    return majorVersion < 26;
 }
 
 - (NSNotificationCenter *)screenSaverNotificationCenter {

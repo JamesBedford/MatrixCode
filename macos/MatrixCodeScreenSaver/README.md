@@ -60,23 +60,38 @@ recreate that subtree through layout, settings notifications, or delayed display
 assignment retries, even when `legacyScreenSaver` keeps the outer view alive.
 The standalone app's pause/resume behaviour retains its renderer.
 
-On Sonoma and Sequoia, `legacyScreenSaver` can omit the normal stop callback and
-retain its complete opaque view/window stack. Merely removing Matrix Code's Metal
-subtree can leave a black retained view above the next activation. Full-screen saver
-instances therefore observe the undocumented distributed
-`com.apple.screensaver.willstop` notification, perform the normal cleanup, and
-retire the faulty extension process; macOS launches a clean host on demand. The
-later `didstop` notification is deliberately ignored because distributed delivery
-can lag behind a new activation. System Settings previews do not install this
-workaround. On Sonoma and Sequoia, the host's incorrect `isPreview` value is
-corrected only for full-screen-sized frames so actual playback takes this path.
+`legacyScreenSaver` can omit the normal stop callback and retain its complete
+opaque view/window stack. Merely removing Matrix Code's Metal subtree can leave a
+black retained view above the next activation. Full-screen saver instances
+therefore observe the undocumented distributed `com.apple.screensaver.willstop`
+notification and perform the normal cleanup. The later `didstop` notification is
+deliberately ignored because distributed delivery can lag behind a new activation.
+System Settings previews do not install this workaround. On Sonoma and Sequoia, the
+host's incorrect `isPreview` value is corrected only for full-screen-sized frames so
+actual playback takes this path.
+
+Sonoma and Sequoia additionally retire the faulty extension process after that
+cleanup, because releasing the renderer alone leaves their retained view on screen;
+macOS launches a clean host on demand. Tahoe must not retire the host. It relaunches
+the extension as soon as the process exits and starts a fresh set of saver views for
+the session that is already ending. Nothing ever stops those views, so they render
+forever in a host that is no longer displayed, and the stale host serves the next
+activation: every display and the System Settings preview stay black until
+`legacyScreenSaver` is killed. `retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:`
+keeps the retirement on the versions that need it, and the cleanup itself runs on all
+of them.
 
 This is a macOS host integration fix with no equivalent change to the browser,
 Windows, Linux, or Wallpaper Engine implementations. Native tests cover cleanup,
 repeated activation, delayed callbacks, display claims, and standalone resume.
 For live verification, record the host's footprint before and after repeated
 hot-corner dismissals and System Settings previews, including multiple displays.
-GPU resources from submitted frames can finish releasing after dismissal.
+On Tahoe the host's pid must stay the same across those dismissals and its
+accumulated CPU time must stop advancing once the saver is gone; a changing pid or a
+host that keeps consuming CPU means saver views are still rendering unseen. Dismiss
+with the mouse or keyboard when checking this, because `System Events`' "stop current
+screen saver" does not post `willstop`. GPU resources from submitted frames can
+finish releasing after dismissal.
 
 ## App icon
 

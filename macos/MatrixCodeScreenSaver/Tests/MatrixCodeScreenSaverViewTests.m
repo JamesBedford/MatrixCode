@@ -9,6 +9,7 @@
 + (BOOL)resolvedPreviewForRequestedPreview:(BOOL)isPreview
                                      frame:(NSRect)frame
                operatingSystemMajorVersion:(NSInteger)majorVersion;
++ (BOOL)retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:(NSInteger)majorVersion;
 @end
 
 @interface MatrixCodeStopNotificationCenter : NSNotificationCenter
@@ -78,6 +79,32 @@
                          operatingSystemMajorVersion:15];
 }
 
++ (BOOL)retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:(NSInteger)majorVersion {
+    (void)majorVersion;
+    return [super retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:15];
+}
+
+@end
+
+@interface MatrixCodeTahoeNotificationTestScreenSaver : MatrixCodeNotificationTestScreenSaver
+@end
+
+@implementation MatrixCodeTahoeNotificationTestScreenSaver
+
++ (BOOL)resolvedPreviewForRequestedPreview:(BOOL)isPreview
+                                     frame:(NSRect)frame
+               operatingSystemMajorVersion:(NSInteger)majorVersion {
+    (void)majorVersion;
+    return [super resolvedPreviewForRequestedPreview:isPreview
+                                               frame:frame
+                         operatingSystemMajorVersion:26];
+}
+
++ (BOOL)retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:(NSInteger)majorVersion {
+    (void)majorVersion;
+    return [super retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:26];
+}
+
 @end
 
 @interface MatrixCodeScreenSaverHostProbe : NSObject
@@ -116,8 +143,9 @@
 }
 
 - (void)testPlaybackWillStopCleansUpAndRetiresLegacyHost {
-    MatrixCodeNotificationTestScreenSaver *screenSaver = [[MatrixCodeNotificationTestScreenSaver alloc]
-        initWithFrame:NSZeroRect isPreview:NO];
+    MatrixCodeSequoiaNotificationTestScreenSaver *screenSaver =
+        [[MatrixCodeSequoiaNotificationTestScreenSaver alloc]
+            initWithFrame:NSZeroRect isPreview:NO];
     MatrixCodeScreenSaverHostProbe *probe = [self replaceHostInScreenSaver:screenSaver];
     MatrixCodeStopNotificationCenter *center = screenSaver.testNotificationCenter;
     XCTAssertEqualObjects(center.observedNames, (@[@"com.apple.screensaver.willstop"]));
@@ -152,6 +180,42 @@
 
     [center postNotificationName:@"com.apple.screensaver.didstart" object:nil];
     XCTAssertEqual(probe.startCount, 2u);
+}
+
+- (void)testTahoePlaybackWillStopCleansUpWithoutRetiringLegacyHost {
+    MatrixCodeTahoeNotificationTestScreenSaver *screenSaver =
+        [[MatrixCodeTahoeNotificationTestScreenSaver alloc]
+            initWithFrame:NSZeroRect isPreview:NO];
+    MatrixCodeScreenSaverHostProbe *probe = [self replaceHostInScreenSaver:screenSaver];
+    MatrixCodeStopNotificationCenter *center = screenSaver.testNotificationCenter;
+    XCTAssertEqualObjects(center.observedNames, (@[@"com.apple.screensaver.willstop"]));
+
+    [screenSaver startAnimation];
+    [center postNotificationName:@"com.apple.screensaver.willstop" object:nil];
+
+    // Tahoe relaunches the extension as soon as the host exits and starts a fresh set of
+    // saver views for the session that is already ending. Those views never receive a stop
+    // callback, so they render forever and every display stays black on the next
+    // activation. Cleanup must run without retiring the host.
+    XCTAssertEqual(probe.stopCount, 1u);
+    XCTAssertEqual(screenSaver.terminationCount, 0u);
+
+    [screenSaver startAnimation];
+    XCTAssertEqual(probe.startCount, 2u);
+    [screenSaver stopAnimation];
+    XCTAssertEqual(probe.stopCount, 2u);
+    XCTAssertEqual(screenSaver.terminationCount, 0u);
+}
+
+- (void)testLegacyHostRetirementIsLimitedToTheAffectedSystemVersions {
+    for (NSNumber *majorVersion in @[@13, @14, @15]) {
+        XCTAssertTrue([MatrixCodeScreenSaverView
+            retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:majorVersion.integerValue]);
+    }
+    for (NSNumber *majorVersion in @[@26, @27]) {
+        XCTAssertFalse([MatrixCodeScreenSaverView
+            retiresLegacyScreenSaverHostForOperatingSystemMajorVersion:majorVersion.integerValue]);
+    }
 }
 
 - (void)testPreviewIgnoresGlobalStopNotificationsAndHonorsLifecycleCallbacks {
