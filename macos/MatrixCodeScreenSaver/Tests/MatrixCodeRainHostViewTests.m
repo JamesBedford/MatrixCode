@@ -30,6 +30,12 @@
 - (NSScreen *)screenForPlaybackHostWithRect:(NSRect *)resolvedRect;
 - (void)toggleUserPaused;
 - (void)updateFPSOverlayWithFramesPerSecond:(double)framesPerSecond;
++ (NSTimeInterval)uninterruptedInteractionStartForCurrentStart:(NSTimeInterval)currentStart
+                                                   idleSeconds:(NSTimeInterval)idleSeconds
+                                                           now:(NSTimeInterval)now;
++ (BOOL)suspendsForUninterruptedInteractionStart:(NSTimeInterval)interactionStart
+                                             now:(NSTimeInterval)now;
+- (void)beginInteractionPollForActivation;
 @end
 
 @interface MatrixCodeRampMetalProbe : NSView
@@ -2096,6 +2102,109 @@ suppressesIntroOverlay:YES];
         XCTAssertNil(releasedIntro);
     }
     [window close];
+}
+
+- (void)testInteractionStartLatchesWhileTheUserKeepsInteracting {
+    // Idle below the threshold means input landed recently. The first such sample
+    // latches a start time; later samples keep it so the run length can grow.
+    NSTimeInterval start = [MatrixCodeRainHostView
+        uninterruptedInteractionStartForCurrentStart:0 idleSeconds:0.5 now:1000];
+    XCTAssertEqual(start, 1000);
+
+    start = [MatrixCodeRainHostView
+        uninterruptedInteractionStartForCurrentStart:start idleSeconds:0.7 now:1005];
+    XCTAssertEqual(start, 1000, @"a continuing run keeps its original start");
+
+    start = [MatrixCodeRainHostView
+        uninterruptedInteractionStartForCurrentStart:start idleSeconds:0.2 now:1029];
+    XCTAssertEqual(start, 1000);
+}
+
+- (void)testInteractionStartClearsAsSoonAsTheUserStops {
+    NSTimeInterval start = [MatrixCodeRainHostView
+        uninterruptedInteractionStartForCurrentStart:1000 idleSeconds:60 now:1100];
+    XCTAssertEqual(start, 0, @"a single idle sample ends the run");
+
+    // Clearing must be immediate so a genuine saver resumes on the next sample.
+    start = [MatrixCodeRainHostView
+        uninterruptedInteractionStartForCurrentStart:0 idleSeconds:60 now:1101];
+    XCTAssertEqual(start, 0);
+}
+
+- (void)testSuspensionRequiresInteractionToPersistWellBeyondALaunchGesture {
+    // A hot-corner or menu launch begins with idle at zero, so a short run must
+    // never suspend; only a run far longer than any launch gesture may.
+    XCTAssertFalse([MatrixCodeRainHostView
+        suspendsForUninterruptedInteractionStart:0 now:2000]);
+    XCTAssertFalse([MatrixCodeRainHostView
+        suspendsForUninterruptedInteractionStart:2000 now:2000]);
+    XCTAssertFalse([MatrixCodeRainHostView
+        suspendsForUninterruptedInteractionStart:2000 now:2005]);
+    XCTAssertFalse([MatrixCodeRainHostView
+        suspendsForUninterruptedInteractionStart:2000 now:2029]);
+    XCTAssertTrue([MatrixCodeRainHostView
+        suspendsForUninterruptedInteractionStart:2000 now:2030]);
+    XCTAssertTrue([MatrixCodeRainHostView
+        suspendsForUninterruptedInteractionStart:2000 now:2400]);
+}
+
+- (void)testMeasuredPlaybackIdleTraceNeverSuspends {
+    // Idle samples recorded from a real hot-corner session: idle only ever grows,
+    // because the first input that would reset it also ends the session.
+    NSArray<NSNumber *> *idleTrace = @[@1.2, @2.2, @3.2, @4.2, @5.2, @6.2, @7.2,
+                                       @8.2, @9.2, @10.2, @20.2, @40.2, @600.2];
+    NSTimeInterval start = 0;
+    NSTimeInterval now = 5000;
+    for (NSNumber *idle in idleTrace) {
+        start = [MatrixCodeRainHostView
+            uninterruptedInteractionStartForCurrentStart:start
+                                             idleSeconds:idle.doubleValue
+                                                     now:now];
+        XCTAssertFalse([MatrixCodeRainHostView
+            suspendsForUninterruptedInteractionStart:start now:now],
+            @"playback must never suspend (idle %@)", idle);
+        now += 2;
+    }
+}
+
+- (void)testMeasuredOrphanIdleTraceSuspendsOnceTheRunIsLongEnough {
+    // Idle samples recorded from an orphaned host while the machine was in use:
+    // idle stays pinned near zero for far longer than any launch gesture.
+    NSTimeInterval start = 0;
+    NSTimeInterval now = 7000;
+    BOOL suspended = NO;
+    for (NSUInteger sample = 0; sample < 20; sample++) {
+        start = [MatrixCodeRainHostView
+            uninterruptedInteractionStartForCurrentStart:start idleSeconds:0.7 now:now];
+        suspended = [MatrixCodeRainHostView
+            suspendsForUninterruptedInteractionStart:start now:now];
+        if (suspended) break;
+        now += 2;
+    }
+    XCTAssertTrue(suspended, @"sustained interaction while animating must suspend");
+    XCTAssertEqual(now - 7000, 30, @"suspension should wait out the full run length");
+
+    // Walking away must lift the suspension on the very next sample.
+    start = [MatrixCodeRainHostView
+        uninterruptedInteractionStartForCurrentStart:start idleSeconds:45 now:now + 2];
+    XCTAssertFalse([MatrixCodeRainHostView
+        suspendsForUninterruptedInteractionStart:start now:now + 2]);
+}
+
+- (void)testNewActivationClearsInteractionSuspensionFromAPreviousRun {
+    // A leftover view can be restarted by the host for a genuine session. If it had
+    // already suspended itself, that must not carry over and leave the new session
+    // rendering at the fallback rate.
+    MatrixCodeRainHostView *host = [[MatrixCodeRainHostView alloc]
+        initWithFrame:NSMakeRect(0, 0, 320, 200)
+                 mode:MatrixCodeRainHostModeScreenSaverPlayback];
+    [host setValue:@YES forKey:@"interactionSuspended"];
+    [host setValue:@12345 forKey:@"uninterruptedInteractionStart"];
+
+    [host beginInteractionPollForActivation];
+
+    XCTAssertEqualObjects([host valueForKey:@"interactionSuspended"], @NO);
+    XCTAssertEqualObjects([host valueForKey:@"uninterruptedInteractionStart"], @0);
 }
 
 - (void)testStandaloneStopRetainsRendererForResume {

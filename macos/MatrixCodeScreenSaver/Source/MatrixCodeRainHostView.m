@@ -1,5 +1,6 @@
 #import "MatrixCodeRainHostView.h"
 
+#import <CoreGraphics/CoreGraphics.h>
 #import <float.h>
 #import <os/log.h>
 #import <QuartzCore/QuartzCore.h>
@@ -118,6 +119,9 @@
 @property(nonatomic) BOOL synchronizedMultiDisplayTimeline;
 @property(nonatomic) BOOL runTimelineStarted;
 @property(nonatomic) BOOL visibilitySuspended;
+@property(nonatomic) BOOL interactionSuspended;
+@property(nonatomic) NSTimeInterval uninterruptedInteractionStart;
+@property(nonatomic, strong, nullable) NSTimer *interactionPollTimer;
 @property(nonatomic) BOOL introScheduled;
 @property(nonatomic, copy, nullable) dispatch_block_t introPreviewCompletion;
 @property(nonatomic) BOOL hostActive;
@@ -178,6 +182,16 @@ static const NSTimeInterval MatrixCodePresentationChromeHideDelay = 2.8;
 // longer than the stall threshold as a dead display link and drives the frame itself.
 static const NSTimeInterval MatrixCodeFrameStallWatchdogInterval = 0.5;
 static const NSTimeInterval MatrixCodeFrameStallThreshold = 1.0;
+
+// Interaction-based orphan detection. See -pollUninterruptedInteraction for why a
+// screen saver that is still animating while someone uses the machine must be a
+// leftover from a session macOS never told us had ended.
+static const NSTimeInterval MatrixCodeInteractionPollInterval = 2.0;
+// Idle below this means input landed between polls rather than a lull in typing.
+static const NSTimeInterval MatrixCodeInteractionIdleThreshold = 15.0;
+// Far longer than launching the saver by hot corner, menu or keystroke takes, so a
+// launch gesture can never accumulate a long enough run to suspend playback.
+static const NSTimeInterval MatrixCodeInteractionSuspendAfter = 30.0;
 static NSString * const MatrixCodeFPSOverlayStorageKey = @"mx-ui-state";
 
 static NSMutableDictionary<NSString *, NSUUID *> *MatrixCodeScreenClaims;
@@ -822,7 +836,8 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
 }
 
 - (BOOL)animationShouldRun {
-    return self.hostActive && !self.reducedMotion && !self.userPaused && !self.visibilitySuspended;
+    return self.hostActive && !self.reducedMotion && !self.userPaused &&
+        !self.visibilitySuspended && !self.interactionSuspended;
 }
 
 - (void)refreshAnimationForEnvironment {
@@ -1041,6 +1056,100 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     return [date timeIntervalSinceDate:self.lastFrameAdvanceDate] >= MatrixCodeFrameStallThreshold;
 }
 
+// macOS does not reliably tell a legacy screen saver that its session ended. The
+// documented callback (-stopAnimation) is simply never sent by the Tahoe host, and
+// the undocumented com.apple.screensaver.willstop notification the saver falls back
+// on misses roughly one dismissal in five. When both are missed the saver keeps
+// rendering at full frame rate inside a host that is no longer on screen, burning
+// up to half a core until some later session ends cleanly.
+//
+// Nothing the view can read distinguishes that leftover from a live saver. Its
+// window still reports itself visible, on a screen, unoccluded and drawable; the
+// host keeps calling -animateOneFrame once a second; and the window server leaves
+// the saver out of its on-screen list in both cases, because these windows are
+// hosted remotely and composited elsewhere. Every one of those was measured and
+// found identical for a live and an orphaned view.
+//
+// The one thing that does differ is the person at the keyboard. A screen saver is
+// on screen only because nobody has touched the machine, and the first input
+// dismisses it — measured on a real session, idle time climbed monotonically for
+// the whole of playback and the session ended on the very first reset. So input
+// that arrives, repeatedly, without ever ending the session is a contradiction, and
+// the only explanation is that no session is on screen to end.
+//
+// This suspends rendering rather than releasing it, and that choice is deliberate:
+// if the inference is ever wrong the saver freezes for a poll and resumes by
+// itself, where releasing the renderer would leave the display black — the failure
+// this whole area of the code exists to avoid. Suspending still leaves
+// -animateOneFrame drawing about one frame a second, so a wrong guess stays visibly
+// alive rather than stopping dead.
+//
+// It cannot tell an orphan from a live saver while nobody is typing; that case is
+// indistinguishable by construction and is left alone.
+- (void)pollUninterruptedInteraction {
+    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+    NSTimeInterval idleSeconds = [self secondsSinceLastUserInteraction];
+    self.uninterruptedInteractionStart = [self.class
+        uninterruptedInteractionStartForCurrentStart:self.uninterruptedInteractionStart
+                                         idleSeconds:idleSeconds
+                                                 now:now];
+    BOOL suspend = [self.class
+        suspendsForUninterruptedInteractionStart:self.uninterruptedInteractionStart now:now];
+    if (suspend == self.interactionSuspended) return;
+    self.interactionSuspended = suspend;
+    [self refreshAnimationForEnvironment];
+}
+
+- (NSTimeInterval)secondsSinceLastUserInteraction {
+    return CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateHIDSystemState,
+                                                  kCGAnyInputEventType);
+}
+
++ (NSTimeInterval)uninterruptedInteractionStartForCurrentStart:(NSTimeInterval)currentStart
+                                                   idleSeconds:(NSTimeInterval)idleSeconds
+                                                           now:(NSTimeInterval)now {
+    if (idleSeconds >= MatrixCodeInteractionIdleThreshold) return 0;
+    return currentStart > 0 ? currentStart : now;
+}
+
++ (BOOL)suspendsForUninterruptedInteractionStart:(NSTimeInterval)interactionStart
+                                             now:(NSTimeInterval)now {
+    if (interactionStart <= 0) return NO;
+    return now - interactionStart >= MatrixCodeInteractionSuspendAfter;
+}
+
+// Only the full-screen saver can be orphaned this way. Settings previews and the
+// standalone app are driven by hosts that do honour their own lifecycle, and both
+// are expected to animate while someone is using the machine.
+- (BOOL)usesInteractionOrphanDetection {
+    if (![self isScreenSaverPlayback]) return NO;
+    return [NSProcessInfo.processInfo.processName hasPrefix:@"legacyScreenSaver"];
+}
+
+// Called for every activation, not just the first. A leftover view that suspended
+// itself can be restarted by the host for a new session, and that session must not
+// inherit the previous run's interaction history.
+- (void)beginInteractionPollForActivation {
+    self.uninterruptedInteractionStart = 0;
+    self.interactionSuspended = NO;
+    if (self.interactionPollTimer || ![self usesInteractionOrphanDetection]) return;
+    __weak typeof(self) weakSelf = self;
+    self.interactionPollTimer =
+        [NSTimer timerWithTimeInterval:MatrixCodeInteractionPollInterval
+                               repeats:YES
+                                 block:^(NSTimer *timer) {
+        [weakSelf pollUninterruptedInteraction];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.interactionPollTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)stopInteractionPoll {
+    [self.interactionPollTimer invalidate];
+    self.interactionPollTimer = nil;
+    self.uninterruptedInteractionStart = 0;
+    self.interactionSuspended = NO;
+}
+
 - (void)startFrameStallWatchdogIfNeeded {
     if (self.frameStallWatchdogTimer || ![self animationShouldRun]) return;
     self.lastFrameAdvanceDate = NSDate.date;
@@ -1132,10 +1241,12 @@ static NSMutableDictionary *MatrixCodeRainHostDefaultMessagesDocument(void) {
     if (![self animationShouldRun]) {
         [self animateOneFrame];
     }
+    [self beginInteractionPollForActivation];
     [self refreshAnimationForEnvironment];
 }
 
 - (void)stopAnimation {
+    [self stopInteractionPoll];
     self.hostActive = NO;
     self.userPaused = NO;
     self.pauseStartedDate = nil;
