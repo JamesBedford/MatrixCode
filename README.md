@@ -20,9 +20,9 @@ screen.
 - [Screenshots](#screenshots)
 - [Controls](#controls)
 - [Getting Started](#getting-started)
-- [Wallpaper Engine](#wallpaper-engine)
-- [Windows app and screen saver](#windows-app-and-screen-saver)
 - [macOS screen saver](#macos-screen-saver)
+- [Windows app and screen saver](#windows-app-and-screen-saver)
+- [Wallpaper Engine](#wallpaper-engine)
 - [Ubuntu app and screen saver](#ubuntu-app-and-screen-saver)
 - [Architecture](#architecture)
 - [License](#license)
@@ -105,31 +105,45 @@ uses the home-folder name with its first letter capitalized. Browsers do not
 expose the operating-system login to pages served over HTTP, so those pages use
 `Neo` until a viewer name is entered or supplied with `?name=`.
 
-## Wallpaper Engine
+## macOS screen saver
 
-Wallpaper Engine uses the browser implementation as an offline **web
-wallpaper**; the native Windows executable is deliberately not its payload.
-Build the importable package from the repository root:
+The native macOS 13+ project lives in
+[`macos/MatrixCodeScreenSaver`](macos/MatrixCodeScreenSaver). It is a completely
+independent AppKit + Metal implementation—there is no TypeScript, HTML, WebGL,
+or WKWebView in the screen saver bundle. It provides native settings, intro,
+messages, countdown/countup tokens, and continuous multi-display rendering, plus
+build, test, and manual-install scripts for the Apple-Silicon `Matrix Code.saver`.
 
-```powershell
-npm run verify:wallpaper
-npm run build:wallpaper
+```sh
+cd macos/MatrixCodeScreenSaver
+./test.sh
+./build.sh --release  # defaults to Release
+./build.sh --debug
+./install.sh
 ```
 
-The generated package is written to `dist/wallpaper-engine/`. In Wallpaper
-Engine, choose **Create Wallpaper** and import that directory's `index.html`.
-The package includes the inlined application, generated `project.json`, preview,
-local PWA assets, and MatrixCode/twgl.js license notices. It is suitable for
-local import and Workshop preparation;
-these build steps do not claim that a Workshop item has been published.
+Run `npm run release:macos` from the repository root to build a Developer ID
+signed, notarized Release app and DMG, then replace the installed screen saver.
+This requires the signing identity and `notarytool` Keychain profile described
+in the native macOS README. `npm run build:macos` builds and installs locally
+without notarization.
 
-Wallpaper Engine's property pane is authoritative in hosted mode. Its adapter
-installs before app bootstrap, merges changed-only property callbacks, obeys the
-host FPS and pause lifecycle, and accepts a directory of supported image files.
-For one continuous grid across displays, use Wallpaper Engine's **Span** mode.
-See [`wallpaper-engine/README.md`](wallpaper-engine/README.md) for the fixed
-intro/message/countdown slots, image-folder rules, display behavior, and direct
-package verification commands.
+For a distributable build without installation, run `./scripts/build-release.sh --release` from the
+repository root. The script signs with Developer ID, notarizes, and staples the
+DMG; `--skip-notarize` omits the Apple round trip, and `--debug` creates a local
+Debug build. It detects Xcode even when installed outside `/Applications`,
+generates the project in a temporary directory, and writes verified app and
+screen-saver packages to `macos/MatrixCodeScreenSaver/build/<Configuration>/`.
+The styled `MatrixCode.dmg`, matching dSYMs, executable UUIDs, and checksums are
+written alongside them.
+
+The installed saver is configured from System Settings → Screen Saver →
+**MatrixCode** → **Options…**. Its settings intentionally mirror the web app:
+rain controls, color presets, quality, glyph behavior, intro script/timing,
+in-rain messages, image reveals, viewer name, and named countdown/countup
+moments. See
+[`macos/MatrixCodeScreenSaver/README.md`](macos/MatrixCodeScreenSaver/README.md)
+for native build, install, troubleshooting, and parity notes.
 
 ## Windows app and screen saver
 
@@ -170,45 +184,31 @@ release gates rather than results implied by this source checkout. The full
 build, installation, verification, and signing details are maintained in
 [`windows/MatrixCode/README.md`](windows/MatrixCode/README.md).
 
-## macOS screen saver
+## Wallpaper Engine
 
-The native macOS 13+ project lives in
-[`macos/MatrixCodeScreenSaver`](macos/MatrixCodeScreenSaver). It is a completely
-independent AppKit + Metal implementation—there is no TypeScript, HTML, WebGL,
-or WKWebView in the screen saver bundle. It provides native settings, intro,
-messages, countdown/countup tokens, and continuous multi-display rendering, plus
-build, test, and manual-install scripts for the Apple-Silicon `Matrix Code.saver`.
+Wallpaper Engine uses the browser implementation as an offline **web
+wallpaper**; the native Windows executable is deliberately not its payload.
+Build the importable package from the repository root:
 
-```sh
-cd macos/MatrixCodeScreenSaver
-./test.sh
-./build.sh --release  # defaults to Release
-./build.sh --debug
-./install.sh
+```powershell
+npm run verify:wallpaper
+npm run build:wallpaper
 ```
 
-Run `npm run release:macos` from the repository root to build a Developer ID
-signed, notarized Release app and DMG, then replace the installed screen saver.
-This requires the signing identity and `notarytool` Keychain profile described
-in the native macOS README. `npm run build:macos` builds and installs locally
-without notarization.
+The generated package is written to `dist/wallpaper-engine/`. In Wallpaper
+Engine, choose **Create Wallpaper** and import that directory's `index.html`.
+The package includes the inlined application, generated `project.json`, preview,
+local PWA assets, and MatrixCode/twgl.js license notices. It is suitable for
+local import and Workshop preparation;
+these build steps do not claim that a Workshop item has been published.
 
-For a distributable build without installation, run `./scripts/build-release.sh --release` from the
-repository root. The script signs with Developer ID, notarizes, and staples the
-DMG; `--skip-notarize` omits the Apple round trip, and `--debug` creates a local
-Debug build. It detects Xcode even when installed outside `/Applications`,
-generates the project in a temporary directory, and writes verified app and
-screen-saver packages to `macos/MatrixCodeScreenSaver/build/<Configuration>/`.
-The styled `MatrixCode.dmg`, matching dSYMs, executable UUIDs, and checksums are
-written alongside them.
-
-The installed saver is configured from System Settings → Screen Saver →
-**MatrixCode** → **Options…**. Its settings intentionally mirror the web app:
-rain controls, color presets, quality, glyph behavior, intro script/timing,
-in-rain messages, image reveals, viewer name, and named countdown/countup
-moments. See
-[`macos/MatrixCodeScreenSaver/README.md`](macos/MatrixCodeScreenSaver/README.md)
-for native build, install, troubleshooting, and parity notes.
+Wallpaper Engine's property pane is authoritative in hosted mode. Its adapter
+installs before app bootstrap, merges changed-only property callbacks, obeys the
+host FPS and pause lifecycle, and accepts a directory of supported image files.
+For one continuous grid across displays, use Wallpaper Engine's **Span** mode.
+See [`wallpaper-engine/README.md`](wallpaper-engine/README.md) for the fixed
+intro/message/countdown slots, image-folder rules, display behavior, and direct
+package verification commands.
 
 ## Ubuntu app and screen saver
 
