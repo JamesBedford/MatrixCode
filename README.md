@@ -17,6 +17,7 @@ screen.
 
 - [Why MatrixCode](#why-matrixcode)
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Controls](#controls)
 - [Getting Started](#getting-started)
 - [Wallpaper Engine](#wallpaper-engine)
@@ -25,7 +26,6 @@ screen.
 - [Ubuntu app and screen saver](#ubuntu-app-and-screen-saver)
 - [Architecture](#architecture)
 - [License](#license)
-- [Screenshots](#screenshots)
 
 ## Why MatrixCode
 
@@ -55,6 +55,20 @@ Most "Matrix rain" projects (including the classic terminal `cmatrix`) scroll a 
 Calendar colors use local midnight boundaries, independently of paused animation or countdown
 timing. In Canvas2D compatibility mode, changing palette clears the baked-in fading trails;
 the current glyphs and images are redrawn without advancing their timelines.
+
+## Screenshots
+
+**Color theme, scanlines/vignette, and in-rain messages** — a non-default color preset (purple) at high density with overlap lanes turned off (drops stay grid-aligned to whole columns), scanlines and vignette enabled, and a scheduled message ("THE MATRIX HAS YOU") flickering into the glyph stream.
+
+![Dense, purple-themed Matrix rain at high density with grid-aligned columns (overlap lanes off), scanline and vignette post-processing, and the in-rain message "THE MATRIX HAS YOU" appearing among the falling glyphs](docs/screenshot-theme-message.png)
+
+**Intro typewriter over the load-time density ramp** — the every-load intro sequence typing out over the red preset while rain builds in from empty at load.
+
+![Red-themed Matrix rain sparsely building up in the background while the intro typewriter message "Wake up, Neo..." types out with a blinking cursor](docs/screenshot-intro.png)
+
+**Settings panel over film-accurate bloom** — the auto-hiding controls panel (`H`) for color theme, quality tier, glyph scale, glow, and more, layered over the stationary-grid rain and multi-level bloom post-process.
+
+![MatrixCode settings panel open over classic green rain, showing sliders for density, ramp-up, trail length, speed, glow, and dropdowns for color theme and quality](docs/screenshot-settings.png)
 
 ## Controls
 
@@ -341,17 +355,3 @@ settings, and Qt image-import coverage.
 ## License
 
 [MIT](LICENSE)
-
-## Screenshots
-
-**Color theme, scanlines/vignette, and in-rain messages** — a non-default color preset (purple) at high density with overlap lanes turned off (drops stay grid-aligned to whole columns), scanlines and vignette enabled, and a scheduled message ("THE MATRIX HAS YOU") flickering into the glyph stream.
-
-![Dense, purple-themed Matrix rain at high density with grid-aligned columns (overlap lanes off), scanline and vignette post-processing, and the in-rain message "THE MATRIX HAS YOU" appearing among the falling glyphs](docs/screenshot-theme-message.png)
-
-**Intro typewriter over the load-time density ramp** — the every-load intro sequence typing out over the red preset while rain builds in from empty at load.
-
-![Red-themed Matrix rain sparsely building up in the background while the intro typewriter message "Wake up, Neo..." types out with a blinking cursor](docs/screenshot-intro.png)
-
-**Settings panel over film-accurate bloom** — the auto-hiding controls panel (`H`) for color theme, quality tier, glyph scale, glow, and more, layered over the stationary-grid rain and multi-level bloom post-process.
-
-![MatrixCode settings panel open over classic green rain, showing sliders for density, ramp-up, trail length, speed, glow, and dropdowns for color theme and quality](docs/screenshot-settings.png)
