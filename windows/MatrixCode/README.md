@@ -101,7 +101,7 @@ Release builds:
 ```powershell
 ./scripts/Build-Windows.ps1 -Architecture x64 -Configuration Release
 ./scripts/Build-Windows.ps1 -Architecture arm64 -Configuration Release
-./scripts/Build-Release.ps1 -Version 0.1.0 -Publisher 'Your legal publisher' -RequireSigning
+./scripts/Build-Release.ps1 -Version 1.0.0 -Publisher 'Your legal publisher' -RequireSigning
 ```
 
 `Build-Release.ps1` signs the PE files before WiX consumes them, then signs each

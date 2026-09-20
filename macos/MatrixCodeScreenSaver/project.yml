@@ -40,7 +40,7 @@ targets:
         CFBundleInfoDictionaryVersion: "6.0"
         CFBundleName: "$(PRODUCT_NAME)"
         CFBundlePackageType: BNDL
-        CFBundleShortVersionString: "2.0"
+        CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "3"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSHumanReadableCopyright: MIT License
@@ -80,7 +80,7 @@ targets:
         CFBundleInfoDictionaryVersion: "6.0"
         CFBundleName: "$(PRODUCT_NAME)"
         CFBundlePackageType: APPL
-        CFBundleShortVersionString: "2.0"
+        CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "3"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSHumanReadableCopyright: MIT License

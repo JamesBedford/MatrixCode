@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.29)
 
-project(MatrixCodeWindows VERSION 0.1.0 LANGUAGES CXX RC)
+project(MatrixCodeWindows VERSION 1.0.0 LANGUAGES CXX RC)
 
 if(NOT WIN32)
   message(FATAL_ERROR "MatrixCodeWindows targets Windows 10/11 only")
