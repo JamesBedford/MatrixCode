@@ -50,6 +50,8 @@ node scripts/wallpaper-engine/verify.mjs dist/wallpaper-engine
   moment, including the hours before and after it. This uses the offline countdown lunar calculation,
   respects timezone and daylight-saving changes, and restores the host's selected color afterward.
   February 14 and March 17 keep their fixed holiday colors if a full moon coincides.
+  The browser settings panel shows “Overridden by Valentine's Day”, “Overridden by
+  St. Patrick's Day”, or “Overridden by full moon” beside Color while that override is active.
 - The image-folder property accepts supported Wallpaper Engine image formats, de-duplicates
   paths, sorts deterministically, and decodes candidates until it has at most 64 valid images.
   Candidate indexing is defensively bounded at 4096 paths.

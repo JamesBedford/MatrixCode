@@ -118,6 +118,15 @@ void RunHolidayThemeTests() {
   MX_EXPECT_EQ(EffectiveControlsForLocalDate(settings.controls, 3, 17).preset,
     std::string("classic"));
   MX_EXPECT_EQ(settings.controls.preset, std::string("gold"));
+  MX_EXPECT_EQ(ColorOverrideLabel(2, 14, true),
+    std::optional<std::string_view>("Overridden by Valentine's Day"));
+  MX_EXPECT_EQ(ColorOverrideLabel(3, 17, true),
+    std::optional<std::string_view>("Overridden by St. Patrick's Day"));
+  MX_EXPECT_EQ(ColorOverrideLabel(9, 26, true),
+    std::optional<std::string_view>("Overridden by full moon"));
+  MX_EXPECT(!ColorOverrideLabel(9, 25, false).has_value());
+  MX_EXPECT(!ColorOverrideLabel(2, 13, false).has_value());
+  MX_EXPECT(!ColorOverrideLabel(0, 14, false).has_value());
   MX_EXPECT_EQ(EffectiveControlsForLocalDate(settings.controls, 3, 18).preset, std::string("gold"));
 
   // Changes made during a holiday remain selected and become visible afterward.

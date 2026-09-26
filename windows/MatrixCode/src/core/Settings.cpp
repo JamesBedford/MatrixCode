@@ -471,6 +471,17 @@ Controls EffectiveControlsForLocalDate(
   return effective;
 }
 
+std::optional<std::string_view> ColorOverrideLabel(
+    const int localMonth, const int localDay, const bool fullMoonDay) noexcept {
+  if (const auto holidayPreset = HolidayPresetForLocalDate(localMonth, localDay)) {
+    if (*holidayPreset == "red") return "Overridden by Valentine's Day";
+    if (*holidayPreset == "classic") return "Overridden by St. Patrick's Day";
+    return std::nullopt;
+  }
+  if (fullMoonDay) return "Overridden by full moon";
+  return std::nullopt;
+}
+
 ColorPalette PaletteForControls(const Controls& controls) {
   struct NamedPalette { const char* name; std::array<std::uint32_t, 5> colors; };
   constexpr std::array<NamedPalette, 9> palettes{{

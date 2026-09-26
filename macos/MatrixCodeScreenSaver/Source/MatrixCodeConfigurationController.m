@@ -479,6 +479,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
 @property(nonatomic, strong) NSTimer *countdownPreviewTimer;
 @property(nonatomic, strong) NSButton *mirrorButton;
 @property(nonatomic, strong) NSPopUpButton *presetPopup;
+@property(nonatomic, strong) NSTextField *colorOverrideLabel;
+@property(nonatomic, strong) NSTimer *colorOverrideTimer;
 @property(nonatomic, strong) NSView *editorBackdrop;
 @property(nonatomic, strong) NSView *editorCard;
 @property(nonatomic, copy) NSString *editorKind;
@@ -1077,6 +1079,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [theme applyControls:self.controls];
     [self.settingsAnimationTimer invalidate];
     self.settingsAnimationTimer = nil;
+    [self.colorOverrideTimer invalidate];
+    self.colorOverrideTimer = nil;
     self.settingsBackdropLoadGeneration++;
     self.settingsBackdropLoadScheduled = NO;
     self.settingsBackdropLoadAttempted = NO;
@@ -1394,6 +1398,13 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     colorControls.alignment = NSLayoutAttributeCenterY;
     colorControls.spacing = 6;
     [stack addArrangedSubview:[self panelInlineRow:@"Color" control:colorControls]];
+    NSTextField *colorOverride = [NSTextField wrappingLabelWithString:@""];
+    colorOverride.identifier = @"color-override";
+    colorOverride.preferredMaxLayoutWidth = MatrixCodeSettingsPanelContentWidth;
+    [MatrixCodeSettingsTheme.sharedTheme styleHintLabel:colorOverride];
+    self.colorOverrideLabel = colorOverride;
+    [stack addArrangedSubview:colorOverride];
+    [self startColorOverrideLabel];
     NSPopUpButton *quality = [self panelPopup:@"quality" items:@[
         @[@"Low", @"low"], @[@"Medium", @"med"], @[@"High", @"high"],
     ]];
@@ -1503,7 +1514,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     } else if ([view isKindOfClass:NSTextField.class]) {
         NSTextField *field = (NSTextField *)view;
         if (field.editable) [theme styleTextField:field];
-        else if ([field.identifier isEqualToString:@"countdown-preview"]) [theme styleHintLabel:field];
+        else if ([field.identifier isEqualToString:@"countdown-preview"] ||
+                 [field.identifier isEqualToString:@"color-override"]) [theme styleHintLabel:field];
         else if (field.font.pointSize >= 15) [theme styleHeading:field level:1];
         else [theme styleLabel:field];
     } else if ([view isKindOfClass:NSButton.class]) {
@@ -2925,6 +2937,34 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     return scroll;
 }
 
+- (void)refreshColorOverrideLabel {
+    if (!self.colorOverrideLabel) return;
+    NSString *text = MatrixCodeColorOverrideLabel(NSDate.date, NSTimeZone.localTimeZone) ?: @"";
+    BOOL hidden = text.length == 0;
+    if ([self.colorOverrideLabel.stringValue isEqualToString:text] &&
+        self.colorOverrideLabel.hidden == hidden) return;
+    self.colorOverrideLabel.stringValue = text;
+    self.colorOverrideLabel.hidden = hidden;
+    NSView *stack = self.colorOverrideLabel.superview;
+    NSView *document = stack.superview;
+    if (!stack || !document) return;
+    [document layoutSubtreeIfNeeded];
+    [document setFrameSize:NSMakeSize(MatrixCodeSettingsPanelWidth,
+                                      fmax(1.0, ceil(stack.fittingSize.height)))];
+}
+
+- (void)startColorOverrideLabel {
+    [self.colorOverrideTimer invalidate];
+    self.colorOverrideTimer = nil;
+    [self refreshColorOverrideLabel];
+    __weak typeof(self) weakSelf = self;
+    self.colorOverrideTimer = [NSTimer timerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *timer) {
+        (void)timer;
+        [weakSelf refreshColorOverrideLabel];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.colorOverrideTimer forMode:NSRunLoopCommonModes];
+}
+
 - (void)refreshCountdownPreview {
     if (!self.countdownPreviewLabel) return;
     NSDate *now = NSDate.date;
@@ -3200,6 +3240,8 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     self.settingsHideTimer = nil;
     [self.settingsAnimationTimer invalidate];
     self.settingsAnimationTimer = nil;
+    [self.colorOverrideTimer invalidate];
+    self.colorOverrideTimer = nil;
     [self stopSettingsRampPreview];
     self.settingsMetalView.frameHandler = nil;
     [self.settingsMetalView setAnimationActive:NO];
@@ -3307,6 +3349,7 @@ static BOOL MatrixCodePreferredMirrorForGlyphMode(NSString *glyphMode) {
     [_settingsMetalView setAnimationActive:NO];
     [_charactersPreviewView setAnimationActive:NO];
     [_countdownPreviewTimer invalidate];
+    [_colorOverrideTimer invalidate];
     [_messagePreviewRestoreTimer invalidate];
 }
 

@@ -1,4 +1,5 @@
 import type { Controls, PresetName, QualityTier } from "../types.ts";
+import { colorOverrideLabel } from "../config/colorPresets.ts";
 import { CONTROL_RANGES, DEFAULT_CONTROLS, type ControlsStore } from "../config/controls.ts";
 import { nativeStorageDidChange } from "../platform/nativeHost.ts";
 import { resolveDefaultUserName } from "../sim/messageOverlay.ts";
@@ -50,6 +51,8 @@ export class ControlsPanel {
   // Updates a slider's thumb + readout when its control changes from elsewhere (e.g. keyboard shortcuts).
   private rangeSyncers = new Map<keyof Controls, (c: Controls) => void>();
   private colorSyncer?: (c: Controls) => void;
+  private colorOverrideNote?: HTMLParagraphElement;
+  private colorOverrideTimer = 0;
   private unsubscribe?: () => void;
 
   constructor(
@@ -361,6 +364,21 @@ export class ControlsPanel {
     this.colorSyncer = render;
     controls.append(select, custom, picker);
     row.appendChild(controls);
+    const note = document.createElement("p");
+    note.className = "mx-color-override";
+    note.setAttribute("role", "status");
+    this.colorOverrideNote = note;
+    row.appendChild(note);
+    this.syncColorOverride();
+    this.colorOverrideTimer = window.setInterval(() => this.syncColorOverride(), 1000);
+  }
+
+  /** Names a Valentine's, St Patrick's, or full-moon override while it is replacing the saved theme. */
+  private syncColorOverride(): void {
+    if (!this.colorOverrideNote || this.destroyed) return;
+    const label = colorOverrideLabel();
+    this.colorOverrideNote.hidden = label == null;
+    this.colorOverrideNote.textContent = label ?? "";
   }
 
   private toggle(label: string, value: boolean, onChange: (v: boolean) => void): void {
@@ -425,6 +443,7 @@ export class ControlsPanel {
   destroy(): void {
     this.destroyed = true;
     this.unsubscribe?.();
+    window.clearInterval(this.colorOverrideTimer);
     window.clearTimeout(this.hideTimer);
     window.removeEventListener("pointermove", this.onActivity);
     window.removeEventListener("pointerdown", this.onActivity);

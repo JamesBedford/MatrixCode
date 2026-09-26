@@ -10,6 +10,7 @@ class QCheckBox;
 class QComboBox;
 class QDateTimeEdit;
 class QDoubleSpinBox;
+class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
@@ -28,6 +29,7 @@ enum class SettingsPage { Rain = 0, Intro = 1, Messages = 2, Images = 3, Countdo
 class SettingsDialog final : public QDialog {
  public:
   using PreviewCallback = std::function<void(const SettingsSnapshot&, SettingsPage)>;
+  using ThemeControlsResolver = std::function<Controls(const Controls&)>;
 
   explicit SettingsDialog(
     const SettingsSnapshot& settings,
@@ -36,6 +38,8 @@ class SettingsDialog final : public QDialog {
 
   [[nodiscard]] const SettingsSnapshot& Result() const noexcept { return draft_; }
   void SetPreviewCallback(PreviewCallback callback);
+  /** Maps draft controls to the ones the rain renders now, so holiday overrides also colour the dialog. */
+  void SetThemeControlsResolver(ThemeControlsResolver resolver);
 
  private:
   QWidget* BuildRainPage();
@@ -46,6 +50,8 @@ class SettingsDialog final : public QDialog {
   void ReadDraft();
   void Populate(const SettingsSnapshot& settings);
   void ResetCurrentPage();
+  void ApplyTheme();
+  void UpdateColorOverrideLabel();
   void PreviewCurrentPage();
   void UpdatePreviewAvailability();
   void ImportImages();
@@ -62,6 +68,7 @@ class SettingsDialog final : public QDialog {
 
   SettingsSnapshot draft_;
   PreviewCallback previewCallback_;
+  ThemeControlsResolver themeControlsResolver_;
   QTabWidget* tabs_ = nullptr;
   QPushButton* previewButton_ = nullptr;
 
@@ -76,6 +83,7 @@ class SettingsDialog final : public QDialog {
   QDoubleSpinBox* leadBrightness_ = nullptr;
   QDoubleSpinBox* vignette_ = nullptr;
   QComboBox* preset_ = nullptr;
+  QLabel* colorOverride_ = nullptr;
   QLineEdit* customColor_ = nullptr;
   QComboBox* glyphMode_ = nullptr;
   QComboBox* glyphFont_ = nullptr;

@@ -95,6 +95,7 @@ matrixcode_target_options(MatrixCodeRenderGL)
 
 add_library(MatrixCodeUiQt STATIC
   src/ui/SettingsDialog.cpp
+  src/ui/SettingsTheme.cpp
 )
 target_include_directories(MatrixCodeUiQt PUBLIC include)
 target_link_libraries(MatrixCodeUiQt
@@ -167,6 +168,15 @@ if(BUILD_TESTING)
   )
   matrixcode_target_options(MatrixCodeLinuxTests)
   add_test(NAME MatrixCodeLinuxTests COMMAND MatrixCodeLinuxTests)
+
+  add_executable(MatrixCodeLinuxUiTests
+    tests/SettingsThemeTests.cpp
+  )
+  target_include_directories(MatrixCodeLinuxUiTests PRIVATE tests)
+  target_link_libraries(MatrixCodeLinuxUiTests PRIVATE MatrixCodeUiQt)
+  matrixcode_target_options(MatrixCodeLinuxUiTests)
+  add_test(NAME MatrixCodeLinuxUiTests COMMAND MatrixCodeLinuxUiTests)
+  set_tests_properties(MatrixCodeLinuxUiTests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
   add_test(
     NAME MatrixCodeXScreenSaverLauncherTests
     COMMAND sh

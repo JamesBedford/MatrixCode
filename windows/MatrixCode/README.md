@@ -65,7 +65,10 @@ including skipped or repeated midnight. Resolved boundaries are cached by local
 date and Windows timezone rules, avoiding stale CRT timezone state. The override
 colours rain, messages, images, intro text, and themed toasts, and disables
 Gold-only sparkle while active. Selected settings and custom colours remain
-unchanged; the latest selection returns when the holiday ends. The fixed WARP
+unchanged; the latest selection returns when the holiday ends. Settings show
+“Overridden by Valentine's Day”, “Overridden by St. Patrick's Day”, or
+“Overridden by full moon” beside Colour theme while that override is active.
+The fixed WARP
 capture deliberately bypasses this live-date override to remain deterministic.
 
 Standalone keyboard and pointer controls follow the browser contract:

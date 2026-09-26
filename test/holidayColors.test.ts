@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { effectivePresetName, getPreset, PRESET_NAMES } from "../src/config/colorPresets.ts";
+import { colorOverrideLabel, effectivePresetName, getPreset, PRESET_NAMES } from "../src/config/colorPresets.ts";
 import { ControlsStore } from "../src/config/controls.ts";
 import type { PresetName } from "../src/types.ts";
 
@@ -77,5 +79,42 @@ describe("annual local-date color overrides", () => {
     vi.setSystemTime(new Date(2026, 1, 14));
     expect(getPreset("gold").name).toBe("gold");
     expect(getPreset("classic").name).toBe("classic");
+  });
+
+  it("names the active calendar override without changing the saved theme", () => {
+    expect(colorOverrideLabel(new Date(2026, 1, 14, 15))).toBe("Overridden by Valentine's Day");
+    expect(colorOverrideLabel(new Date(2026, 2, 17, 0))).toBe("Overridden by St. Patrick's Day");
+    expect(colorOverrideLabel(new Date(2026, 1, 13, 23, 59))).toBeNull();
+    expect(colorOverrideLabel(new Date(2026, 2, 18, 0))).toBeNull();
+    vi.stubEnv("TZ", "UTC");
+    expect(colorOverrideLabel(new Date("2026-09-26T12:00:00Z"))).toBe("Overridden by full moon");
+    expect(colorOverrideLabel(new Date("2026-09-25T12:00:00Z"))).toBeNull();
+    // February 14, 2033 is also a full moon; the fixed holiday keeps the label.
+    expect(colorOverrideLabel(new Date("2033-02-14T12:00:00Z"))).toBe("Overridden by Valentine's Day");
+    vi.unstubAllEnvs();
+  });
+});
+
+describe("color override label parity", () => {
+  const labels = [
+    "Overridden by Valentine's Day",
+    "Overridden by St. Patrick's Day",
+    "Overridden by full moon",
+  ];
+
+  it("uses the same wording in the web, Windows/Linux core, and macOS settings", () => {
+    const sources = [
+      "src/config/colorPresets.ts",
+      "windows/MatrixCode/src/core/Settings.cpp",
+      "macos/MatrixCodeScreenSaver/Source/MatrixCodeConstants.m",
+    ];
+    for (const relativePath of sources) {
+      const source = readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
+      for (const label of labels) expect(source, relativePath).toContain(label);
+    }
+    expect(readFileSync(new URL("../src/ui/controlsPanel.ts", import.meta.url), "utf8")).toContain("colorOverrideLabel");
+    expect(readFileSync(new URL("../linux/MatrixCode/src/ui/SettingsDialog.cpp", import.meta.url), "utf8")).toContain('setObjectName("colorOverride")');
+    expect(readFileSync(new URL("../windows/MatrixCode/src/platform/SettingsWindow.cpp", import.meta.url), "utf8")).toContain("CurrentColorOverrideLabel");
+    expect(readFileSync(new URL("../macos/MatrixCodeScreenSaver/Source/MatrixCodeConfigurationController.m", import.meta.url), "utf8")).toContain('@"color-override"');
   });
 });

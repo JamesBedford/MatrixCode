@@ -15,7 +15,10 @@ The Linux targets compile the portable C++ core used by the Windows native
 version. This makes packed rain state, RNG order, frame stepping, overlap lanes,
 adaptive resolution, settings sanitization, intro timing, tokens, holiday and
 full-moon rules, messages, image scheduling/reveal math, and display topology
-the same code rather than another translation.
+the same code rather than another translation. The settings dialog shows
+“Overridden by Valentine's Day”, “Overridden by St. Patrick's Day”, or
+“Overridden by full moon” beside Colour theme while that override is active,
+and leaves the saved theme unchanged.
 
 `MatrixCodeRenderGL` consumes that state through a hardware OpenGL context. Its
 render graph uses an RGBA16F scene whose alpha carries bloom energy, floating

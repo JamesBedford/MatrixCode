@@ -200,6 +200,18 @@ html.mx-native-config .mx-panel {
   align-items: center;
   gap: 6px;
 }
+.mx-color-override {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  color: var(--mx-label);
+  text-transform: none;
+}
+.mx-color-override[hidden] {
+  display: none;
+}
 .mx-row .mx-btn--compact {
   padding: 5px 8px;
   font-size: 11px;

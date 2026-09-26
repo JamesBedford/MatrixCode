@@ -124,6 +124,14 @@ NSString *MatrixCodeHolidayColorPreset(NSDate *date, NSTimeZone *timeZone) {
     return nil;
 }
 
+NSString *MatrixCodeColorOverrideLabel(NSDate *date, NSTimeZone *timeZone) {
+    NSString *preset = MatrixCodeHolidayColorPreset(date, timeZone);
+    if ([preset isEqualToString:@"red"]) return @"Overridden by Valentine's Day";
+    if ([preset isEqualToString:@"classic"]) return @"Overridden by St. Patrick's Day";
+    if ([preset isEqualToString:@"white"]) return @"Overridden by full moon";
+    return nil;
+}
+
 NSArray<NSString *> *MatrixCodeStorageKeys(void) {
     static NSArray<NSString *> *keys;
     static dispatch_once_t onceToken;

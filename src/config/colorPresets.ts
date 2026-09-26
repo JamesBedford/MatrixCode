@@ -148,12 +148,37 @@ export function getPreset(name: PresetName, customColor?: string): ColorPreset {
   return PRESETS[name] ?? CLASSIC;
 }
 
-/** Local-calendar overrides affect presentation only; fixed holidays take priority over full moons. */
-export function effectivePresetName(selected: PresetName, localDate = new Date()): PresetName {
+type CalendarOverride = "valentines" | "patrick" | "fullMoon";
+
+/** Fixed holidays take priority over a full moon. Null on an ordinary local day. */
+function calendarOverride(localDate: Date): CalendarOverride | null {
   const month = localDate.getMonth() + 1;
   const day = localDate.getDate();
-  if (month === VALENTINES_DAY.month && day === VALENTINES_DAY.day) return "red";
-  if (month === ST_PATRICKS_DAY.month && day === ST_PATRICKS_DAY.day) return "classic";
-  if (isFullMoonLocalDate(localDate)) return "white";
-  return selected;
+  if (month === VALENTINES_DAY.month && day === VALENTINES_DAY.day) return "valentines";
+  if (month === ST_PATRICKS_DAY.month && day === ST_PATRICKS_DAY.day) return "patrick";
+  if (isFullMoonLocalDate(localDate)) return "fullMoon";
+  return null;
+}
+
+/** Local-calendar overrides affect presentation only; fixed holidays take priority over full moons. */
+export function effectivePresetName(selected: PresetName, localDate = new Date()): PresetName {
+  switch (calendarOverride(localDate)) {
+    case "valentines": return "red";
+    case "patrick": return "classic";
+    case "fullMoon": return "white";
+    default: return selected;
+  }
+}
+
+/**
+ * Settings copy for the active calendar override. Null on an ordinary day.
+ * The saved theme is unchanged; this only names why the rain may differ from it.
+ */
+export function colorOverrideLabel(localDate = new Date()): string | null {
+  switch (calendarOverride(localDate)) {
+    case "valentines": return "Overridden by Valentine's Day";
+    case "patrick": return "Overridden by St. Patrick's Day";
+    case "fullMoon": return "Overridden by full moon";
+    default: return null;
+  }
 }

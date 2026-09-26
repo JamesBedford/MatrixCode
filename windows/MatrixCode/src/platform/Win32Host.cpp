@@ -1515,6 +1515,15 @@ int NativeHost::Run() {
 
 }  // namespace
 
+std::optional<std::string_view> CurrentColorOverrideLabel() {
+  static LocalCalendarDayCache calendar;
+  static FullMoonDayCache fullMoon;
+  const LocalCalendarDay day = ReadLocalCalendarDay(calendar);
+  const bool fullMoonDay = day.boundariesMs.has_value() && fullMoon.ContainsFullMoon(
+    day.boundariesMs->first, day.boundariesMs->second);
+  return ColorOverrideLabel(day.date.wMonth, day.date.wDay, fullMoonDay);
+}
+
 int RunWin32Host(HINSTANCE instance, const HostOptions& options) {
   return NativeHost(instance, options).Run();
 }

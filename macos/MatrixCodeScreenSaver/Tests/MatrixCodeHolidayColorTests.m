@@ -217,6 +217,24 @@
     XCTAssertEqualObjects(theme.effectivePresetName, @"blue");
 }
 
+- (void)testColorOverrideLabelNamesTheCalendarReason {
+    NSTimeZone *utc = [NSTimeZone timeZoneForSecondsFromGMT:0];
+    XCTAssertEqualObjects(
+        MatrixCodeColorOverrideLabel([self dateInYear:2026 month:2 day:14 timeZone:utc], utc),
+        @"Overridden by Valentine's Day");
+    XCTAssertEqualObjects(
+        MatrixCodeColorOverrideLabel([self dateInYear:2026 month:3 day:17 timeZone:utc], utc),
+        @"Overridden by St. Patrick's Day");
+    XCTAssertEqualObjects(
+        MatrixCodeColorOverrideLabel([self dateInYear:2026 month:9 day:26 timeZone:utc], utc),
+        @"Overridden by full moon");
+    XCTAssertNil(MatrixCodeColorOverrideLabel([self dateInYear:2026 month:9 day:25 timeZone:utc], utc));
+    // A coincident full moon keeps the fixed holiday's name.
+    XCTAssertEqualObjects(
+        MatrixCodeColorOverrideLabel([self dateInYear:2033 month:2 day:14 timeZone:utc], utc),
+        @"Overridden by Valentine's Day");
+}
+
 - (void)testHolidayColorsPreserveLatestSelectedPresetAndCustomColor {
     NSTimeZone *zone = [NSTimeZone timeZoneForSecondsFromGMT:0];
     NSDate *holiday = [self dateInYear:2026 month:2 day:14 timeZone:zone];

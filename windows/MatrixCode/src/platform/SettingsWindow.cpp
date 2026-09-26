@@ -21,6 +21,7 @@ namespace {
 
 constexpr wchar_t kClassName[] = L"MatrixCode.Settings.Window";
 constexpr wchar_t kJsonClassName[] = L"MatrixCode.Settings.JsonWindow";
+constexpr UINT_PTR kColorOverrideTimer = 1;
 enum ControlId : int {
   IdSpeed = 1001,
   IdDensity,
@@ -33,6 +34,7 @@ enum ControlId : int {
   IdLeadBrightness,
   IdVignette,
   IdPreset,
+  IdColorOverride,
   IdCustomColor,
   IdGlyphMode,
   IdGlyphFont,
@@ -292,6 +294,11 @@ void AddComboItems(HWND combo, std::initializer_list<const wchar_t*> values, int
   SendMessageW(combo, CB_SETCURSEL, selected, 0);
 }
 
+void UpdateColorOverrideLabel(HWND window) {
+  const auto label = CurrentColorOverrideLabel();
+  SetDlgItemTextW(window, IdColorOverride, label ? WideFromUtf8(*label).c_str() : L"");
+}
+
 void Populate(HWND window, const SettingsSnapshot& settings) {
   constexpr int leftLabel = 22;
   constexpr int leftControl = 155;
@@ -327,6 +334,9 @@ void Populate(HWND window, const SettingsSnapshot& settings) {
 
   Label(window, L"Colour theme", rightLabel, 142, 125);
   HWND preset = Combo(window, IdPreset, rightControl, 138);
+  CreateScaledChild(
+    window, 0, L"STATIC", L"", SS_NOPREFIX, rightLabel, 166, 360, 20, IdColorOverride);
+  UpdateColorOverrideLabel(window);
   constexpr std::array<const wchar_t*, 10> presets{
     L"Classic", L"Amber", L"Orange", L"Gold", L"Red", L"Pink", L"Purple", L"Blue", L"White", L"Custom"};
   const std::array<std::string, 10> keys{
@@ -338,23 +348,23 @@ void Populate(HWND window, const SettingsSnapshot& settings) {
   }
   SendMessageW(preset, CB_SETCURSEL, selectedPreset, 0);
 
-  Label(window, L"Custom colour", rightLabel, 180, 125);
-  TextEdit(window, IdCustomColor, rightControl, 176, 220, 7, settings.controls.customColor);
+  Label(window, L"Custom colour", rightLabel, 202, 125);
+  TextEdit(window, IdCustomColor, rightControl, 198, 220, 7, settings.controls.customColor);
 
-  Label(window, L"Glyph set", rightLabel, 218, 125);
-  HWND glyphMode = Combo(window, IdGlyphMode, rightControl, 214);
+  Label(window, L"Glyph set", rightLabel, 240, 125);
+  HWND glyphMode = Combo(window, IdGlyphMode, rightControl, 236);
   AddComboItems(glyphMode,
     {L"Matrix mix", L"Katakana", L"Binary", L"Digits", L"Latin", L"Symbols"},
     static_cast<int>(settings.controls.glyphMode));
 
-  Label(window, L"Glyph font", rightLabel, 256, 125);
-  HWND glyphFont = Combo(window, IdGlyphFont, rightControl, 252);
+  Label(window, L"Glyph font", rightLabel, 278, 125);
+  HWND glyphFont = Combo(window, IdGlyphFont, rightControl, 274);
   AddComboItems(glyphFont,
     {L"Matrix", L"Gothic", L"Mono", L"Terminal", L"Rounded", L"Mincho"},
     static_cast<int>(settings.controls.glyphFont));
 
-  Label(window, L"Quality", rightLabel, 294, 125);
-  HWND quality = Combo(window, IdQuality, rightControl, 290);
+  Label(window, L"Quality", rightLabel, 316, 125);
+  HWND quality = Combo(window, IdQuality, rightControl, 312);
   AddComboItems(quality, {L"Low", L"Medium", L"High"},
     settings.controls.quality == QualityTier::Low ? 0 :
     settings.controls.quality == QualityTier::Medium ? 1 : 2);
@@ -562,6 +572,10 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
       ReplaceUiFont(window, state->dpi, state->font);
       ShowScrollBar(window, SB_BOTH, FALSE);
       UpdateMainScrollRanges(*state);
+      SetTimer(window, kColorOverrideTimer, 1000, nullptr);
+      return 0;
+    case WM_TIMER:
+      if (wParam == kColorOverrideTimer) UpdateColorOverrideLabel(window);
       return 0;
     case WM_SIZE:
       UpdateMainScrollRanges(*state);
@@ -672,6 +686,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
       DestroyWindow(window);
       return 0;
     case WM_DESTROY:
+      KillTimer(window, kColorOverrideTimer);
       if (state->font != nullptr) {
         DeleteObject(state->font);
         state->font = nullptr;

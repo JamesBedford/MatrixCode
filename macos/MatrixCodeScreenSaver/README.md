@@ -28,7 +28,10 @@ The native saver is expected to match the browser app's user-visible behavior:
   The rain, intro, and themed HUD update while running, including
   paused/reduced-motion frames, timezone or clock changes, and wake. This is a
   temporary rendering override: the latest selected theme and custom color
-  remain saved and return automatically when the local date changes;
+  remain saved and return automatically when the local date changes. The
+  Options sheet shows “Overridden by Valentine's Day”, “Overridden by
+  St. Patrick's Day”, or “Overridden by full moon” beside Color while that
+  override is active;
 - native intro typewriter overlay with click/Escape skip, optional rain during
   intro, post-intro delay, and the same token resolver as the web app. The intro
   is gated by the `enabled` flag in the `mx-intro` document (default on, exposed

@@ -25,6 +25,15 @@ namespace matrixcode {
   int localDay,
   bool fullMoonDay = false);
 
+/**
+ * Settings copy for the active calendar override, or empty on an ordinary day.
+ * Fixed holidays take priority over a full moon. The saved theme is unchanged.
+ */
+[[nodiscard]] std::optional<std::string_view> ColorOverrideLabel(
+  int localMonth,
+  int localDay,
+  bool fullMoonDay = false) noexcept;
+
 [[nodiscard]] std::optional<std::vector<std::uint8_t>> DecodeBase64(std::string_view value);
 [[nodiscard]] std::string EncodeBase64(const std::vector<std::uint8_t>& value);
 

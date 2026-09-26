@@ -26,6 +26,9 @@ FOUNDATION_EXPORT NSArray<NSNumber *> *MatrixCodeColorPaletteForControls(
 /// Local Gregorian holiday/full-moon override; fixed holidays take priority, and nil keeps the chosen preset.
 FOUNDATION_EXPORT NSString * _Nullable MatrixCodeHolidayColorPreset(
     NSDate *date, NSTimeZone *timeZone);
+/// Settings copy for that override, or nil on an ordinary day. The saved theme is unchanged.
+FOUNDATION_EXPORT NSString * _Nullable MatrixCodeColorOverrideLabel(
+    NSDate *date, NSTimeZone *timeZone);
 FOUNDATION_EXPORT NSDictionary<NSString *, id> *MatrixCodeSanitizeControlsDocument(
     id _Nullable rawControls);
 FOUNDATION_EXPORT double MatrixCodeQuantizedControlValue(NSString *key, double value);

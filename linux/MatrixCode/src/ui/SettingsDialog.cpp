@@ -9,6 +9,7 @@
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QComboBox>
+#include <QDate>
 #include <QDateTime>
 #include <QDateTimeEdit>
 #include <QDialogButtonBox>
@@ -24,6 +25,7 @@
 #include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QTimer>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMenu>
@@ -38,9 +40,11 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "matrixcode/core/HolidayResolver.h"
 #include "matrixcode/core/Settings.h"
 #include "matrixcode/platform/ImageImportQt.h"
 #include "matrixcode/platform/SettingsStoreLinux.h"
+#include "matrixcode/ui/SettingsTheme.h"
 
 namespace matrixcode::ui {
 namespace {
@@ -132,23 +136,6 @@ SettingsDialog::SettingsDialog(
   setModal(true);
   setMinimumSize(780, 620);
   resize(900, 720);
-  setStyleSheet(R"(
-    QDialog { background: #0d1110; color: #dfffe4; }
-    QTabWidget::pane { border: 1px solid #24482d; background: #111713; border-radius: 6px; }
-    QTabBar::tab { background: #151d17; color: #91b99a; padding: 9px 15px; border: 1px solid #24482d; }
-    QTabBar::tab:selected { background: #173420; color: #74ff92; }
-    QLabel[kind="hint"] { color: #91a897; padding: 2px 0 8px 0; }
-    QGroupBox { border: 1px solid #24482d; border-radius: 6px; margin-top: 11px; padding-top: 8px; font-weight: 600; }
-    QGroupBox::title { subcontrol-origin: margin; left: 10px; color: #74ff92; }
-    QLineEdit, QComboBox, QDoubleSpinBox, QDateTimeEdit, QListWidget, QTableWidget {
-      background: #090d0a; color: #e5ffe9; border: 1px solid #315b39; border-radius: 4px; padding: 5px;
-      selection-background-color: #206b35;
-    }
-    QPushButton, QToolButton { background: #18341f; color: #dfffe4; border: 1px solid #397348; border-radius: 4px; padding: 6px 12px; }
-    QPushButton:hover, QToolButton:hover { background: #24512f; border-color: #54b669; }
-    QPushButton:default { background: #177633; border-color: #58dc76; }
-    QCheckBox { spacing: 7px; }
-  )");
 
   auto* root = new QVBoxLayout(this);
   auto* title = new QLabel(tr("MATRIX CODE"));
@@ -157,7 +144,7 @@ SettingsDialog::SettingsDialog(
   titleFont.setBold(true);
   titleFont.setLetterSpacing(QFont::AbsoluteSpacing, 3.0);
   title->setFont(titleFont);
-  title->setStyleSheet("color:#00ff41");
+  title->setObjectName("settingsTitle");
   root->addWidget(title);
   root->addWidget(Hint(tr("Native Ubuntu renderer · settings are shared by app, fullscreen, multi-monitor and XScreenSaver modes.")));
 
@@ -207,6 +194,11 @@ SettingsDialog::SettingsDialog(
   });
 
   Populate(settings);
+  ApplyTheme();
+  UpdateColorOverrideLabel();
+  auto* overrideTimer = new QTimer(this);
+  connect(overrideTimer, &QTimer::timeout, this, [this] { UpdateColorOverrideLabel(); });
+  overrideTimer->start(1000);
 }
 
 void SettingsDialog::SetPreviewCallback(PreviewCallback callback) {
@@ -218,6 +210,43 @@ void SettingsDialog::UpdatePreviewAvailability() {
   previewButton_->setEnabled(static_cast<bool>(previewCallback_) &&
     (static_cast<SettingsPage>(tabs_->currentIndex()) != SettingsPage::Messages ||
       messagesEnabled_->isChecked()));
+}
+
+void SettingsDialog::SetThemeControlsResolver(ThemeControlsResolver resolver) {
+  themeControlsResolver_ = std::move(resolver);
+  ApplyTheme();
+}
+
+void SettingsDialog::ApplyTheme() {
+  Controls controls = draft_.controls;
+  controls.preset = StdUtf8(preset_->currentData().toString());
+  const bool customColorComplete = customColor_->hasAcceptableInput();
+  if (customColorComplete) controls.customColor = StdUtf8(customColor_->text());
+  if (themeControlsResolver_) controls = themeControlsResolver_(controls);
+  // Keep the current colours while a custom colour is only partially typed.
+  if (controls.preset == "custom" && !customColorComplete && !styleSheet().isEmpty()) return;
+  const SettingsTheme theme = SettingsThemeForPalette(PaletteForControls(controls));
+  const QString themedStyleSheet = SettingsStyleSheet(theme);
+  if (themedStyleSheet == styleSheet()) return;
+  setPalette(SettingsPalette(theme));
+  setStyleSheet(themedStyleSheet);
+}
+
+void SettingsDialog::UpdateColorOverrideLabel() {
+  if (colorOverride_ == nullptr) return;
+  static FullMoonDayCache fullMoonCache;
+  const QDate date = QDate::currentDate();
+  const QDateTime start(date.startOfDay());
+  const QDateTime end(date.addDays(1).startOfDay());
+  const bool fullMoon = fullMoonCache.ContainsFullMoon(
+    static_cast<double>(start.toMSecsSinceEpoch()),
+    static_cast<double>(end.toMSecsSinceEpoch()));
+  const auto label = ColorOverrideLabel(date.month(), date.day(), fullMoon);
+  const QString text = label ? QString::fromUtf8(label->data(), static_cast<qsizetype>(label->size())) : QString();
+  // isHidden follows the explicit visibility flag. isVisible is false until the dialog is shown.
+  if (colorOverride_->text() == text && colorOverride_->isHidden() == !label.has_value()) return;
+  colorOverride_->setText(text);
+  colorOverride_->setVisible(label.has_value());
 }
 
 QWidget* SettingsDialog::BuildRainPage() {
@@ -243,6 +272,7 @@ QWidget* SettingsDialog::BuildRainPage() {
   auto* appearance = new QGroupBox(tr("Appearance"));
   auto* appearanceForm = new QFormLayout(appearance);
   preset_ = new QComboBox;
+  preset_->setObjectName("preset");
   preset_->addItems({tr("Classic"), tr("Amber"), tr("Orange"), tr("Gold"), tr("Red"), tr("Pink"), tr("Purple"), tr("Blue"), tr("White"), tr("Custom")});
   preset_->setItemData(0, "classic"); preset_->setItemData(1, "amber");
   preset_->setItemData(2, "orange"); preset_->setItemData(3, "gold");
@@ -250,6 +280,7 @@ QWidget* SettingsDialog::BuildRainPage() {
   preset_->setItemData(6, "purple"); preset_->setItemData(7, "blue");
   preset_->setItemData(8, "white"); preset_->setItemData(9, "custom");
   customColor_ = new QLineEdit;
+  customColor_->setObjectName("customColor");
   customColor_->setMaxLength(7);
   customColor_->setValidator(new QRegularExpressionValidator(
     QRegularExpression(QStringLiteral("#[0-9A-Fa-f]{6}")), customColor_));
@@ -264,6 +295,19 @@ QWidget* SettingsDialog::BuildRainPage() {
     const QColor selected = QColorDialog::getColor(current, this, tr("Custom rain colour"));
     if (selected.isValid()) customColor_->setText(selected.name(QColor::HexRgb).toUpper());
   });
+  connect(preset_, &QComboBox::currentIndexChanged, this, [this] { ApplyTheme(); });
+  connect(customColor_, &QLineEdit::textChanged, this, [this] { ApplyTheme(); });
+  auto* themeColumn = new QWidget;
+  auto* themeLayout = new QVBoxLayout(themeColumn);
+  themeLayout->setContentsMargins(0, 0, 0, 0);
+  themeLayout->setSpacing(2);
+  themeLayout->addWidget(preset_);
+  colorOverride_ = new QLabel;
+  colorOverride_->setObjectName("colorOverride");
+  colorOverride_->setWordWrap(true);
+  colorOverride_->setProperty("kind", "hint");
+  colorOverride_->setVisible(false);
+  themeLayout->addWidget(colorOverride_);
   glyphMode_ = new QComboBox;
   glyphMode_->addItems({tr("Matrix mix"), tr("Katakana"), tr("Binary"), tr("Digits"), tr("Latin"), tr("Symbols")});
   glyphFont_ = new QComboBox;
@@ -273,7 +317,7 @@ QWidget* SettingsDialog::BuildRainPage() {
   glow_ = Number(0.0, 2.5, 0.05);
   leadBrightness_ = Number(0.0, 3.0, 0.05);
   vignette_ = Percent();
-  appearanceForm->addRow(tr("Colour theme"), preset_);
+  appearanceForm->addRow(tr("Colour theme"), themeColumn);
   appearanceForm->addRow(tr("Custom colour"), colorRow);
   appearanceForm->addRow(tr("Glyph set"), glyphMode_);
   appearanceForm->addRow(tr("Glyph font"), glyphFont_);
@@ -306,6 +350,9 @@ QWidget* SettingsDialog::BuildRainPage() {
   scroll->setWidget(body);
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
+  // Let the themed tab pane show through instead of the style's window fill.
+  scroll->viewport()->setAutoFillBackground(false);
+  body->setAutoFillBackground(false);
   return scroll;
 }
 

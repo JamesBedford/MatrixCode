@@ -383,6 +383,8 @@ class MatrixCodeHost final : public QObject {
   [[nodiscard]] double PresentationTimeSeconds() const;
   [[nodiscard]] std::string ResolveText(std::string_view text) const;
   [[nodiscard]] Controls EffectiveControls() const;
+  [[nodiscard]] Controls EffectiveControls(const Controls& controls) const;
+  void FollowEffectiveTheme(ui::SettingsDialog& dialog) const;
   [[nodiscard]] RainWindow* WindowFor(RainWidget& widget);
   [[nodiscard]] RainWindow* ControlsWindow();
   void HandleEmbeddedWindowDestroyed();
@@ -671,6 +673,7 @@ bool MatrixCodeHost::EmbedPreview(RainWindow& window) {
 int MatrixCodeHost::Run() {
   if (options_.mode == platform::LaunchMode::Settings) {
     ui::SettingsDialog dialog(settings_);
+    FollowEffectiveTheme(dialog);
     if (dialog.exec() != QDialog::Accepted) return 0;
     QString diagnostic;
     if (!store_.Save(dialog.Result(), &diagnostic)) {
@@ -973,12 +976,21 @@ void MatrixCodeHost::UpdateRenderBuffers() {
 
 Controls MatrixCodeHost::EffectiveControls() const {
   if (IsCapture()) return settings_.controls;
+  return EffectiveControls(settings_.controls);
+}
+
+Controls MatrixCodeHost::EffectiveControls(const Controls& controls) const {
+  if (IsCapture()) return controls;
   const QDate date = QDate::currentDate();
   const QDateTime start(date.startOfDay());
   const QDateTime end(date.addDays(1).startOfDay());
   const bool fullMoon = const_cast<FullMoonDayCache&>(fullMoonCache_).ContainsFullMoon(
     static_cast<double>(start.toMSecsSinceEpoch()), static_cast<double>(end.toMSecsSinceEpoch()));
-  return EffectiveControlsForLocalDate(settings_.controls, date.month(), date.day(), fullMoon);
+  return EffectiveControlsForLocalDate(controls, date.month(), date.day(), fullMoon);
+}
+
+void MatrixCodeHost::FollowEffectiveTheme(ui::SettingsDialog& dialog) const {
+  dialog.SetThemeControlsResolver([this](const Controls& controls) { return EffectiveControls(controls); });
 }
 
 void MatrixCodeHost::Render(RainWidget& widget, render::OpenGLRenderer& renderer) {
@@ -1213,6 +1225,7 @@ void MatrixCodeHost::OpenSettings(const ui::SettingsPage page, QWidget* owner) {
   const SettingsSnapshot before = settings_;
   SetPauseReason(kPauseModal, true);
   ui::SettingsDialog dialog(settings_, page, owner);
+  FollowEffectiveTheme(dialog);
   dialog.SetPreviewCallback([this, &dialog, &before](
       const SettingsSnapshot& preview, const ui::SettingsPage previewPage) {
     const std::uint64_t generation = ++settingsPreviewGeneration_;
