@@ -798,9 +798,10 @@ static double MatrixCodeRegionalMessageSample(double sample, MatrixCodeNormalize
     }
 
     if (!state.hasNextFireAt) {
+        // An occasion greeting is the first thing in the rain. Saved messages still wait out their gap.
         state.hasNextFireAt = YES;
-        state.nextFireAt = nowMilliseconds + self.gap;
-        return;
+        state.nextFireAt = state.occasionLeads ? nowMilliseconds : nowMilliseconds + self.gap;
+        if (!state.occasionLeads) return;
     }
     if (nowMilliseconds >= state.nextFireAt) {
         [self fireAtTime:nowMilliseconds sink:sink regions:placementRegions];

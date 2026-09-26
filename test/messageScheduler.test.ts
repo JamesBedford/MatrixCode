@@ -78,8 +78,6 @@ describe("occasion greeting", () => {
       disappearMs: 0,
     }), "happy full moon");
     s.update(0, sim);
-    expect(sim.sets).toBe(0);
-    s.update(1300, sim);
     expect(sim.sets).toBe(1);
     expect(sim.last?.size).toBe("happy full moon".replaceAll(" ", "").length);
   });
@@ -95,7 +93,6 @@ describe("occasion greeting", () => {
       disappearMs: 0,
     }), "happy christmas");
     s.update(0, sim);
-    s.update(1300, sim);
     expect(sim.last?.size).toBe("happy christmas".replaceAll(" ", "").length);
   });
 });

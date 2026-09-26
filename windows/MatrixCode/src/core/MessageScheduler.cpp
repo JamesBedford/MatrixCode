@@ -405,8 +405,9 @@ void MessageScheduler::Update(
   }
 
   if (!nextFireMilliseconds_.has_value()) {
-    nextFireMilliseconds_ = nowMilliseconds + Gap();
-    return;
+    // An occasion greeting is the first thing in the rain. Saved messages still wait out their gap.
+    nextFireMilliseconds_ = occasionLeads_ ? nowMilliseconds : nowMilliseconds + Gap();
+    if (!occasionLeads_) return;
   }
   if (nowMilliseconds >= *nextFireMilliseconds_) Fire(nowMilliseconds, sink, normalized);
 }

@@ -175,8 +175,9 @@ export class MessageScheduler {
     }
 
     if (this.nextFireAt === null) {
-      this.nextFireAt = nowMs + this.gap();
-      return;
+      // An occasion greeting is the first thing in the rain. Saved messages still wait out their gap.
+      this.nextFireAt = this.occasionLeads ? nowMs : nowMs + this.gap();
+      if (!this.occasionLeads) return;
     }
 
     if (nowMs >= this.nextFireAt) this.fire(nowMs, sim, placementRegions);

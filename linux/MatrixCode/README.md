@@ -18,7 +18,10 @@ full-moon rules, messages, image scheduling/reveal math, and display topology
 the same code rather than another translation. The settings dialog shows
 “Overridden by Valentine's Day”, “Overridden by St. Patrick's Day”, or
 “Overridden by full moon” beside Colour theme while that override is active,
-and leaves the saved theme unchanged.
+and leaves the saved theme unchanged. On Valentine's Day, St Patrick's Day,
+Christmas Day, and a full-moon day, the rain leads with that day's greeting
+in the configured glyph font as soon as the rain is running, even when
+messages are switched off.
 
 `MatrixCodeRenderGL` consumes that state through a hardware OpenGL context. Its
 render graph uses an RGBA16F scene whose alpha carries bloom energy, floating

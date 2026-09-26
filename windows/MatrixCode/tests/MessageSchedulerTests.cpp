@@ -568,8 +568,6 @@ void RunMessageSchedulerTests() {
     MessageScheduler scheduler(1u);
     scheduler.Configure(document, "happy full moon");
     scheduler.Update(0.0, sink);
-    MX_EXPECT_EQ(sink.sets, 0u);
-    scheduler.Update(1300.0, sink);
     MX_EXPECT_EQ(sink.sets, 1u);
     MX_EXPECT_EQ(sink.targets.size(), static_cast<std::size_t>(13));
   }
