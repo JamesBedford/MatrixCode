@@ -65,6 +65,41 @@ const sched = (seed = 1): MessageScheduler => new MessageScheduler({ glyphSet, r
 const rowOf = (m: Map<number, number>, cols: number): number => Math.floor([...m.keys()][0]! / cols);
 const colOf = (m: Map<number, number>, cols: number): number => [...m.keys()][0]! % cols;
 
+describe("occasion greeting", () => {
+  it("shows the greeting first even when saved messages are off", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 20);
+    s.configure(doc({
+      enabled: false,
+      messages: ["HELLO"],
+      frequencyMs: 1000,
+      persistenceMs: 100,
+      appearMs: 0,
+      disappearMs: 0,
+    }), "happy full moon");
+    s.update(0, sim);
+    expect(sim.sets).toBe(0);
+    s.update(1300, sim);
+    expect(sim.sets).toBe(1);
+    expect(sim.last?.size).toBe("happy full moon".replaceAll(" ", "").length);
+  });
+
+  it("leads an enabled message list with the greeting before the saved lines", () => {
+    const s = sched();
+    const sim = new FakeSim(40, 20);
+    s.configure(doc({
+      messages: ["HI"],
+      frequencyMs: 1000,
+      persistenceMs: 100,
+      appearMs: 0,
+      disappearMs: 0,
+    }), "happy christmas");
+    s.update(0, sim);
+    s.update(1300, sim);
+    expect(sim.last?.size).toBe("happy christmas".replaceAll(" ", "").length);
+  });
+});
+
 describe("MessageScheduler.fire (via previewOne)", () => {
   it.each(["row", "drop"] as const)("anchors %s message centres independently of length", (messageLayout) => {
     const region = { colStart: 10, rowStart: 20, cols: 80, rows: 80 };

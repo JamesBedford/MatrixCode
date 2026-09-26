@@ -364,6 +364,8 @@ class MatrixCodeHost final : public QObject {
   void InitializePresentation();
   void UpdateIntroPresentation();
   void UpdateMessages();
+  void ConfigureMessages();
+  [[nodiscard]] std::optional<std::string> CurrentOccasionGreeting() const;
   void ApplyImageToBaseLayer(double nowSeconds);
   void UpdateRenderBuffers();
   void Tick();
@@ -431,6 +433,7 @@ class MatrixCodeHost final : public QObject {
   bool presentationInitialized_ = false;
   bool introActive_ = false;
   bool messagesConfigured_ = false;
+  std::string configuredOccasionGreeting_;
   bool imagesConfigured_ = false;
   std::uint32_t pauseReasons_ = 0;
   double pauseStartedSeconds_ = 0.0;
@@ -799,10 +802,7 @@ void MatrixCodeHost::RebuildSimulations(const bool preservePresentation) {
     imageScheduler_.Configure(settings_.images, rainSeed_, imageEpochSeconds_, UnixSeconds(), windows_.size() > 1);
     imagesConfigured_ = true;
   }
-  if (!messagesConfigured_) {
-    messageScheduler_.Configure(settings_.messages);
-    messagesConfigured_ = true;
-  }
+  if (!messagesConfigured_) ConfigureMessages();
   adaptiveResolution_.Reset();
   renderScale_ = 1.0;
 }
@@ -895,8 +895,30 @@ void MatrixCodeHost::UpdateIntroPresentation() {
   introOpacity_ = static_cast<float>(state.opacity);
 }
 
+std::optional<std::string> MatrixCodeHost::CurrentOccasionGreeting() const {
+  if (IsCapture()) return std::nullopt;
+  const QDate date = QDate::currentDate();
+  const QDateTime start(date.startOfDay());
+  const QDateTime end(date.addDays(1).startOfDay());
+  const bool fullMoon = const_cast<FullMoonDayCache&>(fullMoonCache_).ContainsFullMoon(
+    static_cast<double>(start.toMSecsSinceEpoch()),
+    static_cast<double>(end.toMSecsSinceEpoch()));
+  const auto greeting = OccasionGreeting(date.month(), date.day(), fullMoon);
+  return greeting ? std::optional<std::string>(*greeting) : std::nullopt;
+}
+
+void MatrixCodeHost::ConfigureMessages() {
+  const auto greeting = CurrentOccasionGreeting();
+  configuredOccasionGreeting_ = greeting.value_or("");
+  messageScheduler_.Configure(settings_.messages, configuredOccasionGreeting_);
+  messagesConfigured_ = true;
+}
+
 void MatrixCodeHost::UpdateMessages() {
   if (simulations_.empty() || reducedMotion_ || introActive_) return;
+  const auto greeting = CurrentOccasionGreeting();
+  const std::string next = greeting.value_or("");
+  if (!messagesConfigured_ || next != configuredOccasionGreeting_) ConfigureMessages();
   RainSimulationMessageSink sink(*simulations_.front());
   std::vector<MessageRegion> regions;
   if (windows_.size() > 1 && !settings_.messages.singleMonitor) {
@@ -1205,10 +1227,7 @@ void MatrixCodeHost::ApplySettings(SettingsSnapshot settings, const bool preview
     imageScheduler_.Configure(settings_.images, rainSeed_, imageEpochSeconds_, UnixSeconds(), windows_.size() > 1);
     imagesConfigured_ = true;
   }
-  if (messagesChanged || !messagesConfigured_) {
-    messageScheduler_.Configure(settings_.messages);
-    messagesConfigured_ = true;
-  }
+  if (messagesChanged || !messagesConfigured_) ConfigureMessages();
   if (geometryChanged) RecalculateGeometry();
   if (structureChanged) RebuildSimulations();
   if (reducedMotion_ && (structureChanged || geometryChanged)) WarmStaticRain();
@@ -1257,7 +1276,7 @@ void MatrixCodeHost::OpenSettings(const ui::SettingsPage page, QWidget* owner) {
     QTimer::singleShot(duration, &dialog, [this, &dialog, &before, generation] {
       if (settingsOpen_ && generation == settingsPreviewGeneration_) {
         ApplySettings(before, true);
-        messageScheduler_.Configure(settings_.messages);
+        ConfigureMessages();
         imageScheduler_.Configure(
           settings_.images, rainSeed_, imageEpochSeconds_, UnixSeconds(), windows_.size() > 1);
         messagesConfigured_ = true;

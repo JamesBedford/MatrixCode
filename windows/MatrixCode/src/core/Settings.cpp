@@ -482,6 +482,15 @@ std::optional<std::string_view> ColorOverrideLabel(
   return std::nullopt;
 }
 
+std::optional<std::string_view> OccasionGreeting(
+    const int localMonth, const int localDay, const bool fullMoonDay) noexcept {
+  if (localMonth == 2 && localDay == 14) return "happy valentine's day!";
+  if (localMonth == 12 && localDay == 25) return "happy christmas";
+  if (localMonth == 3 && localDay == 17) return "happy st. patrick's day";
+  if (fullMoonDay) return "happy full moon";
+  return std::nullopt;
+}
+
 ColorPalette PaletteForControls(const Controls& controls) {
   struct NamedPalette { const char* name; std::array<std::uint32_t, 5> colors; };
   constexpr std::array<NamedPalette, 9> palettes{{

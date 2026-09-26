@@ -132,6 +132,24 @@ NSString *MatrixCodeColorOverrideLabel(NSDate *date, NSTimeZone *timeZone) {
     return nil;
 }
 
+NSString *MatrixCodeOccasionGreeting(NSDate *date, NSTimeZone *timeZone) {
+    NSCalendar *calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+    calendar.timeZone = timeZone;
+    NSDateComponents *day = [calendar components:NSCalendarUnitMonth | NSCalendarUnitDay
+                                        fromDate:date];
+    if (day.month == MatrixCodeValentinesMonth && day.day == MatrixCodeValentinesDay) {
+        return @"happy valentine's day!";
+    }
+    if (day.month == 12 && day.day == 25) return @"happy christmas";
+    if (day.month == MatrixCodeStPatricksMonth && day.day == MatrixCodeStPatricksDay) {
+        return @"happy st. patrick's day";
+    }
+    if ([MatrixCodeHolidayColorPreset(date, timeZone) isEqualToString:@"white"]) {
+        return @"happy full moon";
+    }
+    return nil;
+}
+
 NSArray<NSString *> *MatrixCodeStorageKeys(void) {
     static NSArray<NSString *> *keys;
     static dispatch_once_t onceToken;

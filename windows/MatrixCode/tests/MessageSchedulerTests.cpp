@@ -557,4 +557,20 @@ void RunMessageSchedulerTests() {
     scheduler.PreviewOne(0.0, sink, document);
     MX_EXPECT(simulation.HasMessageTargets());
   }
+
+  {
+    auto document = Document();
+    document.enabled = false;
+    document.messages = {"HELLO"};
+    document.frequencyMilliseconds = 1000.0;
+    document.persistenceMilliseconds = 100.0;
+    FakeMessageSink sink(40, 20);
+    MessageScheduler scheduler(1u);
+    scheduler.Configure(document, "happy full moon");
+    scheduler.Update(0.0, sink);
+    MX_EXPECT_EQ(sink.sets, 0u);
+    scheduler.Update(1300.0, sink);
+    MX_EXPECT_EQ(sink.sets, 1u);
+    MX_EXPECT_EQ(sink.targets.size(), static_cast<std::size_t>(13));
+  }
 }

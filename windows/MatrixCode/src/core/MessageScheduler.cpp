@@ -64,8 +64,13 @@ MessageScheduler::MessageScheduler(const std::uint32_t seed, TextResolver resolv
   }
 }
 
-void MessageScheduler::Configure(MessagesDocument document) {
+void MessageScheduler::Configure(
+    MessagesDocument document, const std::string_view occasionGreeting) {
+  const auto trimmed = TrimUtf8(occasionGreeting);
+  occasionGreeting_ = trimmed.empty() ? std::nullopt : std::optional<std::string>(trimmed);
+  occasionLeads_ = occasionGreeting_.has_value();
   hasRenderable_ = ComputeHasRenderable(document);
+  if (occasionGreeting_ && !LayOut(*occasionGreeting_).glyphs.empty()) hasRenderable_ = true;
   configuration_ = std::move(document);
   if (activeUntilMilliseconds_.has_value()) pendingClear_ = true;
   activeStartMilliseconds_.reset();
@@ -267,25 +272,33 @@ void MessageScheduler::Fire(
     MessageSink& sink,
     const std::span<const NormalizedRegion> regions) {
   std::vector<std::string> candidates;
-  for (const auto& message : configuration_->messages) {
-    const auto trimmed = TrimUtf8(message);
-    if (!trimmed.empty()) candidates.emplace_back(trimmed);
+  if (configuration_->enabled) {
+    for (const auto& message : configuration_->messages) {
+      const auto trimmed = TrimUtf8(message);
+      if (!trimmed.empty()) candidates.emplace_back(trimmed);
+    }
+  }
+  if (occasionGreeting_ &&
+      std::find(candidates.begin(), candidates.end(), *occasionGreeting_) == candidates.end()) {
+    candidates.insert(candidates.begin(), *occasionGreeting_);
   }
   if (candidates.empty()) {
     nextFireMilliseconds_ = nowMilliseconds + Gap();
     return;
   }
 
-  const std::size_t selection = static_cast<std::size_t>(
-    std::floor(rng_.Next() * static_cast<double>(candidates.size())));
-  const std::string raw = candidates[selection];
+  const bool lead = occasionLeads_ && occasionGreeting_.has_value();
+  const std::string raw = lead ? *occasionGreeting_ : candidates[static_cast<std::size_t>(
+    std::floor(rng_.Next() * static_cast<double>(candidates.size())))];
   ChoosePlacements(regions);
   if (!ApplyMessage(Resolve(raw), sink, false)) {
+    if (lead) occasionLeads_ = false;
     activePlacements_.clear();
     nextFireMilliseconds_ = nowMilliseconds + Gap();
     return;
   }
 
+  if (lead) occasionLeads_ = false;
   activeRaw_ = raw;
   activeStartMilliseconds_ = nowMilliseconds;
   const double appear = std::max(0.0, configuration_->appearMilliseconds);
@@ -331,7 +344,8 @@ void MessageScheduler::Update(
     pendingClear_ = false;
   }
 
-  if (!configuration_.has_value() || !configuration_->enabled || !hasRenderable_) {
+  if (!configuration_.has_value() ||
+      (!configuration_->enabled && !occasionGreeting_.has_value()) || !hasRenderable_) {
     if (activeUntilMilliseconds_.has_value()) {
       sink.ClearMessageTargets();
       activeStartMilliseconds_.reset();

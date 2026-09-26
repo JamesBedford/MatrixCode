@@ -217,6 +217,23 @@
     XCTAssertEqualObjects(theme.effectivePresetName, @"blue");
 }
 
+- (void)testOccasionGreetingMatchesTheCalendarReason {
+    NSTimeZone *utc = [NSTimeZone timeZoneForSecondsFromGMT:0];
+    XCTAssertEqualObjects(
+        MatrixCodeOccasionGreeting([self dateInYear:2026 month:2 day:14 timeZone:utc], utc),
+        @"happy valentine's day!");
+    XCTAssertEqualObjects(
+        MatrixCodeOccasionGreeting([self dateInYear:2026 month:12 day:25 timeZone:utc], utc),
+        @"happy christmas");
+    XCTAssertEqualObjects(
+        MatrixCodeOccasionGreeting([self dateInYear:2026 month:3 day:17 timeZone:utc], utc),
+        @"happy st. patrick's day");
+    XCTAssertEqualObjects(
+        MatrixCodeOccasionGreeting([self dateInYear:2026 month:9 day:26 timeZone:utc], utc),
+        @"happy full moon");
+    XCTAssertNil(MatrixCodeOccasionGreeting([self dateInYear:2026 month:12 day:24 timeZone:utc], utc));
+}
+
 - (void)testColorOverrideLabelNamesTheCalendarReason {
     NSTimeZone *utc = [NSTimeZone timeZoneForSecondsFromGMT:0];
     XCTAssertEqualObjects(

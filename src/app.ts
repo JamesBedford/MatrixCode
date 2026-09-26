@@ -11,6 +11,7 @@ import type {
 import { createGlyphSet } from "./sim/glyphSet.ts";
 import { RainSim } from "./sim/rainSim.ts";
 import { MessageScheduler, type MessageRegion } from "./sim/messageScheduler.ts";
+import { occasionGreeting } from "./sim/occasionGreeting.ts";
 import { ImageScheduler, type ActiveImageFrame } from "./sim/imageScheduler.ts";
 import { buildImageRenderState } from "./sim/imageReveal.ts";
 import { imageUrlToMask } from "./sim/imageMask.ts";
@@ -644,12 +645,18 @@ export async function mountMatrixRain(
   // Current moment names, for the intro/messages editors' token hover.
   const getMomentNames = (): string[] => currentCountdownDoc.moments.map((moment) => moment.name);
 
+  let appliedOccasion = occasionGreeting();
   const createMessageScheduler = (doc: MessagesDoc = messagesStore.get()): MessageScheduler => {
     const scheduler = new MessageScheduler({ glyphSet, rng: createRng(MSG_SEED), resolveText: resolveMessageText });
-    scheduler.configure(doc);
+    appliedOccasion = occasionGreeting();
+    scheduler.configure(doc, appliedOccasion);
     return scheduler;
   };
   let messageScheduler = createMessageScheduler();
+  const configureMessages = (doc: MessagesDoc = messagesStore.get()): void => {
+    appliedOccasion = occasionGreeting();
+    messageScheduler.configure(doc, appliedOccasion);
+  };
   const initialImageEpoch = panelConfig?.epoch ?? performance.now();
   const createImageScheduler = (
     doc: ImagesDoc = currentImagesDoc,
@@ -735,7 +742,7 @@ export async function mountMatrixRain(
     if (!messagesStore) return;
     messageDraftPreviewActive = false;
     messagesStore.set(draft);
-    messageScheduler?.configure(messagesStore.get());
+    configureMessages();
   };
 
   const previewMessages = (draft: MessagesDoc): void => {
@@ -748,7 +755,7 @@ export async function mountMatrixRain(
   const cancelMessagePreview = (): void => {
     if (!messageDraftPreviewActive) return;
     messageDraftPreviewActive = false;
-    messageScheduler?.configure(messagesStore.get());
+    configureMessages();
   };
 
   let imageDraftPreviewActive = false;
@@ -1388,7 +1395,7 @@ export async function mountMatrixRain(
     const doc = messagesStore.get();
     doc.enabled = !doc.enabled;
     messagesStore.set(doc);
-    messageScheduler.configure(messagesStore.get());
+    configureMessages();
     messagesEditor?.syncEnabled(doc.enabled);
     if (announce) showShortcutToast("Messages", doc.enabled);
   };
@@ -1695,7 +1702,7 @@ export async function mountMatrixRain(
     }
     if (changed("messages")) {
       messagesStore.set(config.messages);
-      messageScheduler.configure(messagesStore.get());
+      configureMessages();
       if (wallpaperPaused) wallpaperMessagePauseStartedAtMs = performance.now();
     }
     if (changed("countdown")) storeCountdown(config.countdown);
@@ -1777,6 +1784,7 @@ export async function mountMatrixRain(
   }
 
   const stopWatchingDateTheme = watchDateTheme(() => {
+    if (occasionGreeting() !== appliedOccasion) configureMessages();
     if (!running && !restoringGpu && !gl.isContextLost()) renderStatic();
   });
 

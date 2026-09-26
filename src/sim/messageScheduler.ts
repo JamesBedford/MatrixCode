@@ -73,6 +73,9 @@ export class MessageScheduler {
   private activePlacements: ActivePlacement[] = [];
   private activeDisplay = "";
   private placementKey = "";
+  /** Shown on the next fire, then left in the pool. Also runs when saved messages are off. */
+  private occasionMessage: string | null = null;
+  private occasionLeads = false;
 
   constructor(deps: MessageSchedulerDeps) {
     this.glyph = deps.glyphSet;
@@ -80,10 +83,17 @@ export class MessageScheduler {
     this.resolveText = deps.resolveText ?? ((raw) => raw);
   }
 
-  /** Adopt a new config. Cancels any in-flight message and re-arms relative to the next update's clock. */
-  configure(doc: MessagesDoc): void {
+  /**
+   * Adopt a new config. `occasionMessage`, when set, is the first message shown and
+   * still runs when `doc.enabled` is false. Cancels any in-flight message.
+   */
+  configure(doc: MessagesDoc, occasionMessage: string | null = null): void {
+    const greeting = occasionMessage?.trim() ?? "";
+    this.occasionMessage = greeting.length > 0 ? greeting : null;
+    this.occasionLeads = this.occasionMessage !== null;
     this.cfg = doc;
-    this.hasRenderable = this.computeHasRenderable(doc);
+    this.hasRenderable = this.computeHasRenderable(doc) ||
+      (this.occasionMessage !== null && this.layout(this.occasionMessage).glyphs.length > 0);
     if (this.activeUntil !== null) this.pendingClear = true;
     this.activeStart = null;
     this.activeUntil = null;
@@ -104,7 +114,7 @@ export class MessageScheduler {
     }
 
     const cfg = this.cfg;
-    if (cfg === null || !cfg.enabled || !this.hasRenderable) {
+    if (cfg === null || (!cfg.enabled && this.occasionMessage === null) || !this.hasRenderable) {
       if (this.activeUntil !== null) {
         sim.clearMessageTargets();
         this.activeStart = null;
@@ -327,21 +337,31 @@ export class MessageScheduler {
   /** Choose a message + placement and hand the target cells to the sim. */
   private fire(nowMs: number, sim: MessageSink, regions: readonly MessageRegion[]): void {
     const cfg = this.cfg!;
-    const candidates = cfg.messages.map((m) => m.trim()).filter((m) => m.length > 0);
+    const saved = cfg.enabled
+      ? cfg.messages.map((m) => m.trim()).filter((m) => m.length > 0)
+      : [];
+    const candidates = this.occasionMessage !== null && !saved.includes(this.occasionMessage)
+      ? [this.occasionMessage, ...saved]
+      : saved.length > 0 ? saved : this.occasionMessage !== null ? [this.occasionMessage] : [];
     if (candidates.length === 0) {
       this.nextFireAt = nowMs + this.gap();
       return;
     }
 
-    const raw = candidates[Math.floor(this.rng() * candidates.length)]!;
+    const lead = this.occasionLeads && this.occasionMessage !== null;
+    const raw = lead
+      ? this.occasionMessage!
+      : candidates[Math.floor(this.rng() * candidates.length)]!;
     this.choosePlacements(regions); // placements are picked once and reused for live token re-layout
     const display = this.resolveText(raw);
     if (!this.applyMessage(display, sim, false)) {
+      if (lead) this.occasionLeads = false;
       this.activePlacements = [];
       this.nextFireAt = nowMs + this.gap(); // unrenderable or too wide → skip, try again later
       return;
     }
 
+    if (lead) this.occasionLeads = false;
     this.activeRaw = raw;
     this.activeStart = nowMs;
     // Total on-screen time = fade in + hold + fade out. The fades extend the animation; they never

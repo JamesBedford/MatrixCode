@@ -72,7 +72,8 @@ class MessageScheduler final {
     std::uint32_t seed = 1u,
     TextResolver resolver = {});
 
-  void Configure(MessagesDocument document);
+  /** `occasionGreeting`, when non-empty, is shown first and still runs if messages are disabled. */
+  void Configure(MessagesDocument document, std::string_view occasionGreeting = {});
   void Update(
     double nowMilliseconds,
     MessageSink& sink,
@@ -156,6 +157,8 @@ class MessageScheduler final {
   std::vector<ActivePlacement> activePlacements_;
   std::string activeDisplay_;
   std::string placementKey_;
+  std::optional<std::string> occasionGreeting_;
+  bool occasionLeads_ = false;
 };
 
 }  // namespace matrixcode

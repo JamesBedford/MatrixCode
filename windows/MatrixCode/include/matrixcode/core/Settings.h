@@ -34,6 +34,15 @@ namespace matrixcode {
   int localDay,
   bool fullMoonDay = false) noexcept;
 
+/**
+ * In-rain greeting for a local calendar occasion. Fixed holidays win over a full moon.
+ * Empty on an ordinary day. Callers show it first without rewriting saved messages.
+ */
+[[nodiscard]] std::optional<std::string_view> OccasionGreeting(
+  int localMonth,
+  int localDay,
+  bool fullMoonDay = false) noexcept;
+
 [[nodiscard]] std::optional<std::vector<std::uint8_t>> DecodeBase64(std::string_view value);
 [[nodiscard]] std::string EncodeBase64(const std::vector<std::uint8_t>& value);
 

@@ -124,6 +124,15 @@ void RunHolidayThemeTests() {
     std::optional<std::string_view>("Overridden by St. Patrick's Day"));
   MX_EXPECT_EQ(ColorOverrideLabel(9, 26, true),
     std::optional<std::string_view>("Overridden by full moon"));
+  MX_EXPECT_EQ(OccasionGreeting(2, 14, true),
+    std::optional<std::string_view>("happy valentine's day!"));
+  MX_EXPECT_EQ(OccasionGreeting(12, 25, true),
+    std::optional<std::string_view>("happy christmas"));
+  MX_EXPECT_EQ(OccasionGreeting(3, 17, false),
+    std::optional<std::string_view>("happy st. patrick's day"));
+  MX_EXPECT_EQ(OccasionGreeting(9, 26, true),
+    std::optional<std::string_view>("happy full moon"));
+  MX_EXPECT(!OccasionGreeting(9, 25, false).has_value());
   MX_EXPECT(!ColorOverrideLabel(9, 25, false).has_value());
   MX_EXPECT(!ColorOverrideLabel(2, 13, false).has_value());
   MX_EXPECT(!ColorOverrideLabel(0, 14, false).has_value());

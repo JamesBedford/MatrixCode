@@ -69,6 +69,12 @@ typedef NSString * _Nonnull (^MatrixCodeMessageTextResolver)(NSString *rawText);
 
 /** Cancel the current activation and arm the new document on the next update. */
 - (void)configureWithDocument:(NSDictionary<NSString *, id> *)document;
+/**
+ * `leadMessage`, when non-empty, is the first message shown and still runs when the
+ * document's messages are disabled. The saved document is not modified.
+ */
+- (void)configureWithDocument:(NSDictionary<NSString *, id> *)document
+                  leadMessage:(nullable NSString *)leadMessage;
 
 /** Keep all scheduled phases stationary while an application-level pause is active. */
 - (void)shiftTimelineByMilliseconds:(double)durationMilliseconds;

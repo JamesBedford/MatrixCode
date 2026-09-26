@@ -746,6 +746,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
 @property(nonatomic) NSTimeInterval rainElapsed;
 @property(nonatomic) BOOL usesExternalRainTimeline;
 @property(nonatomic, copy) NSDictionary<NSString *, id> *messages;
+@property(nonatomic, copy, nullable) NSString *occasionGreeting;
 @property(nonatomic, strong) MatrixCodeTokenResolver *tokenResolver;
 @property(nonatomic, strong) MatrixCodeMessageScheduler *messageScheduler;
 @property(nonatomic, copy, nullable) NSArray<MatrixCodeMessageRegion *> *currentMessageRegions;
@@ -1103,7 +1104,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.measuredFramesPerSecond = 0;
 
     self.messageScheduler = [self newMessageScheduler];
-    [self.messageScheduler configureWithDocument:self.messages];
+    [self configureOccasionMessages];
     self.messageDraftPreviewActive = NO;
     self.currentMessageRegions = nil;
 
@@ -1267,7 +1268,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.messageDraftPreviewActive = NO;
     if (restoreMessageSchedule ||
         !previousMessages || ![previousMessages isEqual:self.messages]) {
-        [self.messageScheduler configureWithDocument:self.messages];
+        [self configureOccasionMessages];
     }
     if (!previousImages || ![previousImages isEqual:self.images]) {
         [self resetActiveImageState];
@@ -1912,6 +1913,12 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     self.uniforms = uniforms;
 }
 
+- (void)configureOccasionMessages {
+    NSString *greeting = MatrixCodeOccasionGreeting(self.currentColorDate, NSTimeZone.localTimeZone);
+    self.occasionGreeting = greeting;
+    [self.messageScheduler configureWithDocument:self.messages leadMessage:greeting];
+}
+
 - (BOOL)refreshColorsAtDate:(NSDate *)date timeZone:(NSTimeZone *)timeZone {
     if (self.renderingInvalidated) return NO;
     NSString *holidayPreset = MatrixCodeHolidayColorPreset(date, timeZone);
@@ -1940,6 +1947,12 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     NSTimeZone *timeZone = NSTimeZone.localTimeZone;
     [MatrixCodeSettingsTheme.sharedTheme refreshColorsAtDate:date timeZone:timeZone];
     [self refreshColorsAtDate:date timeZone:timeZone];
+    NSString *greeting = MatrixCodeOccasionGreeting(date, timeZone);
+    if (self.messageScheduler &&
+        !(greeting == self.occasionGreeting || [greeting isEqualToString:self.occasionGreeting])) {
+        self.occasionGreeting = greeting;
+        [self.messageScheduler configureWithDocument:self.messages leadMessage:greeting];
+    }
     if (self.holidayColorRedrawPending && self.isPaused && [self isVisibleForHolidayColorRefresh]) {
         [self draw];
     }

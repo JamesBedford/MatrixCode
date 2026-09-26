@@ -91,6 +91,8 @@ static const NSInteger MatrixCodeMessageGlyphStart = 99;
 @property(nonatomic, copy) NSArray<MatrixCodeMessagePlacement *> *activePlacements;
 @property(nonatomic, copy) NSString *activeDisplay;
 @property(nonatomic, copy) NSString *placementKey;
+@property(nonatomic, copy, nullable) NSString *occasionMessage;
+@property(nonatomic) BOOL occasionLeads;
 @end
 
 @implementation MatrixCodeMessageSchedulerState
@@ -393,11 +395,21 @@ static BOOL MatrixCodeMessageReadsBottomToTop(NSDictionary<NSString *, id> *conf
 }
 
 - (void)configureWithDocument:(NSDictionary<NSString *,id> *)document {
+    [self configureWithDocument:document leadMessage:nil];
+}
+
+- (void)configureWithDocument:(NSDictionary<NSString *,id> *)document
+                  leadMessage:(NSString *)leadMessage {
     MatrixCodeMessageSchedulerState *state = self.schedulerState;
     NSDictionary<NSString *, id> *sanitized =
         MatrixCodeSanitizeMessagesDocument(document);
+    NSString *greeting = MatrixCodeJavaScriptTrim(leadMessage ?: @"");
+    state.occasionMessage = greeting.length > 0 ? greeting : nil;
+    state.occasionLeads = state.occasionMessage != nil;
     state.configuration = sanitized;
-    state.hasRenderable = [self computeHasRenderable:sanitized];
+    state.hasRenderable = [self computeHasRenderable:sanitized] ||
+        (state.occasionMessage != nil &&
+         [self layoutMessage:state.occasionMessage].glyphs.count > 0);
     if (state.hasActiveUntil) state.pendingClear = YES;
     state.hasActiveStart = NO;
     state.hasActiveUntil = NO;
@@ -649,9 +661,15 @@ static double MatrixCodeRegionalMessageSample(double sample, MatrixCodeNormalize
            regions:(NSArray<MatrixCodeNormalizedMessageRegion *> *)regions {
     MatrixCodeMessageSchedulerState *state = self.schedulerState;
     NSMutableArray<NSString *> *candidates = [NSMutableArray array];
-    for (NSString *message in MatrixCodeMessageStrings(state.configuration)) {
-        NSString *trimmed = MatrixCodeJavaScriptTrim(message);
-        if (trimmed.length > 0) [candidates addObject:trimmed];
+    if (MatrixCodeMessageBoolean(state.configuration, @"enabled", NO)) {
+        for (NSString *message in MatrixCodeMessageStrings(state.configuration)) {
+            NSString *trimmed = MatrixCodeJavaScriptTrim(message);
+            if (trimmed.length > 0) [candidates addObject:trimmed];
+        }
+    }
+    if (state.occasionMessage.length > 0 &&
+        ![candidates containsObject:state.occasionMessage]) {
+        [candidates insertObject:state.occasionMessage atIndex:0];
     }
     if (candidates.count == 0) {
         state.hasNextFireAt = YES;
@@ -659,18 +677,20 @@ static double MatrixCodeRegionalMessageSample(double sample, MatrixCodeNormalize
         return;
     }
 
-    NSUInteger index = (NSUInteger)floor(
-        MatrixCodeMessageNextRandom(&_rngState) * candidates.count);
-    NSString *raw = candidates[index];
+    BOOL lead = state.occasionLeads && state.occasionMessage.length > 0;
+    NSString *raw = lead ? state.occasionMessage : candidates[(NSUInteger)floor(
+        MatrixCodeMessageNextRandom(&_rngState) * candidates.count)];
     [self choosePlacements:regions];
     NSString *display = [self resolveText:raw];
     if (![self applyMessage:display sink:sink isUpdate:NO]) {
+        if (lead) state.occasionLeads = NO;
         state.activePlacements = @[];
         state.hasNextFireAt = YES;
         state.nextFireAt = nowMilliseconds + self.gap;
         return;
     }
 
+    if (lead) state.occasionLeads = NO;
     state.activeRaw = raw;
     state.hasActiveStart = YES;
     state.activeStart = nowMilliseconds;
@@ -708,7 +728,8 @@ static double MatrixCodeRegionalMessageSample(double sample, MatrixCodeNormalize
 
     NSDictionary *configuration = state.configuration;
     if (!configuration ||
-        !MatrixCodeMessageBoolean(configuration, @"enabled", NO) ||
+        (!MatrixCodeMessageBoolean(configuration, @"enabled", NO) &&
+         state.occasionMessage.length == 0) ||
         !state.hasRenderable) {
         // Skip region normalization and key building on this every-frame
         // default path. placementKey is left stale: it is only consulted while

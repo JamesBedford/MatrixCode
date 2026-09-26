@@ -245,6 +245,7 @@ class NativeHost final {
   [[nodiscard]] bool SkipIntro();
   void PollSettingsFile();
   void UpdateMessages();
+  void ConfigureMessages();
   [[nodiscard]] double PresentationTimeSeconds() const;
   [[nodiscard]] std::string ResolveText(std::string_view text) const;
   void Exit();
@@ -306,6 +307,7 @@ class NativeHost final {
   FullMoonDayCache fullMoonDayCache_;
   bool imagesConfigured_ = false;
   bool messagesConfigured_ = false;
+  std::string configuredOccasionGreeting_;
   std::filesystem::file_time_type settingsWriteTime_{};
   bool settingsWriteKnown_ = false;
   double nextSettingsCheckSeconds_ = 0.0;
@@ -561,10 +563,7 @@ void NativeHost::RebuildSimulations() {
       settings_.images, rainSeed_, imageEpochSeconds_, UnixSeconds(), windows_.size() > 1);
     imagesConfigured_ = true;
   }
-  if (!messagesConfigured_) {
-    messageScheduler_.Configure(settings_.messages);
-    messagesConfigured_ = true;
-  }
+  if (!messagesConfigured_) ConfigureMessages();
 }
 
 void NativeHost::ResetRainToEmpty(const double startSeconds) {
@@ -681,8 +680,24 @@ void NativeHost::UpdateIntroPresentation() {
   introOpacity_ = static_cast<float>(state.opacity);
 }
 
+void NativeHost::ConfigureMessages() {
+  const auto localDay = ReadLocalCalendarDay(localCalendarDayCache_);
+  const bool fullMoonDay = localDay.boundariesMs.has_value() && fullMoonDayCache_.ContainsFullMoon(
+    localDay.boundariesMs->first, localDay.boundariesMs->second);
+  const auto greeting = OccasionGreeting(localDay.date.wMonth, localDay.date.wDay, fullMoonDay);
+  configuredOccasionGreeting_ = greeting ? std::string(*greeting) : std::string();
+  messageScheduler_.Configure(settings_.messages, configuredOccasionGreeting_);
+  messagesConfigured_ = true;
+}
+
 void NativeHost::UpdateMessages() {
   if (simulations_.empty() || reducedMotion_ || introActive_) return;
+  const auto localDay = ReadLocalCalendarDay(localCalendarDayCache_);
+  const bool fullMoonDay = localDay.boundariesMs.has_value() && fullMoonDayCache_.ContainsFullMoon(
+    localDay.boundariesMs->first, localDay.boundariesMs->second);
+  const auto greeting = OccasionGreeting(localDay.date.wMonth, localDay.date.wDay, fullMoonDay);
+  const std::string next = greeting ? std::string(*greeting) : std::string();
+  if (!messagesConfigured_ || next != configuredOccasionGreeting_) ConfigureMessages();
   RainSimulationMessageSink sink(*simulations_.front());
   std::vector<MessageRegion> regions;
   if (windows_.size() > 1 && !settings_.messages.singleMonitor) {
@@ -1025,10 +1040,7 @@ void NativeHost::ApplySettings(SettingsSnapshot settings) {
       settings_.images, rainSeed_, imageEpochSeconds_, UnixSeconds(), windows_.size() > 1);
     imagesConfigured_ = true;
   }
-  if (messagesChanged || !messagesConfigured_) {
-    messageScheduler_.Configure(settings_.messages);
-    messagesConfigured_ = true;
-  }
+  if (messagesChanged || !messagesConfigured_) ConfigureMessages();
   RecalculateGeometry();
   if (simulationStructureChanged) RebuildSimulations();
   if (reducedMotion_ && simulationStructureChanged) WarmStaticRain();
