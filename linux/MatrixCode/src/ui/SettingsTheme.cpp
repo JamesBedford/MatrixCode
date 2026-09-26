@@ -52,17 +52,36 @@ constexpr auto kStyleSheetTemplate = R"(
     QTabBar::tab { background: %tab%; color: %muted%; padding: 9px 15px; border: 1px solid %frame%; }
     QTabBar::tab:selected { background: %tabSelected%; color: %label%; }
     QLabel[kind="hint"] { color: %hint%; padding: 2px 0 8px 0; }
-    QGroupBox { border: 1px solid %frame%; border-radius: 6px; margin-top: 11px; padding-top: 8px; font-weight: 600; }
+    QGroupBox { color: %label%; border: 1px solid %frame%; border-radius: 6px; margin-top: 11px; padding-top: 8px; font-weight: 600; }
     QGroupBox::title { subcontrol-origin: margin; left: 10px; color: %label%; }
-    QLineEdit, QComboBox, QDoubleSpinBox, QDateTimeEdit, QListWidget, QTableWidget {
+    QLineEdit, QComboBox, QDoubleSpinBox, QDateTimeEdit, QListWidget, QTableWidget, QPlainTextEdit {
       background: %input%; color: %text%; border: 1px solid %border%; border-radius: 4px; padding: 5px;
-      selection-background-color: %selection%;
+      selection-background-color: %selection%; selection-color: %text%;
     }
+    QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus, QDateTimeEdit:focus, QPlainTextEdit:focus,
+    QListWidget:focus, QTableWidget:focus { border-color: %accent%; }
+    QComboBox QAbstractItemView { background: %input%; color: %text%; selection-background-color: %selection%; selection-color: %text%; }
+    QComboBox::drop-down { border: none; width: 18px; }
+    QHeaderView::section { background: %tab%; color: %label%; border: 1px solid %frame%; padding: 4px; }
     QPushButton, QToolButton { background: %button%; color: %text%; border: 1px solid %border%; border-radius: 4px; padding: 6px 12px; }
     QPushButton:hover, QToolButton:hover { background: %buttonHover%; border-color: %buttonHoverBorder%; }
     QPushButton:default { background: %selection%; border-color: %defaultBorder%; }
     QPushButton:disabled, QToolButton:disabled { color: %disabled%; }
-    QCheckBox { spacing: 7px; }
+    QCheckBox { spacing: 7px; color: %text%; }
+    QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid %border%; border-radius: 3px; background: %input%; }
+    QCheckBox::indicator:checked { background: %accent%; border-color: %accent%; }
+    QMenu { background: %input%; color: %text%; border: 1px solid %border%; }
+    QMenu::item { padding: 6px 18px; }
+    QMenu::item:selected { background: %selection%; }
+    QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }
+    QScrollBar:vertical, QScrollBar:horizontal { background: %window%; border: none; }
+    QScrollBar:vertical { width: 12px; }
+    QScrollBar:horizontal { height: 12px; }
+    QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: %border%; border-radius: 4px; }
+    QScrollBar::handle:vertical { min-height: 24px; }
+    QScrollBar::handle:horizontal { min-width: 24px; }
+    QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page { background: transparent; height: 0; width: 0; }
+    QToolTip { background: %input%; color: %text%; border: 1px solid %border%; }
   )";
 
 }  // namespace

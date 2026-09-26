@@ -103,7 +103,8 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
         palette[MatrixCodeColorStopBody].unsignedIntegerValue, 1.0);
     self.accentColor = MatrixCodeSRGB(
         palette[MatrixCodeColorStopBright].unsignedIntegerValue, 1.0);
-    self.panelColor = MatrixCodeSRGB(0x040a06, 0.82);
+    // Same translucent surface as the web --mx-panel token.
+    self.panelColor = [self.backgroundColor colorWithAlphaComponent:0.82];
     self.borderColor = [self.accentColor colorWithAlphaComponent:0.35];
 
     NSColor *accent = [self.accentColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
@@ -254,7 +255,16 @@ static NSColor *MatrixCodeSRGB(NSUInteger hex, CGFloat alpha) {
     // the button clearly bounded and anchored even while the rain behind it is
     // still pure black, without touching the rain preview itself.
     button.layer.borderColor = [self.accentColor colorWithAlphaComponent:0.85].CGColor;
-    button.layer.backgroundColor = MatrixCodeSRGB(0x0e1d13, 0.96).CGColor;
+    NSColor *background = [self.backgroundColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    NSColor *body = [self.dimColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    // Raised fill: a little of the theme body over its background, so the button
+    // stays bounded over black rain and follows the active colour.
+    const CGFloat raised = 0.18;
+    button.layer.backgroundColor = [NSColor colorWithSRGBRed:
+        background.redComponent + (body.redComponent - background.redComponent) * raised
+        green:background.greenComponent + (body.greenComponent - background.greenComponent) * raised
+        blue:background.blueComponent + (body.blueComponent - background.blueComponent) * raised
+        alpha:0.96].CGColor;
     button.layer.shadowColor = self.accentColor.CGColor;
     button.layer.shadowOpacity = 0.5;
     button.layer.shadowRadius = 8.0;

@@ -148,6 +148,32 @@ export function getPreset(name: PresetName, customColor?: string): ColorPreset {
   return PRESETS[name] ?? CLASSIC;
 }
 
+function cssChannel(value: number): number {
+  return Math.round(Math.min(1, Math.max(0, value)) * 255);
+}
+
+function cssChannels(color: readonly [number, number, number]): string {
+  return `${cssChannel(color[0])} ${cssChannel(color[1])} ${cssChannel(color[2])}`;
+}
+
+function cssHex(color: readonly [number, number, number]): string {
+  const byte = (value: number): string => cssChannel(value).toString(16).padStart(2, "0");
+  return `#${byte(color[0])}${byte(color[1])}${byte(color[2])}`;
+}
+
+/**
+ * CSS custom properties for the settings chrome. Surfaces use the rain palette's
+ * background; accents use its bright and body stops. Defaults in styles.css are Classic.
+ */
+export function chromeCustomProperties(preset: ColorPreset): Record<string, string> {
+  return {
+    "--mx-accent-rgb": cssChannels(preset.bright),
+    "--mx-dim-rgb": cssChannels(preset.body),
+    "--mx-bg": cssHex(preset.background),
+    "--mx-panel": `rgb(${cssChannels(preset.background)} / 0.82)`,
+  };
+}
+
 type CalendarOverride = "valentines" | "patrick" | "fullMoon";
 
 /** Fixed holidays take priority over a full moon. Null on an ordinary local day. */

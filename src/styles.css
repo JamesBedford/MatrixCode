@@ -7,8 +7,9 @@
   --mx-dim: rgb(var(--mx-dim-rgb));
   --mx-border: rgb(var(--mx-accent-rgb) / 0.35);
   --mx-label: color-mix(in srgb, var(--mx-green), white 35%);
+  /* Classic palette background. applyChromeAccent overwrites both for the active theme. */
   --mx-bg: #0d0208;
-  --mx-panel: rgba(4, 10, 6, 0.82);
+  --mx-panel: rgb(13 2 8 / 0.82);
   --mx-font: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
 }
 

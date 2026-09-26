@@ -1,3 +1,4 @@
+#include "matrixcode/platform/SettingsChrome.h"
 #include "matrixcode/platform/SettingsWindow.h"
 
 #include <algorithm>
@@ -62,6 +63,7 @@ struct WindowState {
   INT_PTR result = IDCANCEL;
   UINT dpi = 96;
   HFONT font = nullptr;
+  SettingsChrome chrome;
   int horizontalScrollPosition = 0;
   int verticalScrollPosition = 0;
 };
@@ -299,6 +301,29 @@ void UpdateColorOverrideLabel(HWND window) {
   SetDlgItemTextW(window, IdColorOverride, label ? WideFromUtf8(*label).c_str() : L"");
 }
 
+Controls ControlsShownIn(HWND window, const SettingsSnapshot& settings) {
+  Controls controls = settings.controls;
+  if (GetDlgItem(window, IdPreset) == nullptr) return controls;
+  constexpr std::array<const char*, 10> presetKeys{
+    "classic", "amber", "orange", "gold", "red", "pink", "purple", "blue", "white", "custom"};
+  const auto preset = static_cast<std::size_t>(std::max<LRESULT>(0,
+    SendDlgItemMessageW(window, IdPreset, CB_GETCURSEL, 0, 0)));
+  controls.preset = preset < presetKeys.size() ? presetKeys[preset] : "classic";
+  controls.customColor = EditText(window, IdCustomColor, 7);
+  return controls;
+}
+
+void RefreshSettingsChrome(WindowState& state) {
+  if (state.window == nullptr) return;
+  const Controls controls = ControlsShownIn(state.window, state.settings);
+  // A half-typed custom colour is not a palette yet; keep the last complete theme.
+  if (controls.preset == "custom" && controls.customColor.size() != 7 &&
+      state.chrome.windowBrush != nullptr) return;
+  if (state.chrome.Apply(CurrentEffectivePalette(controls))) {
+    InvalidateRect(state.window, nullptr, TRUE);
+  }
+}
+
 void Populate(HWND window, const SettingsSnapshot& settings) {
   constexpr int leftLabel = 22;
   constexpr int leftControl = 155;
@@ -399,6 +424,7 @@ void Populate(HWND window, const SettingsSnapshot& settings) {
     628, 430, 82, 30, IdCancel);
   CreateScaledChild(window, 0, L"BUTTON", L"Save", WS_TABSTOP | BS_DEFPUSHBUTTON,
     718, 430, 82, 30, IdSave);
+  StripSettingsVisualStyles(window);
 }
 
 LRESULT CALLBACK JsonWindowProcedure(
@@ -564,6 +590,10 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
     state = static_cast<WindowState*>(create->lpCreateParams);
     SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
   }
+  if (state != nullptr) {
+    LRESULT colored = 0;
+    if (state->chrome.HandleColor(message, wParam, colored)) return colored;
+  }
   switch (message) {
     case WM_CREATE:
       state->window = window;
@@ -572,10 +602,22 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
       ReplaceUiFont(window, state->dpi, state->font);
       ShowScrollBar(window, SB_BOTH, FALSE);
       UpdateMainScrollRanges(*state);
+      RefreshSettingsChrome(*state);
       SetTimer(window, kColorOverrideTimer, 1000, nullptr);
       return 0;
+    case WM_ERASEBKGND:
+      if (state->chrome.windowBrush != nullptr) {
+        RECT client{};
+        GetClientRect(window, &client);
+        FillRect(reinterpret_cast<HDC>(wParam), &client, state->chrome.windowBrush);
+        return 1;
+      }
+      break;
     case WM_TIMER:
-      if (wParam == kColorOverrideTimer) UpdateColorOverrideLabel(window);
+      if (wParam == kColorOverrideTimer) {
+        UpdateColorOverrideLabel(window);
+        RefreshSettingsChrome(*state);
+      }
       return 0;
     case WM_SIZE:
       UpdateMainScrollRanges(*state);
@@ -626,6 +668,10 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
       return 0;
     }
     case WM_COMMAND:
+      if ((LOWORD(wParam) == IdPreset && HIWORD(wParam) == CBN_SELCHANGE) ||
+          (LOWORD(wParam) == IdCustomColor && HIWORD(wParam) == EN_CHANGE)) {
+        RefreshSettingsChrome(*state);
+      }
       switch (LOWORD(wParam)) {
         case IdSave: {
           ReadControls(window, state->settings);
@@ -651,6 +697,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
           }
           Populate(window, state->settings);
           ApplyFontToChildren(window, state->font);
+          RefreshSettingsChrome(*state);
           return 0;
         case IdDocuments:
           ReadControls(window, state->settings);
@@ -664,6 +711,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             Populate(window, state->settings);
             ApplyFontToChildren(window, state->font);
             UpdateMainScrollRanges(*state);
+            RefreshSettingsChrome(*state);
           }
           return 0;
         case IdRawJson:
@@ -678,6 +726,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             Populate(window, state->settings);
             ApplyFontToChildren(window, state->font);
             UpdateMainScrollRanges(*state);
+            RefreshSettingsChrome(*state);
           }
           return 0;
       }
@@ -687,6 +736,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
       return 0;
     case WM_DESTROY:
       KillTimer(window, kColorOverrideTimer);
+      state->chrome.Clear();
       if (state->font != nullptr) {
         DeleteObject(state->font);
         state->font = nullptr;

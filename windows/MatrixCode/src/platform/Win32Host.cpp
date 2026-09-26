@@ -1524,6 +1524,16 @@ std::optional<std::string_view> CurrentColorOverrideLabel() {
   return ColorOverrideLabel(day.date.wMonth, day.date.wDay, fullMoonDay);
 }
 
+ColorPalette CurrentEffectivePalette(const Controls& controls) {
+  static LocalCalendarDayCache calendar;
+  static FullMoonDayCache fullMoon;
+  const LocalCalendarDay day = ReadLocalCalendarDay(calendar);
+  const bool fullMoonDay = day.boundariesMs.has_value() && fullMoon.ContainsFullMoon(
+    day.boundariesMs->first, day.boundariesMs->second);
+  return PaletteForControls(EffectiveControlsForLocalDate(
+    controls, day.date.wMonth, day.date.wDay, fullMoonDay));
+}
+
 int RunWin32Host(HINSTANCE instance, const HostOptions& options) {
   return NativeHost(instance, options).Run();
 }

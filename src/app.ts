@@ -22,7 +22,7 @@ import { MAX_FRAME_CATCHUP_SECONDS, simulationStepPlan } from "./sim/frameSteps.
 import { advanceMultiClick, settledMultiClickAction } from "./sim/multiClick.ts";
 import { computeLanes, tierCap, seedForLayer, MAX_LANES, type Lane } from "./sim/overlapLanes.ts";
 import { DEFAULT_SIM_CONFIG } from "./config/simConfig.ts";
-import { effectivePresetName, getPreset } from "./config/colorPresets.ts";
+import { chromeCustomProperties, effectivePresetName, getPreset } from "./config/colorPresets.ts";
 import { ControlsStore } from "./config/controls.ts";
 import { glyphAtlasFontFamily } from "./config/glyphFonts.ts";
 import { buildGlyphAtlas, type GlyphAtlas } from "./gl/glyphAtlas.ts";
@@ -127,11 +127,10 @@ interface MultiMonitorState {
 
 /** Recolor the UI chrome (controls panel, intro text, notices) to match the active preset. */
 function applyChromeAccent(preset: ColorPreset): void {
-  const channels = (c: readonly [number, number, number]): string =>
-    `${Math.round(c[0] * 255)} ${Math.round(c[1] * 255)} ${Math.round(c[2] * 255)}`;
   const root = document.documentElement.style;
-  root.setProperty("--mx-accent-rgb", channels(preset.bright));
-  root.setProperty("--mx-dim-rgb", channels(preset.body));
+  for (const [name, value] of Object.entries(chromeCustomProperties(preset))) {
+    root.setProperty(name, value);
+  }
 }
 
 function paramsOf(c: Controls, preset: ColorPreset): RenderParams {

@@ -1,4 +1,6 @@
 #include "matrixcode/platform/DocumentEditor.h"
+#include "matrixcode/platform/SettingsChrome.h"
+#include "matrixcode/platform/SettingsWindow.h"
 
 #include <algorithm>
 #include <array>
@@ -93,7 +95,7 @@ struct EditorState {
   ULONGLONG introPreviewStartedTicks = 0;
   double introPreviewRunStartMilliseconds = 0.0;
   double introPreviewOpacity = 1.0;
-  HBRUSH previewBackground = nullptr;
+  SettingsChrome chrome;
 };
 
 [[nodiscard]] int Scale(const int value, const UINT dpi) noexcept {
@@ -816,6 +818,7 @@ void BuildPage(EditorState& state) {
   }
   PopulateList(state, state.selected);
   LoadSelected(state);
+  if (state.window != nullptr) StripSettingsVisualStyles(state.window);
 }
 
 template <typename T>
@@ -1014,7 +1017,7 @@ LRESULT CALLBACK WindowProcedure(
     case WM_CREATE: {
       state->dpi = std::max(96u, GetDpiForWindow(window));
       state->font = CreateUiFont(state->dpi);
-      state->previewBackground = CreateSolidBrush(RGB(0, 0, 0));
+      state->chrome.Apply(CurrentEffectivePalette(state->draft.controls));
       // Page controls are tab siblings; clipping keeps tab repaints from covering them.
       state->tab = CreateWindowExW(
         0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS,
@@ -1046,6 +1049,7 @@ LRESULT CALLBACK WindowProcedure(
       ApplyFont(GetDlgItem(window, IdCancel), state->font);
       ApplyFont(GetDlgItem(window, IdSave), state->font);
       BuildPage(*state);
+      StripSettingsVisualStyles(window);
       ShowScrollBar(window, SB_BOTH, FALSE);
       UpdateScrollRange(*state);
       SetTimer(window, kPreviewTimer, 50u, nullptr);
@@ -1109,18 +1113,38 @@ LRESULT CALLBACK WindowProcedure(
     case WM_CTLCOLORSTATIC: {
       const HWND control = reinterpret_cast<HWND>(lParam);
       const int id = GetDlgCtrlID(control);
-      if (id == IdPreviewText || id == IdLivePreview) {
+      if ((id == IdPreviewText || id == IdLivePreview) && state->chrome.windowBrush != nullptr) {
         const HDC device = reinterpret_cast<HDC>(wParam);
         const double opacity = id == IdPreviewText ? state->introPreviewOpacity : 1.0;
-        SetBkColor(device, RGB(0, 0, 0));
+        const auto channel = [opacity](const BYTE from, const BYTE to) {
+          return static_cast<BYTE>(std::lround(from + (to - from) * opacity));
+        };
+        SetBkColor(device, state->chrome.background);
         SetTextColor(device, RGB(
-          0,
-          static_cast<BYTE>(std::lround(255.0 * opacity)),
-          static_cast<BYTE>(std::lround(65.0 * opacity))));
-        return reinterpret_cast<LRESULT>(state->previewBackground);
+          channel(GetRValue(state->chrome.background), GetRValue(state->chrome.accent)),
+          channel(GetGValue(state->chrome.background), GetGValue(state->chrome.accent)),
+          channel(GetBValue(state->chrome.background), GetBValue(state->chrome.accent))));
+        return reinterpret_cast<LRESULT>(state->chrome.windowBrush);
       }
+      LRESULT colored = 0;
+      if (state->chrome.HandleColor(message, wParam, colored)) return colored;
       break;
     }
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLORBTN: {
+      LRESULT colored = 0;
+      if (state->chrome.HandleColor(message, wParam, colored)) return colored;
+      break;
+    }
+    case WM_ERASEBKGND:
+      if (state->chrome.windowBrush != nullptr) {
+        RECT client{};
+        GetClientRect(window, &client);
+        FillRect(reinterpret_cast<HDC>(wParam), &client, state->chrome.windowBrush);
+        return 1;
+      }
+      break;
     case WM_NOTIFY: {
       const auto* header = reinterpret_cast<const NMHDR*>(lParam);
       if (!state->updating && header->code == DTN_DATETIMECHANGE) {
@@ -1182,10 +1206,7 @@ LRESULT CALLBACK WindowProcedure(
       return 0;
     case WM_DESTROY:
       KillTimer(window, kPreviewTimer);
-      if (state->previewBackground != nullptr) {
-        DeleteObject(state->previewBackground);
-        state->previewBackground = nullptr;
-      }
+      state->chrome.Clear();
       if (state->font != nullptr) {
         DeleteObject(state->font);
         state->font = nullptr;

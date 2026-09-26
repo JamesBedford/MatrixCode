@@ -77,6 +77,7 @@ add_library(MatrixCodeWin32 STATIC
   src/platform/DocumentEditor.cpp
   src/platform/ScreenSaverArgs.cpp
   src/platform/ImageImportWin32.cpp
+  src/platform/SettingsChrome.cpp
   src/platform/SettingsStoreWin32.cpp
   src/platform/SettingsWindow.cpp
   src/platform/Win32Utf.cpp
@@ -88,7 +89,7 @@ target_include_directories(MatrixCodeWin32
 )
 target_link_libraries(MatrixCodeWin32
   PUBLIC MatrixCodeCore MatrixCodeRenderD3D11
-  PRIVATE advapi32 bcrypt comctl32 comdlg32 dwmapi ole32 shcore shell32 userenv secur32 windowscodecs
+  PRIVATE advapi32 bcrypt comctl32 comdlg32 dwmapi ole32 shcore shell32 userenv secur32 uxtheme windowscodecs
 )
 matrixcode_target_options(MatrixCodeWin32)
 

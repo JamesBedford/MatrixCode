@@ -39,6 +39,9 @@
     [self assertColor:theme.backgroundColor red:8 green:2 blue:13];
     [self assertColor:theme.dimColor red:110 green:0 blue:168];
     [self assertColor:theme.accentColor red:178 green:59 blue:255];
+    NSColor *panel = [theme.panelColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    XCTAssertEqualWithAccuracy(panel.alphaComponent, 0.82, 0.001);
+    [self assertColor:theme.panelColor red:8 green:2 blue:13];
 
     theme.presetName = @"gold";
     [self assertColor:theme.backgroundColor red:12 green:8 blue:0];

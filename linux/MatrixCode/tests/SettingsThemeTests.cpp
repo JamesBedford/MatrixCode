@@ -55,6 +55,9 @@ void RunThemeDerivationTests() {
   MX_EXPECT(!classicSheet.contains('%'));
   MX_EXPECT(!amberSheet.contains('%'));
   MX_EXPECT(classicSheet.contains("#00ff41"));
+  MX_EXPECT(classicSheet.contains("QCheckBox::indicator"));
+  MX_EXPECT(classicSheet.contains("QScrollBar::handle"));
+  MX_EXPECT(classicSheet.contains("QComboBox QAbstractItemView"));
   MX_EXPECT(!classicSheet.contains("#ffb000"));
   MX_EXPECT(amberSheet.contains("#ffb000"));
   MX_EXPECT(!amberSheet.contains("#00ff41"));
