@@ -3,7 +3,10 @@
   <command arg="--root" />
   <boolean id="software" _label="Use software rendering" arg-set="--software" />
   <_description>
+    Customize your screen saver in the Matrix Code app.
+
+    Close this dialog and choose Settings in the preview to open all settings.
+
     Film-accurate Matrix digital rain rendered by the native GPU-accelerated Ubuntu application.
-    For the full Matrix Code settings, run MatrixCode --settings.
   </_description>
 </screensaver>

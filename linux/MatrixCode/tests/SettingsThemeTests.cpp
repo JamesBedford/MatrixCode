@@ -84,10 +84,19 @@ void RunDialogThemeTests() {
   MX_EXPECT(dialog.styleSheet().contains("#00ff41"));
   MX_EXPECT(dialog.palette().color(QPalette::Window) == ThemeFor(PresetControls("classic")).background);
 
+  QLabel* speedLabel = nullptr;
+  for (auto* label : dialog.findChildren<QLabel*>()) {
+    if (label->text() == "Speed") speedLabel = label;
+  }
+  MX_EXPECT(speedLabel != nullptr);
+  speedLabel->ensurePolished();
+  MX_EXPECT(speedLabel->palette().color(QPalette::WindowText) == ThemeFor(PresetControls("classic")).text);
+
   preset->setCurrentIndex(preset->findData("red"));
   MX_EXPECT(dialog.styleSheet().contains("#ff2a2a"));
   MX_EXPECT(!dialog.styleSheet().contains("#00ff41"));
   MX_EXPECT(dialog.palette().color(QPalette::Window) == ThemeFor(PresetControls("red")).background);
+  MX_EXPECT(speedLabel->palette().color(QPalette::WindowText) == ThemeFor(PresetControls("red")).text);
 
   preset->setCurrentIndex(preset->findData("custom"));
   customColor->setText("#FF6600");

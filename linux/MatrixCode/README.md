@@ -96,9 +96,18 @@ atomically to the Qt application-config directory, normally
 On X11, run `scripts/install-xscreensaver.sh` to install the current release
 binary for the user and register its `--root` command with XScreenSaver.
 The Debian package also installs desktop and XScreenSaver metadata.
-XScreenSaver's generated settings panel only controls its software-rendering
-override; launch `MatrixCode --settings` for the complete native rain, intro,
-messages, images, and countdown configuration.
+Choose **Settings…** at the top of the Matrix Code preview in XScreenSaver to
+open the complete native rain, intro, messages, images, and countdown editor.
+The editor opens independently, so restarting or closing the preview does not
+close it. Saved changes automatically refresh both preview and screen-saver
+playback through the shared settings file. This button appears only in the
+embedded preview, never during screen-saver playback.
+
+XScreenSaver's generated settings dialog only controls its software-rendering
+override. Its XML format does not support custom action buttons or labels, and
+XScreenSaver places the description below the controls; the description starts
+with guidance to the full editor. Close that dialog to use the preview's
+**Settings…** button, or launch `MatrixCode --settings` directly.
 
 Stock GNOME on Wayland has no supported extension point for third-party secure
 lock-screen renderers or live desktop wallpapers. MatrixCode therefore does not

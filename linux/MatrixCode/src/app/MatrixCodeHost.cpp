@@ -22,10 +22,12 @@
 #include <QFileInfo>
 #include <QFocusEvent>
 #include <QGuiApplication>
+#include <QHBoxLayout>
 #include <QIcon>
 #include <QKeyEvent>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLabel>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QOpenGLContext>
@@ -33,6 +35,7 @@
 #include <QPalette>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QPushButton>
 #include <QRandomGenerator>
 #include <QScreen>
 #include <QSettings>
@@ -58,6 +61,7 @@
 #include "matrixcode/platform/X11Window.h"
 #include "matrixcode/render/OpenGLRenderer.h"
 #include "matrixcode/ui/SettingsDialog.h"
+#include "matrixcode/ui/SettingsTheme.h"
 
 namespace matrixcode::app {
 namespace {
@@ -599,9 +603,36 @@ RainWindow& MatrixCodeHost::AddWindow(QScreen* screen, const bool fullscreen) {
   auto* layout = new QVBoxLayout(window->container);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
+  if (IsPreview()) {
+    auto* settingsBar = new QWidget(window->container);
+    const auto applyPreviewTheme = [this, settingsBar] {
+      const auto theme = ui::SettingsThemeForPalette(PaletteForControls(EffectiveControls()));
+      settingsBar->setPalette(ui::SettingsPalette(theme));
+    };
+    applyPreviewTheme();
+    auto* themeTimer = new QTimer(settingsBar);
+    QObject::connect(themeTimer, &QTimer::timeout, settingsBar, applyPreviewTheme);
+    themeTimer->start(1000);
+    settingsBar->setAutoFillBackground(true);
+    auto* settingsLayout = new QHBoxLayout(settingsBar);
+    settingsLayout->setContentsMargins(8, 6, 8, 6);
+    auto* hint = new QLabel(QObject::tr("Customize your screen saver in the Matrix Code app."));
+    hint->setWordWrap(true);
+    auto* settingsButton = new QPushButton(QObject::tr("Settings…"));
+    settingsButton->setToolTip(QObject::tr("Open all Matrix Code settings."));
+    settingsLayout->addWidget(hint, 1);
+    settingsLayout->addWidget(settingsButton);
+    QObject::connect(settingsButton, &QPushButton::clicked, settingsBar, [settingsBar] {
+      if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--settings"})) {
+        QMessageBox::warning(settingsBar, QObject::tr("Matrix Code"),
+          QObject::tr("Matrix Code settings could not be opened. Open the Matrix Code app and press H to try again."));
+      }
+    });
+    layout->addWidget(settingsBar);
+  }
   window->rain = new RainWidget(*this, window->container);
   window->hudVisible = LoadHudVisible();
-  layout->addWidget(window->rain);
+  layout->addWidget(window->rain, 1);
   window->fullscreen = fullscreen;
   if (fullscreen) {
     window->container->setWindowFlags(

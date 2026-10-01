@@ -47,6 +47,8 @@ constexpr double kDisabledTextOpacity = 0.4;
 
 constexpr auto kStyleSheetTemplate = R"(
     QDialog { background: %window%; color: %text%; }
+    QLabel { color: %text%; }
+    QLabel:disabled { color: %disabled%; }
     QLabel#settingsTitle { color: %accent%; }
     QTabWidget::pane { border: 1px solid %frame%; background: %pane%; border-radius: 6px; }
     QTabBar::tab { background: %tab%; color: %muted%; padding: 9px 15px; border: 1px solid %frame%; }
