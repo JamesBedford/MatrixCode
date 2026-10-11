@@ -20,7 +20,8 @@ function harness(reducedMotion = false) {
   vi.useFakeTimers();
   const fallback = { start: vi.fn(), stop: vi.fn(), renderStatic: vi.fn(), refreshTheme: vi.fn() };
   vi.mocked(startCanvas2dRain).mockReturnValue(fallback);
-  const setProperty = vi.fn();
+  const properties = new Map<string, string>();
+  const setProperty = vi.fn((name: string, value: string) => { properties.set(name, value); });
   const makeElement = () => ({
     classList: { add: vi.fn(), remove: vi.fn() },
     appendChild: vi.fn(), remove: vi.fn(), getContext: () => null,
@@ -40,7 +41,7 @@ function harness(reducedMotion = false) {
   });
   vi.stubGlobal("location", { search: "", pathname: "/", hash: "" });
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
-  return { document, container: makeElement() as unknown as HTMLElement, fallback, setProperty, icon };
+  return { document, container: makeElement() as unknown as HTMLElement, fallback, setProperty, properties, icon };
 }
 
 describe("mounted holiday color lifecycle", () => {
@@ -83,7 +84,7 @@ describe("mounted holiday color lifecycle", () => {
     expect(app.controls.get().preset).toBe("blue");
     view.fallback.renderStatic.mockClear();
     vi.advanceTimersByTime(1000);
-    expect(view.setProperty).toHaveBeenLastCalledWith("--mx-dim-rgb", "168 0 8");
+    expect(view.properties.get("--mx-dim-rgb")).toBe("168 0 8");
     expect(decodeURIComponent(view.icon.href)).toContain("#ff2a2a");
     expect(view.fallback.refreshTheme).toHaveBeenCalledOnce();
     expect(view.fallback.renderStatic).not.toHaveBeenCalled();
@@ -110,7 +111,7 @@ describe("mounted holiday color lifecycle", () => {
       customcolor: { value: `${18 / 255} ${52 / 255} ${86 / 255}` },
     });
     expect(app.controls.get().preset).toBe("custom");
-    expect(view.setProperty).toHaveBeenLastCalledWith("--mx-dim-rgb", "0 143 17");
+    expect(view.properties.get("--mx-dim-rgb")).toBe("0 143 17");
     view.fallback.renderStatic.mockClear();
     vi.setSystemTime(new Date(2026, 2, 18));
     vi.advanceTimersByTime(1000);
