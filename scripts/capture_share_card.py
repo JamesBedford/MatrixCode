@@ -3,11 +3,11 @@
 
 Serves dist/ on a throwaway loopback port and opens matrixcode.html in
 headless Chromium at a 1200x630 CSS viewport and 2x device pixels, with fresh
-storage so every setting is at its default. It skips the typed intro with
-Escape, waits for the settings panel to auto-hide and the rain to fill the
-screen, then samples a run of frames. The frame
-whose lit glyphs cover the most of the screen is Lanczos-downscaled 2:1 and
-saved as a progressive JPEG. Nothing is drawn, composited, or retouched.
+storage and a few showcase settings from the panel passed in the URL. It skips
+the typed intro with Escape, waits for the settings panel to auto-hide and the
+rain to fill the screen, then samples a run of frames. The frame whose bright
+leading glyphs are spread most evenly is Lanczos-downscaled 2:1 and saved as a
+progressive JPEG. Nothing is drawn, composited, or retouched.
 See docs/share-card.md.
 
 Requires `npm run build` first, plus Playwright for Python and Pillow:
@@ -27,21 +27,26 @@ import io
 import sys
 import threading
 from pathlib import Path
+from urllib.parse import urlencode
 
 from PIL import Image, ImageStat
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
 CARD_SIZE = (1200, 630)
+# Panel settings a viewer can choose (as URL params) so the card still reads as rain at
+# thumbnail size: denser rain, 1.5x glyphs and a stronger glow. Everything else is default.
+SHOWCASE_SETTINGS = {"density": "12", "size": "1.5", "glow": "1.3"}
 # The app caps devicePixelRatio at 2, so 2x is the sharpest real render.
 DEVICE_SCALE = 2
 # The intro is skipped; this covers the 8 s density ramp and lets every column start falling.
 SETTLE_MS = 25_000
 FRAME_COUNT = 30
 FRAME_INTERVAL_MS = 1_200
-# Frames are scored by the share of grid blocks holding at least one lit glyph pixel.
+# Frames are scored by the share of grid blocks holding a bright leading glyph (near white;
+# the classic green trail stays below this luma).
 COVERAGE_GRID = (12, 7)
-LIT_LUMA = 120
+LEAD_LUMA = 200
 JPEG_OPTIONS = {"quality": 90, "progressive": True, "optimize": True, "subsampling": 0}
 # Metal-backed ANGLE keeps WebGL2 on the GPU in headless Chromium on macOS.
 CHROMIUM_ARGS = ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] if sys.platform == "darwin" else []
@@ -55,7 +60,7 @@ def coverage(frame: Image.Image) -> float:
     for row in range(rows):
         for column in range(columns):
             box = (column * width // columns, row * height // rows, (column + 1) * width // columns, (row + 1) * height // rows)
-            if luma.crop(box).getextrema()[1] > LIT_LUMA:
+            if luma.crop(box).getextrema()[1] > LEAD_LUMA:
                 lit += 1
     return lit / (columns * rows)
 
@@ -125,7 +130,8 @@ def main() -> None:
     server = serve(args.dist)
     try:
         # Adaptive resolution only scales the render target; turning it off keeps every frame at full 2x.
-        frames = capture_frames(f"http://127.0.0.1:{server.server_address[1]}/matrixcode.html?adaptive=0")
+        query = urlencode({**SHOWCASE_SETTINGS, "adaptive": "0"})
+        frames = capture_frames(f"http://127.0.0.1:{server.server_address[1]}/matrixcode.html?{query}")
     finally:
         server.shutdown()
 

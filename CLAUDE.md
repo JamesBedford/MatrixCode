@@ -16,7 +16,7 @@
 - `npm run verify:windows` — native MSVC tests plus the WARP capture on Windows; `npm run release:windows` produces release artifacts.
 - Native, from `macos/MatrixCodeScreenSaver/`: `./test.sh` (xcodegen + `xcodebuild test`), `./build.sh` (thin wrapper over `scripts/build-release.sh --auto-signing`), `./install.sh` (release build → `~/Library/Screen Savers`). For a signed/notarized DMG use `scripts/build-release.sh --release` from the repo root. Xcode is located by `scripts/lib/xcode-developer-dir.sh` (DEVELOPER_DIR → XCODE_APP → non-CLT `xcode-select -p` → usual paths → Spotlight), so an Xcode outside `/Applications` needs no `xcode-select --switch`; set `XCODE_APP` to pin one.
 - `test/test_dmg_*.py` are pytest, **not** part of `npm test`. They need their own venv: `python3 -m venv /tmp/dmgvenv && /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow pytest`.
-- `scripts/capture_share_card.py` recaptures `public/share-card.jpg`, the link-preview image named by the Open Graph tags in `index.html`, from a built `dist/` (Playwright for Python and Pillow in their own venv; see `docs/share-card.md`). Rerun it when the default look changes.
+- `scripts/capture_share_card.py` recaptures `public/share-card.jpg`, the link-preview image named by the Open Graph tags in `index.html`, from a built `dist/` (Playwright for Python and Pillow in their own venv; see `docs/share-card.md`). Rerun it when the rendered look changes.
 
 ## Cross-implementation traps
 
