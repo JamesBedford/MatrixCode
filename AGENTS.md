@@ -12,6 +12,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 - `npm run dev` — Vite dev server (port 5188, registered with LanternPad; assume it is already running).
 - `npm run build` — type-checks (`tsc --noEmit`) then builds a single inlined `matrixcode.html` via `vite-plugin-singlefile`.
+- `scripts/capture_share_card.py` — recaptures `public/share-card.jpg`, the link-preview image named by the Open Graph tags in `index.html`, from the built app. It needs Playwright for Python and Pillow; see `docs/share-card.md`. Rerun it when the default look changes.
 - `npm run build:wallpaper` — builds the browser artifact and packages an offline Wallpaper Engine web wallpaper in `dist/wallpaper-engine/`.
 - `npm run verify:wallpaper` — checks that generated `wallpaper-engine/project.json` matches the canonical property catalog.
 - `npm run preview` — serve the production build.

@@ -16,6 +16,7 @@
 - `npm run verify:windows` — native MSVC tests plus the WARP capture on Windows; `npm run release:windows` produces release artifacts.
 - Native, from `macos/MatrixCodeScreenSaver/`: `./test.sh` (xcodegen + `xcodebuild test`), `./build.sh` (thin wrapper over `scripts/build-release.sh --auto-signing`), `./install.sh` (release build → `~/Library/Screen Savers`). For a signed/notarized DMG use `scripts/build-release.sh --release` from the repo root. Xcode is located by `scripts/lib/xcode-developer-dir.sh` (DEVELOPER_DIR → XCODE_APP → non-CLT `xcode-select -p` → usual paths → Spotlight), so an Xcode outside `/Applications` needs no `xcode-select --switch`; set `XCODE_APP` to pin one.
 - `test/test_dmg_*.py` are pytest, **not** part of `npm test`. They need their own venv: `python3 -m venv /tmp/dmgvenv && /tmp/dmgvenv/bin/pip install ds_store mac_alias pillow pytest`.
+- `scripts/capture_share_card.py` recaptures `public/share-card.jpg`, the link-preview image named by the Open Graph tags in `index.html`, from a built `dist/` (Playwright for Python and Pillow in their own venv; see `docs/share-card.md`). Rerun it when the default look changes.
 
 ## Cross-implementation traps
 
@@ -23,7 +24,7 @@
 
 - `test/renderParityContract.test.ts` reads the macOS, Windows, and Linux render sources **as text** and pins their constants against the web source of truth. Changing atlas resolution, bloom levels, blur/composite constants, preset colors, or adaptive defaults fails the web suite until every applicable native renderer matches.
 - `test/rainSimGolden.test.ts` pins FNV-1a checksums of the packed `state` bytes, and `test/messageScheduler.test.ts` has a cross-language golden; these are mirrored by macOS XCTests and the shared Windows/Linux C++ tests. Any simulation or scheduler behavior change must regenerate every applicable fixture deliberately.
-- `test/buildReleaseScript.test.ts` executes `scripts/build-release.sh --help` and greps its source; `test/webIcons.test.ts` reads `index.html`, `public/manifest.webmanifest` and the `public/icons/*.png` pixels, checking them against `colorPresets`.
+- `test/buildReleaseScript.test.ts` executes `scripts/build-release.sh --help` and greps its source; `test/webIcons.test.ts` reads `index.html`, `public/manifest.webmanifest` and the `public/icons/*.png` pixels, checking them against `colorPresets`; `test/sharePreview.test.ts` pins those Open Graph tags and the share card's JPEG dimensions and size.
 
 ## Web architecture
 
