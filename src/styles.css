@@ -44,6 +44,29 @@ body {
   /* canvas is purely decorative */
 }
 
+#app > .mx-about {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 10;
+  width: min(320px, calc(100vw - 32px));
+  padding: 16px 18px;
+  background: var(--mx-panel);
+  border: 1px solid var(--mx-border);
+  border-radius: 10px;
+}
+.mx-about p {
+  margin: 0 0 12px;
+  color: var(--mx-label);
+  font-size: 11px;
+  line-height: 1.6;
+}
+html.mx-wallpaper-engine .mx-about,
+html.mx-native-saver .mx-about,
+#app.mx-multimonitor:not(.mx-multimonitor-controls) .mx-about {
+  display: none;
+}
+
 /* Multi-monitor mode: an uninterrupted backdrop — no overlays. */
 #app.mx-multimonitor:not(.mx-multimonitor-controls) .mx-ui,
 #app.mx-multimonitor .mx-message,

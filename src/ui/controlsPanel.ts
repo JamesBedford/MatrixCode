@@ -84,9 +84,8 @@ export class ControlsPanel {
     // Bottom-left panel.
     this.panel = document.createElement("div");
     this.panel.className = "mx-panel";
-    const title = document.createElement("h1");
-    title.textContent = "Matrix";
-    this.panel.appendChild(title);
+    const about = document.getElementById("matrix-about");
+    if (about) this.panel.appendChild(about);
 
     this.panel.append(
       this.externalLink("Follow @Mr_Bedford on X", "https://x.com/Mr_Bedford"),

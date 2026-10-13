@@ -38,11 +38,15 @@ describe("link preview tags", () => {
   it("describes the page as Matrix Code on Julimbob", () => {
     expect(meta("og:type")).toBe("website");
     expect(meta("og:site_name")).toBe("Julimbob");
-    expect(meta("og:title")).toBe("Matrix Code");
+    expect(meta("og:title")).toBe(html.match(/<title>([^<]+)<\/title>/)?.[1]);
     expect(meta("og:url")).toBe(SHARE_URL);
     expect(meta("twitter:card")).toBe("summary_large_image");
     expect(meta("description")).toBeTruthy();
     expect(meta("og:description")).toBe(meta("description"));
+    expect(meta("twitter:title")).toBe(meta("og:title"));
+    expect(meta("twitter:description")).toBe(meta("description"));
+    expect(meta("twitter:image")).toBe(meta("og:image"));
+    expect(html.match(/<link rel="canonical" href="([^"]+)"/)?.[1]).toBe(SHARE_URL);
     expect(meta("og:image:alt")).toBeTruthy();
   });
 

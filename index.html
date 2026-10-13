@@ -2,12 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="description" content="An open-source Matrix digital rain effect for your browser, with customisable colours, messages and controls." />
+    <meta name="description" content="Create Matrix digital rain in your browser. Customise colours, glowing characters, messages, image reveals and countdowns with the open-source Matrix Code app." />
     <!-- Link previews (Messages, social apps). Crawlers need absolute URLs; see docs/share-card.md. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Julimbob" />
-    <meta property="og:title" content="Matrix Code" />
-    <meta property="og:description" content="An open-source Matrix digital rain effect for your browser, with customisable colours, messages and controls." />
+    <meta property="og:title" content="Matrix Code — Customisable Digital Rain | Julimbob" />
+    <meta property="og:description" content="Create Matrix digital rain in your browser. Customise colours, glowing characters, messages, image reveals and countdowns with the open-source Matrix Code app." />
     <meta property="og:url" content="https://julimbob.com/matrixcode/" />
     <meta property="og:image" content="https://julimbob.com/matrixcode/share-card.jpg" />
     <meta property="og:image:type" content="image/jpeg" />
@@ -15,6 +15,14 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Green Matrix digital rain: columns of glowing glyphs falling down a black screen." />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Matrix Code — Customisable Digital Rain | Julimbob" />
+    <meta name="twitter:description" content="Create Matrix digital rain in your browser. Customise colours, glowing characters, messages, image reveals and countdowns with the open-source Matrix Code app." />
+    <meta name="twitter:image" content="https://julimbob.com/matrixcode/share-card.jpg" />
+    <meta name="twitter:image:alt" content="Green Matrix digital rain: columns of glowing glyphs falling down a black screen." />
+    <link rel="canonical" href="https://julimbob.com/matrixcode/" />
+    <script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"WebApplication","name":"Matrix Code","url":"https://julimbob.com/matrixcode/","description":"Customisable Matrix digital rain with colours, messages, image reveals and countdowns.","applicationCategory":"EntertainmentApplication","operatingSystem":"Web browser","browserRequirements":"Requires JavaScript.","isAccessibleForFree":true,"isPartOf":{"@id":"https://julimbob.com/#website"}}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -27,11 +35,17 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Matrix" />
-    <title>Matrix</title>
+    <title>Matrix Code — Customisable Digital Rain | Julimbob</title>
   </head>
   <body>
-    <div id="app" role="presentation"></div>
-    <noscript>This effect requires JavaScript.</noscript>
+    <main id="app">
+      <section id="matrix-about" class="mx-about" aria-labelledby="matrix-title">
+        <h1 id="matrix-title">Matrix Code</h1>
+        <p>Customise Matrix digital rain with colours, glowing characters, messages, image reveals and countdowns. Press H for settings or F for fullscreen.</p>
+        <a class="mx-panel-link" href="https://julimbob.com/">More apps and games from Julimbob</a>
+      </section>
+    </main>
+    <noscript>Enable JavaScript to display the digital rain and use its controls.</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
