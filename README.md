@@ -73,6 +73,9 @@ the current glyphs and images are redrawn without advancing their timelines.
 
 ## Controls
 
+The browser settings panel links to [@Mr_Bedford on X](https://x.com/Mr_Bedford)
+at the top, opening the profile in a new tab.
+
 | Key / Gesture | Action |
 |---|---|
 | `H` | Toggle settings panel |

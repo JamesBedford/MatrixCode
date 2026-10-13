@@ -154,6 +154,20 @@ html.mx-native-config .mx-panel {
   text-shadow: 0 0 8px rgb(var(--mx-accent-rgb) / 0.5);
 }
 
+.mx-profile-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-bottom: 12px;
+  color: var(--mx-green);
+  font-size: 11px;
+  line-height: 1.5;
+  text-underline-offset: 4px;
+}
+.mx-profile-link:hover {
+  color: var(--mx-label);
+}
+
 .mx-row {
   display: grid;
   grid-template-columns: 1fr auto;

@@ -88,6 +88,15 @@ export class ControlsPanel {
     title.textContent = "Matrix";
     this.panel.appendChild(title);
 
+    const profileLink = document.createElement("a");
+    profileLink.className = "mx-profile-link";
+    profileLink.href = "https://x.com/Mr_Bedford";
+    profileLink.target = "_blank";
+    profileLink.rel = "noopener noreferrer";
+    profileLink.textContent = "Follow @Mr_Bedford on X ↗";
+    profileLink.setAttribute("aria-label", "Follow @Mr_Bedford on X (opens in a new tab)");
+    this.panel.appendChild(profileLink);
+
     if (!options.multiMonitor) this.viewerName();
 
     this.range("Density", "density", CONTROL_RANGES.density.min, CONTROL_RANGES.density.max, CONTROL_RANGES.density.step, (v) => controls.set({ density: v }), (v) => v.toFixed(2), undefined, "Density — adjust with − and =. Turn up past 20 (with Allow overlap on) to make raindrops overlap between columns.");
