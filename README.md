@@ -74,7 +74,8 @@ the current glyphs and images are redrawn without advancing their timelines.
 ## Controls
 
 The browser settings panel links to [@Mr_Bedford on X](https://x.com/Mr_Bedford)
-at the top, opening the profile in a new tab.
+and then the [open-source GitHub repository](https://github.com/JamesBedford/MatrixCode)
+at the top. Both links open in a new tab.
 
 | Key / Gesture | Action |
 |---|---|

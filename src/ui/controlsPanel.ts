@@ -88,14 +88,10 @@ export class ControlsPanel {
     title.textContent = "Matrix";
     this.panel.appendChild(title);
 
-    const profileLink = document.createElement("a");
-    profileLink.className = "mx-profile-link";
-    profileLink.href = "https://x.com/Mr_Bedford";
-    profileLink.target = "_blank";
-    profileLink.rel = "noopener noreferrer";
-    profileLink.textContent = "Follow @Mr_Bedford on X ↗";
-    profileLink.setAttribute("aria-label", "Follow @Mr_Bedford on X (opens in a new tab)");
-    this.panel.appendChild(profileLink);
+    this.panel.append(
+      this.externalLink("Follow @Mr_Bedford on X", "https://x.com/Mr_Bedford"),
+      this.externalLink("Open source on GitHub", "https://github.com/JamesBedford/MatrixCode"),
+    );
 
     if (!options.multiMonitor) this.viewerName();
 
@@ -206,6 +202,17 @@ export class ControlsPanel {
       if (changed.has("preset") || changed.has("customColor")) this.colorSyncer?.(state);
     });
     this.show();
+  }
+
+  private externalLink(label: string, href: string): HTMLAnchorElement {
+    const link = document.createElement("a");
+    link.className = "mx-panel-link";
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = `${label} ↗`;
+    link.setAttribute("aria-label", `${label} (opens in a new tab)`);
+    return link;
   }
 
   private button(label: string, onClick: () => void): HTMLButtonElement {
