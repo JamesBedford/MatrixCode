@@ -110,7 +110,30 @@ CLOCK_SCRIPT = r"""(() => {
   localStorage.clear();
   sessionStorage.clear();
   localStorage.setItem('mx-intro', JSON.stringify({enabled: false}));
-  localStorage.setItem('mx-messages', JSON.stringify(MESSAGE_DOCUMENT));
+  const messageDoc = MESSAGE_DOCUMENT;
+  localStorage.setItem('mx-messages', JSON.stringify(messageDoc));
+  if (messageDoc.enabled && typeof WebGL2RenderingContext !== 'undefined') {
+    const {cols, rows, cells} = MESSAGE_LAYOUT;
+    const upload = WebGL2RenderingContext.prototype.texSubImage2D;
+    WebGL2RenderingContext.prototype.texSubImage2D = function (...args) {
+      if (window.__videoPlainMessage && args.length === 9 &&
+          args[0] === this.TEXTURE_2D && args[1] === 0 && args[2] === 0 && args[3] === 0 &&
+          args[4] === cols && args[5] === rows && args[6] === this.RGBA &&
+          args[7] === this.UNSIGNED_BYTE && args[8] instanceof Uint8Array &&
+          args[8].length === cols * rows * 4) {
+        // Finish the invitation at its held brightness, without head highlights.
+        // Grade a render copy so the app's simulation keeps advancing normally.
+        const pixels = args[8].slice();
+        const brightness = Math.min(...cells.map(cell => pixels[cell * 4 + 1]));
+        for (const cell of cells) {
+          pixels[cell * 4 + 1] = brightness;
+          pixels[cell * 4 + 2] &= 0x3f; // retain the glyph crossfade phase
+        }
+        args[8] = pixels;
+      }
+      return Reflect.apply(upload, this, args);
+    };
+  }
 })();"""
 
 
@@ -147,21 +170,32 @@ TITLE_FONT = font(72, bold=True)
 SMALL_FONT = font(19, mono=True)
 
 
-def message_mask() -> Image.Image:
-    """Select existing message cells for a finishing grade, without drawing text."""
+def message_layout() -> dict:
+    """Share the invitation's cell geometry between capture and finishing."""
     glyph_scale = SCENES[-1].settings["size"]
     cols = max(8, math.floor(SIZE[0] / (18 * glyph_scale) + 0.5))
     rows = max(8, math.floor(SIZE[1] / (18 * glyph_scale) + 0.5))
     start_col = math.floor(cols * 0.5 - len(CTA) / 2 + 0.5)
     row = math.floor(rows * 0.5 - 0.5 + 0.5)
+    return {"cols": cols, "rows": rows,
+            "cells": [row * cols + start_col + offset
+                      for offset, char in enumerate(CTA) if char != " "]}
+
+
+MESSAGE_LAYOUT = message_layout()
+
+
+def message_mask() -> Image.Image:
+    """Select existing message cells for a finishing grade, without drawing text."""
+    cols, rows = MESSAGE_LAYOUT["cols"], MESSAGE_LAYOUT["rows"]
     cell_w, cell_h = SIZE[0] / cols, SIZE[1] / rows
     mask = Image.new("L", SIZE)
     draw = ImageDraw.Draw(mask)
-    for offset, char in enumerate(CTA):
-        if char != " ":
-            draw.rectangle((round((start_col + offset) * cell_w), round(row * cell_h),
-                            round((start_col + offset + 1) * cell_w) - 1,
-                            round((row + 1) * cell_h) - 1), fill=255)
+    for cell in MESSAGE_LAYOUT["cells"]:
+        col, row = cell % cols, cell // cols
+        draw.rectangle((round(col * cell_w), round(row * cell_h),
+                        round((col + 1) * cell_w) - 1,
+                        round((row + 1) * cell_h) - 1), fill=255)
     return mask
 
 
@@ -218,6 +252,7 @@ def open_scene(browser, dist: Path, scene: Scene):
         "horizontalPosition": 0.5, "horizontalJitter": 0,
     }
     context.add_init_script(CLOCK_SCRIPT.replace("MESSAGE_DOCUMENT", json.dumps(doc))
+                           .replace("MESSAGE_LAYOUT", json.dumps(MESSAGE_LAYOUT))
                            .replace("FRAME_MILLISECONDS", str(1000 / FPS)))
     page = context.new_page()
     problems = []
@@ -265,7 +300,10 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
             # Both comparison views share the same clock and are already full of rain
             # when the full-screen switch happens; the extra lanes never start empty.
             for _, page, _ in sessions:
-                page.evaluate("window.__videoAdvance()")
+                page.evaluate("""plainMessage => {
+                    window.__videoPlainMessage = plainMessage;
+                    window.__videoAdvance();
+                }""", scene.message and frame_number >= count - FPS)
             if preview_only and frame_number not in preview_frames:
                 continue
             version_index = min(frame_number // switch_frame, len(versions) - 1)

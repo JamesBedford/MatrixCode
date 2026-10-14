@@ -17,6 +17,10 @@ brightness grade to the app's existing message glyphs while dimming the surround
 rain; the invitation is not drawn as a separate text overlay. Scene settings use
 ordinary app controls and live in the capture script.
 
+During the final second, the capture renders the message cells at their held
+brightness with head highlights disabled. Every invitation character finishes as
+a plain green glyph while the surrounding rain keeps moving.
+
 The extra-column style uses smaller glyphs and higher density. The overlap
 comparison keeps its settings identical and switches from overlap off to on
 halfway through, using two warmed views running on the same capture clock.
