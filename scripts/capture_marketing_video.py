@@ -60,7 +60,7 @@ SCENES = [
           {"preset": "white", "glyphs": "symbols", "font": "mono", "density": 5, "size": 1.9, "glow": 0.65, "speed": 1.1, "trail": 0.14, "scanlines": "true"}),
     Scene("columns", "More columns", 4.5,
           {"preset": "classic", "density": 12, "size": 0.65, "glow": 0.9, "speed": 1.15, "trail": 0.18}),
-    Scene("non-overlapping", "Non-overlapping rain", 6.5,
+    Scene("non-overlapping", "Non-overlapping rain columns", 6.5,
           {"preset": "classic", "density": 60, "size": 1.6, "glow": 0.65, "speed": 1.2, "trail": 0.12},
           overlap_comparison=True),
     Scene("invitation", "Your Matrix Code. Your style.", 9,
@@ -76,7 +76,7 @@ def scene_versions(scene: Scene) -> list[Scene]:
     """Keep the overlap comparison identical apart from its overlap control."""
     if not scene.overlap_comparison:
         return [scene]
-    return [scene, replace(scene, name="overlapping", title="Overlapping rain",
+    return [scene, replace(scene, name="overlapping", title="Overlapping rain columns",
                            settings={**scene.settings, "overlap": "true"},
                            overlap_comparison=False)]
 
