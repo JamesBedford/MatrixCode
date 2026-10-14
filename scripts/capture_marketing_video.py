@@ -50,7 +50,7 @@ class Scene:
 SCENES = [
     Scene("classic", "Classic green", 5.5,
           {"preset": "classic", "density": 5, "size": 1.5, "glow": 1.2, "speed": 1, "trail": 0.25}),
-    Scene("blue", "Electric blue", 4.5,
+    Scene("blue", "Electric blue binary", 4.5,
           {"preset": "blue", "glyphs": "binary", "density": 7, "size": 1.8, "glow": 1.35, "speed": 1.4, "trail": 0.16}),
     Scene("amber", "Amber terminal", 4.5,
           {"preset": "amber", "glyphs": "digits", "font": "terminal", "density": 6, "size": 2, "glow": 0.85, "speed": 0.75, "trail": 0.18, "scanlines": "true"}),
