@@ -33,6 +33,7 @@ def write_soundtrack(
     samples = round(duration_seconds * SAMPLE_RATE)
     timeline = np.arange(samples) / SAMPLE_RATE
     mix = np.zeros((samples, 2), dtype=np.float64)
+    percussion = np.zeros_like(mix)
     random = np.random.default_rng(0x4D415452)
     final_start = transitions[-1] if transitions else max(0, duration_seconds - 9)
     final_hit = max(final_start, duration_seconds - 1)
@@ -60,15 +61,19 @@ def write_soundtrack(
         signal = filtered(random.standard_normal(len(time)), low, high)
         return signal / max(float(np.std(signal)), 1e-9)
 
-    def place(voice: np.ndarray, start: float, gain: float, pan: float = 0) -> None:
+    def place(
+        voice: np.ndarray, start: float, gain: float, pan: float = 0,
+        *, percussive: bool = False,
+    ) -> None:
         offset = round(start * SAMPLE_RATE)
         first, last = max(0, offset), min(samples, offset + len(voice))
         if first >= last:
             return
         section = voice[first - offset:last - offset] * gain
         angle = (pan + 1) * np.pi / 4
-        mix[first:last, 0] += section * np.cos(angle)
-        mix[first:last, 1] += section * np.sin(angle)
+        bus = percussion if percussive else mix
+        bus[first:last, 0] += section * np.cos(angle)
+        bus[first:last, 1] += section * np.sin(angle)
 
     def saw(time: np.ndarray, frequency: float, cutoff: float) -> np.ndarray:
         signal = np.zeros(len(time))
@@ -77,6 +82,10 @@ def write_soundtrack(
             weight = np.exp(-(harmonic * frequency / cutoff) ** 2) / harmonic
             signal += weight * np.sin(2 * np.pi * harmonic * frequency * time)
         return signal * 0.64
+
+    def scene_at(seconds: float) -> int:
+        return min(int(np.searchsorted(transitions, seconds, side="right")),
+                   len(SCENE_ROOTS) - 1)
 
     def bass(note: int, accented: bool, scene: int) -> np.ndarray:
         time = times(0.27 if accented else 0.23)
@@ -90,7 +99,7 @@ def write_soundtrack(
 
     # Keep the low end centered and give each scene its own rhythmic density.
     for step, start in enumerate(np.arange(0, final_hit, BEAT_SECONDS / 2)):
-        scene = min(np.searchsorted(transitions, start, side="right"), len(SCENE_ROOTS) - 1)
+        scene = scene_at(start)
         note = BASS_RIFF[step % len(BASS_RIFF)]
         if note is None:
             continue
@@ -99,11 +108,13 @@ def write_soundtrack(
         place(bass(note, accented, scene), start, 0.23 if accented else 0.18)
 
     for beat, start in enumerate(np.arange(0, final_hit, BEAT_SECONDS)):
+        scene = scene_at(start)
         time = times(0.43)
         phase = 2 * np.pi * (47 * time + 112 * (1 - np.exp(-time * 45)) / 45)
         kick = np.sin(phase) * envelope(time, 0.0007, 0.105)
         click = noise(time, 1800, 6800) * np.exp(-time / 0.004)
-        place(taper(np.tanh(kick * 1.45) * 0.85 + 0.08 * click), start, 0.40)
+        place(taper(np.tanh(kick * 1.45) * 0.85 + 0.08 * click), start, 0.40,
+              percussive=True)
         if beat % 2 == 1:
             time = times(0.31)
             body = np.sin(2 * np.pi * 184 * time) + 0.25 * np.sin(2 * np.pi * 329 * time)
@@ -111,16 +122,20 @@ def write_soundtrack(
             clap = noise(time, 1100, 5100)
             clap *= sum(np.exp(-np.maximum(0, time - tap) / 0.031) * (time >= tap) for tap in (0, 0.009, 0.019)) / 3
             snare = 0.54 * body * envelope(time, 0.001, 0.04) + 0.5 * snap + 0.19 * clap
-            place(taper(snare), start, 0.38)
-            place(taper(snap.copy()), start + 0.018, 0.035, 0.55)
+            place(taper(snare), start, 0.38, percussive=True)
+            place(taper(snap.copy()), start + 0.018, 0.035, 0.55, percussive=True)
+            if scene >= 3 and beat % 4 == 3 and start + BEAT_SECONDS * 0.75 < final_hit:
+                place(taper(snare.copy()), start + BEAT_SECONDS * 0.75,
+                      0.045, -0.25, percussive=True)
         # Offbeat open hats and alternating sixteenths supply momentum.
         for fraction in (0.25, 0.5, 0.75):
-            scene = np.searchsorted(transitions, start, side="right")
             if fraction != 0.5 and scene in (0, 2):
                 continue
             time = times(0.16 if fraction == 0.5 else 0.075)
-            hat = noise(time, 5200, 12500) * envelope(time, 0.0005, 0.036 if fraction == 0.5 else 0.012)
-            place(taper(hat), start + fraction * BEAT_SECONDS, 0.052 if fraction == 0.5 else 0.028, (-1) ** beat * 0.4)
+            hat = noise(time, 4800, 10500) * envelope(time, 0.0005, 0.036 if fraction == 0.5 else 0.012)
+            gain = 0.048 if fraction == 0.5 else 0.022 + 0.004 * (beat % 2)
+            place(taper(hat), start + fraction * BEAT_SECONDS, gain,
+                  (-1) ** beat * 0.4, percussive=True)
 
     def stab(start: float, root: int, gain: float, duration: float = 0.65) -> None:
         time = times(duration)
@@ -135,7 +150,7 @@ def write_soundtrack(
             place(chord, start + 0.375, gain * 0.07, side)
 
     for index, start in enumerate(np.arange(0, final_hit, BEAT_SECONDS * 2)):
-        scene = min(np.searchsorted(transitions, start, side="right"), len(SCENE_ROOTS) - 1)
+        scene = scene_at(start)
         if scene == 2 and index % 2:
             continue
         stab(start, SCENE_ROOTS[scene] + 12, 0.145 if start >= final_start else 0.115)
@@ -148,20 +163,30 @@ def write_soundtrack(
         metal = sum(np.sin(2 * np.pi * frequency * time) * weight for frequency, weight in ((311, 0.45), (487, 0.26), (733, 0.13)))
         strike = metal * envelope(time, 0.0007, 0.34)
         strike += noise(time, 300, 7200) * envelope(time, 0.001, 0.13) * 0.27
-        place(taper(low * envelope(time, 0.002, 0.25) + strike), start, gain)
-        place(taper(strike.copy()), start + 0.057, gain * 0.18, -0.7)
-        place(taper(strike.copy()), start + 0.093, gain * 0.14, 0.7)
+        place(taper(low * envelope(time, 0.002, 0.25) + strike), start, gain,
+              percussive=True)
+        place(taper(strike.copy()), start + 0.057, gain * 0.18, -0.7, percussive=True)
+        place(taper(strike.copy()), start + 0.093, gain * 0.14, 0.7, percussive=True)
+
+    def transition_fill(transition: float) -> None:
+        """Lead into the scene's downbeat with three short, descending drum hits."""
+        for index, frequency in enumerate((155, 110, 80)):
+            time = times(0.20)
+            phase = 2 * np.pi * frequency * (time + 0.006 * (1 - np.exp(-time * 75)))
+            body = np.sin(phase) * envelope(time, 0.0008, 0.055 + index * 0.012)
+            metal = (np.sin(2 * np.pi * frequency * 2.73 * time)
+                     + 0.4 * np.sin(2 * np.pi * frequency * 4.17 * time))
+            metal *= envelope(time, 0.0006, 0.027)
+            attack = noise(time, 1600, 5200) * envelope(time, 0.0004, 0.006)
+            drum = taper(np.tanh(body * 1.6) + metal * 0.12 + attack * 0.07)
+            place(drum, transition - (3 - index) * BEAT_SECONDS / 4,
+                  0.14 + index * 0.045, (index - 1) * 0.25, percussive=True)
 
     impact(0, 0.24)
     for transition in transitions:
-        time = times(1)
-        rise = noise(time, 900, 6500)
-        chirp = np.sin(2 * np.pi * (140 * time + 620 * time ** 3))
-        sweep = taper((rise * 0.37 + chirp * 0.17) * time ** 2, 0.007)
-        place(sweep, transition - 1, 0.13, -0.35)
-        place(sweep, transition - 0.984, 0.10, 0.35)
+        transition_fill(transition)
         impact(transition, 0.34)
-        stab(transition, 50, 0.13, 0.9)
+        stab(transition, SCENE_ROOTS[scene_at(transition)] + 12, 0.13, 0.9)
 
     # The call to action lands on a weighty final chord with a short metallic tail.
     impact(final_hit, 0.48)
@@ -170,13 +195,14 @@ def write_soundtrack(
     final_sub = np.sin(2 * np.pi * note_frequency(26) * time) * envelope(time, 0.004, 0.3)
     place(taper(final_sub), final_hit, 0.33)
 
-    # A gentle beat-synchronous pump leaves room between the dense accents.
+    # Duck the music around the kick while preserving percussion transients.
     beat_phase = np.mod(timeline, BEAT_SECONDS)
     sidechain = 0.78 + 0.22 * (1 - np.exp(-beat_phase / 0.055))
     mix *= sidechain[:, None]
+    mix += percussion
     for channel in range(2):
         mix[:, channel] = filtered(mix[:, channel], 22, 18000)
-    mix = np.tanh(mix * 1.75)
+    mix = np.tanh(mix * 1.45)
     fade = np.minimum(1, timeline / 0.003) * np.minimum(1, (duration_seconds - timeline) / 0.35)
     mix *= np.clip(fade[:, None], 0, 1)
     peak = float(np.max(np.abs(mix)))

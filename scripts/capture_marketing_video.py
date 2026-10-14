@@ -231,8 +231,6 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         ending_draw.text((SIZE[0] / 2, 391), scene.title,
                          font=font(25, bold=True), fill="#EEF5EF", anchor="mm")
         ending_draw.text((SIZE[0] / 2, 729), SITE, font=font(33), fill="#F5FFF7", anchor="mm")
-        ending_draw.text((SIZE[0] / 2, 775), "Web app and screen savers",
-                         font=font(23), fill="#CED6D2", anchor="mm")
         ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
         chrome = Image.alpha_composite(chrome, ending)
     return Image.alpha_composite(frame, chrome).convert("RGB")

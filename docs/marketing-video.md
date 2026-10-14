@@ -11,8 +11,10 @@ fully resolved through the final frame. The final scene includes the public app 
 
 The video includes style names, half-second dissolves, and an original
 industrial electronic soundtrack synthesized by `scripts/marketing_audio.py`,
-with distorted bass, punchy drums, tense synths, and transition impacts. No external
-music, footage, or generated rain visuals are used. The ending applies a finishing
+with distorted bass, punchy drums, tense synths, descending percussion fills, and
+transition impacts. The music ducks gently around the kick while the drum attacks
+remain clear. No external music, footage, or generated rain visuals are used.
+The ending applies a finishing
 brightness grade to the app's existing message glyphs while dimming the surrounding
 rain; the invitation is not drawn as a separate text overlay. Scene settings use
 ordinary app controls and live in the capture script.
@@ -27,8 +29,7 @@ halfway through, using two warmed views running on the same capture clock.
 
 The style scenes use only their main titles, with no supporting subtitles,
 numbered chapter labels, navigation dots, or a top-left logo. The closing line reads
-**Your Matrix Code. Your style.** above the invitation, with
-**Web app and screen savers** beneath the public app URL.
+**Your Matrix Code. Your style.** above the invitation and the public app URL below it.
 
 ## Render
 
