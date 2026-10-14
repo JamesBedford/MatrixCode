@@ -1017,7 +1017,7 @@ LRESULT CALLBACK WindowProcedure(
     case WM_CREATE: {
       state->dpi = std::max(96u, GetDpiForWindow(window));
       state->font = CreateUiFont(state->dpi);
-      state->chrome.Apply(CurrentEffectivePalette(state->draft.controls));
+      static_cast<void>(state->chrome.Apply(CurrentEffectivePalette(state->draft.controls)));
       // Page controls are tab siblings; clipping keeps tab repaints from covering them.
       state->tab = CreateWindowExW(
         0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS,

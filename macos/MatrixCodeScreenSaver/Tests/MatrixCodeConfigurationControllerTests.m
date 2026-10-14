@@ -578,6 +578,9 @@ static void MatrixCodeAssertNoTransientEditorReferences(
 }
 
 - (void)testStandaloneMessagePreviewFiresImmediatelyWithoutRewritingDraftTiming {
+    [self.preferences commitValues:@{
+        @"mx-messages": MatrixCodeJSONString(@{ @"enabled": @YES, @"messages": @[@"NEO"] }),
+    }];
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
     [controller setValue:@NO forKey:@"previewReducedMotionOverride"];
@@ -1341,6 +1344,9 @@ restrictedToMultiMonitorControls:YES];
 }
 
 - (void)testMessagesEditorPersistsDropLayoutAndKeepsBothAxisControls {
+    [self.preferences commitValues:@{
+        @"mx-messages": MatrixCodeJSONString(@{ @"enabled": @YES }),
+    }];
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];
     NSButton *messages = (NSButton *)MatrixCodeDescendantWithIdentifier(
@@ -1418,7 +1424,7 @@ restrictedToMultiMonitorControls:YES];
         [savedMessages addObject:[NSString stringWithFormat:@"MESSAGE %lu", (unsigned long)index]];
     }
     [self.preferences commitValues:@{
-        @"mx-messages": MatrixCodeJSONString(@{ @"messages": savedMessages }),
+        @"mx-messages": MatrixCodeJSONString(@{ @"enabled": @YES, @"messages": savedMessages }),
     }];
     MatrixCodeConfigurationController *controller =
         [[MatrixCodeConfigurationController alloc] initWithCloseHandler:^{}];

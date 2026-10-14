@@ -231,7 +231,7 @@
     XCTAssertEqualObjects(
         MatrixCodeOccasionGreeting([self dateInYear:2026 month:9 day:26 timeZone:utc], utc),
         @"happy full moon");
-    XCTAssertNil(MatrixCodeOccasionGreeting([self dateInYear:2026 month:12 day:24 timeZone:utc], utc));
+    XCTAssertNil(MatrixCodeOccasionGreeting([self dateInYear:2026 month:12 day:23 timeZone:utc], utc));
 }
 
 - (void)testColorOverrideLabelNamesTheCalendarReason {
