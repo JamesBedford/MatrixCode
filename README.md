@@ -17,7 +17,7 @@ Windows installers and binaries are unsigned. Linux XScreenSaver embedding requi
 [Release notes](https://github.com/JamesBedford/MatrixCode/releases/tag/v1.1.0) · [SHA-256 checksums](https://julimbob.com/matrixcode/releases/v1.1.0/SHA256SUMS.txt) · [Run in your browser](https://julimbob.com/matrixcode/)
 
 MatrixCode is an open-source **Matrix digital rain effect** with a browser/WebGL
-implementation as its visual source of truth, native applications for Ubuntu,
+implementation as its visual source of truth, native applications for Linux,
 macOS, and Windows, and a browser-derived Wallpaper Engine package. The web
 build is one self-contained HTML file with no server or runtime dependencies.
 Unlike most Matrix rain demos, the rendering model is film-accurate — glyphs
@@ -39,6 +39,7 @@ screen.
 - [Windows app and screen saver](#windows-app-and-screen-saver)
 - [Wallpaper Engine](#wallpaper-engine)
 - [Ubuntu app and screen saver](#ubuntu-app-and-screen-saver)
+- [Omarchy app and screen saver](#omarchy-app-and-screen-saver)
 - [Architecture](#architecture)
 - [License](#license)
 
@@ -58,6 +59,7 @@ Most "Matrix rain" projects (including the classic terminal `cmatrix`) scroll a 
 - **Native macOS screen saver** — a separate AppKit + Metal Apple-Silicon `.saver` bundle with an Options sheet and continuous multi-display rendering
 - **Native Windows app and screen saver** — an independent C++20, Win32, and Direct3D 11 implementation that builds a standalone `.exe` and native `.scr`
 - **Native Ubuntu app and XScreenSaver mode** — a C++20, Qt 6, and hardware OpenGL implementation for arm64 and amd64 with Wayland/X11 fullscreen and continuous multi-display rendering
+- **Omarchy integration** — Arch packaging and an optional idle screen saver for the current Hyprland/Quickshell desktop, using the same native Linux renderer
 - **Wallpaper Engine package** — an offline web-wallpaper package generated from the same browser artifact for import into Wallpaper Engine and eventual Workshop publication
 - **Multi-monitor mode** — the **Multi-monitor** button spans the rain across every connected display as one continuous grid (Chromium only; see [docs/multimonitor-setup.md](docs/multimonitor-setup.md))
 - **Settings panel** — press `H` to toggle; controls for color theme, quality tier, glyph scale, and more. The panel and the native settings windows follow the active colour theme, including a calendar override.
@@ -257,7 +259,27 @@ weaken the GNOME lock screen. Build, package, launch, integration, and release
 validation details are maintained in
 [`linux/MatrixCode/README.md`](linux/MatrixCode/README.md).
 
-The browser, macOS, Windows, and Ubuntu versions implement the same feature
+## Omarchy app and screen saver
+
+The native Linux application also provides source packaging and idle
+screen-saver integration for current Omarchy 4.x on x86_64. Build an Arch
+package from this checkout, install it with pacman, and enable the optional
+integration with `matrixcode-omarchy install`. No browser or Node runtime is
+required by the native application or the direct packaging script.
+
+```sh
+linux/MatrixCode/scripts/package-arch.sh
+```
+
+The integration uses a user-owned clone of Omarchy's idle plugin and retains
+Omarchy's configured idle and lock deadlines. One MatrixCode process renders a
+continuous grid across the monitors and exits on input; Omarchy supplies the
+secure lock screen. See [`linux/MatrixCode/OMARCHY.md`](linux/MatrixCode/OMARCHY.md)
+for dependencies, install/uninstall commands, version scope, and native
+validation requirements. The existing Ubuntu downloads above are Debian
+packages; build the Arch package for Omarchy.
+
+The browser, macOS, Windows, and Linux versions implement the same feature
 contract. Changes to visuals, settings, token behavior,
 intro/messages/images, or multi-monitor semantics should be made in all
 applicable codebases unless an intentional difference is documented.

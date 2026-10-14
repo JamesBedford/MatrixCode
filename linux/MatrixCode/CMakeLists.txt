@@ -139,6 +139,7 @@ if(BUILD_TESTING)
     tests/ImageImportQtTests.cpp
     tests/ShaderContractTests.cpp
     tests/SettingsStoreLinuxTests.cpp
+    tests/ScreenSaverActivityTests.cpp
     tests/X11WindowTests.cpp
     "${MATRIXCODE_WINDOWS_ROOT}/tests/ControllersTests.cpp"
     "${MATRIXCODE_WINDOWS_ROOT}/tests/DisplayTopologyTests.cpp"
@@ -191,10 +192,22 @@ if(BUILD_TESTING)
       "${CMAKE_CURRENT_SOURCE_DIR}/resources/xscreensaver/matrixcode"
       "${CMAKE_CURRENT_SOURCE_DIR}/resources/xscreensaver/matrixcode.xml"
   )
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(
+    NAME MatrixCodeOmarchyIntegrationTests
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/OmarchyIntegrationTests.py"
+  )
+  add_test(
+    NAME MatrixCodeArchPackagingTests
+    COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/ArchPackagingTests.sh"
+      "${MATRIXCODE_REPOSITORY_ROOT}"
+  )
 endif()
 
 install(FILES
   README.md
+  OMARCHY.md
   LICENSES.md
   "${MATRIXCODE_REPOSITORY_ROOT}/LICENSE"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/matrixcode"
@@ -218,13 +231,20 @@ install(PROGRAMS resources/xscreensaver/matrixcode
 install(FILES resources/xscreensaver/matrixcode.6
   DESTINATION "${CMAKE_INSTALL_MANDIR}/man6"
 )
+install(PROGRAMS resources/omarchy/matrixcode-omarchy-screensaver
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+install(PROGRAMS scripts/install-omarchy.py
+  DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  RENAME matrixcode-omarchy
+)
 
 set(CPACK_GENERATOR DEB)
 set(CPACK_PACKAGE_NAME matrixcode)
 set(CPACK_PACKAGE_VENDOR "MatrixCode Project")
 set(CPACK_PACKAGE_CONTACT "James Bedford <james_bedford@me.com>")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-  "GPU-accelerated native Matrix digital rain for Ubuntu Linux")
+  "GPU-accelerated native Matrix digital rain for Linux")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/JamesBedford/MatrixCode")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_RESOURCE_FILE_LICENSE "${MATRIXCODE_REPOSITORY_ROOT}/LICENSE")

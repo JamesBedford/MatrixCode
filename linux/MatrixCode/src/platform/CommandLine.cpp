@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include <QRegularExpression>
+
 namespace matrixcode::platform {
 namespace {
 
@@ -50,6 +52,13 @@ struct ParsedValue {
   return valid && parsed != 0 ? std::optional<quint64>(parsed) : std::nullopt;
 }
 
+[[nodiscard]] bool ValidAppId(const QString& value) {
+  static const QRegularExpression pattern(QStringLiteral(
+    "\\A[A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*)+\\z"));
+  return value.size() <= 255 && !value.endsWith(QStringLiteral(".desktop")) &&
+    pattern.match(value).hasMatch();
+}
+
 }  // namespace
 
 CommandLineParseResult ParseCommandLine(
@@ -57,6 +66,7 @@ CommandLineParseResult ParseCommandLine(
     const QString& xscreensaverWindow) {
   CommandLineOptions options;
   bool modeWasSet = false;
+  bool appIdWasSet = false;
   const qsizetype firstArgument = arguments.isEmpty() ? 0 : 1;
   bool previewRequested = false;
   for (qsizetype index = firstArgument; index < arguments.size(); ++index) {
@@ -144,6 +154,22 @@ CommandLineParseResult ParseCommandLine(
     }
 
     value = OptionValue(
+      argument, QStringLiteral("--app-id"), arguments, index, valueError);
+    if (value.matched) {
+      if (!valueError.isEmpty()) return {std::nullopt, std::move(valueError)};
+      if (appIdWasSet) {
+        return {std::nullopt, QStringLiteral("--app-id was specified more than once.")};
+      }
+      if (!ValidAppId(value.value)) {
+        return {std::nullopt,
+          QStringLiteral("--app-id requires a reverse-domain desktop identifier of at most 255 ASCII characters, without a path or .desktop suffix.")};
+      }
+      options.appId = std::move(value.value);
+      appIdWasSet = true;
+      continue;
+    }
+
+    value = OptionValue(
       argument, QStringLiteral("--capture"), arguments, index, valueError);
     if (value.matched) {
       if (!valueError.isEmpty()) return {std::nullopt, std::move(valueError)};
@@ -168,6 +194,11 @@ CommandLineParseResult ParseCommandLine(
     return {std::nullopt,
       QStringLiteral("--multi-monitor cannot be combined with an XScreenSaver host window.")};
   }
+  if (appIdWasSet &&
+      (options.mode != LaunchMode::ScreenSaver || options.xscreensaverHosted)) {
+    return {std::nullopt,
+      QStringLiteral("--app-id is only valid for standalone screen-saver playback.")};
+  }
   return {std::move(options), {}};
 }
 
@@ -187,6 +218,7 @@ QString CommandLineHelp() {
     "\n"
     "Options:\n"
     "  --multi-monitor            Present one continuous grid on every display\n"
+    "  --app-id ID                Desktop identity for a standalone screen saver\n"
     "  --software                 Force the software graphics implementation\n");
 }
 

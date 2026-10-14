@@ -1,4 +1,4 @@
-# Matrix Code for Ubuntu Linux
+# Matrix Code for Linux
 
 This directory contains the independent native Linux implementation of Matrix
 Code. It is a C++20, Qt 6 Widgets, and OpenGL 3.3 Core application; it does not
@@ -7,7 +7,9 @@ embed HTML, JavaScript, WebGL, or a browser runtime.
 The build produces `MatrixCode`, a resizable standalone application with native
 settings, fullscreen and continuous multi-monitor presentation, and an
 XScreenSaver-compatible playback mode. Ubuntu 24.04 LTS on arm64 and amd64 is
-the release baseline.
+the Debian release baseline. Current Omarchy 4.x on x86_64 has an Arch packaging
+path and optional Hyprland/Quickshell idle screen-saver integration; see
+[OMARCHY.md](OMARCHY.md) for installation and its validation boundary.
 
 ## Architecture
 
@@ -41,7 +43,7 @@ Install the Ubuntu build dependencies:
 ```sh
 sudo apt install build-essential cmake ninja-build qt6-base-dev \
   qt6-image-formats-plugins fonts-noto-cjk libgl1-mesa-dev libegl1-mesa-dev \
-  libx11-dev libxss-dev
+  libx11-dev libxss-dev python3
 ```
 
 Then use the repository commands:
@@ -65,6 +67,9 @@ ctest --preset linux-debug
 Release packaging uses CPack and writes an architecture-native `.deb` below the
 release build directory. Release automation must build and test separate arm64
 and amd64 artifacts; producing one architecture does not validate the other.
+The Arch packaging script uses `makepkg` instead of CPack and runs the same
+native tests before creating the package. CMake requires 3.28 or newer, a
+C++20 compiler, and Qt 6.4 or newer; Omarchy packaging targets current Arch Qt.
 
 ## Running
 
@@ -78,6 +83,8 @@ MatrixCode --root                  # normalized alias emitted by XScreenSaver 6
 MatrixCode --window-id WINDOW_ID   # XScreenSaver preview/window embedding on X11
 MatrixCode -window-id WINDOW_ID    # conventional XScreenSaver preview alias
 MatrixCode --capture output.png    # deterministic renderer capture
+MatrixCode --screensaver --multi-monitor --app-id org.omarchy.screensaver
+                                  # Omarchy saver window/process identity
 ```
 
 The standalone shortcuts match the other versions: `H` settings, `I` intro,
@@ -114,6 +121,10 @@ lock-screen renderers or live desktop wallpapers. MatrixCode therefore does not
 replace, patch, or weaken the GNOME lock screen. The application, fullscreen,
 and continuous multi-monitor modes remain available on Wayland with the full
 renderer and feature set; XScreenSaver embedding is an X11-only integration.
+On Omarchy, `matrixcode-omarchy install` connects the native saver to the
+desktop's idle service. `matrixcode-omarchy uninstall` restores the stock
+launcher and preserves unrelated user configuration. Omarchy lock-screen
+authentication and lock timing remain under Omarchy's control.
 
 ## Validation boundary
 

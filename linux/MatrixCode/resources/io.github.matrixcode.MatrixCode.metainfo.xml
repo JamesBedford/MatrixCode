@@ -13,8 +13,9 @@
       countdown tokens, bloom, themes and multi-monitor presentation.
     </p>
     <p>
-      The Ubuntu application is a native Qt and OpenGL implementation. It supports NVIDIA
-      and Mesa graphics, Wayland and X11 application windows, and XScreenSaver playback on X11.
+      The Linux application is a native Qt and OpenGL implementation, with Ubuntu and
+      Omarchy packaging. It provides Wayland and X11 application windows, XScreenSaver
+      playback on X11, and optional Omarchy idle screen-saver integration.
     </p>
   </description>
   <launchable type="desktop-id">io.github.matrixcode.MatrixCode.desktop</launchable>

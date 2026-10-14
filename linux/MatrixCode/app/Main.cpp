@@ -58,5 +58,8 @@ int main(int argc, char* argv[]) {
     QTextStream(stdout) << matrixcode::platform::CommandLineHelp();
     return 0;
   }
+  if (!parsed.options->appId.isEmpty()) {
+    application.setDesktopFileName(parsed.options->appId);
+  }
   return matrixcode::app::RunMatrixCodeHost(application, *parsed.options);
 }

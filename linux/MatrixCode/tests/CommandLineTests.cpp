@@ -10,6 +10,7 @@ void RunCommandLineTests() {
   MX_EXPECT(ordinary.options->mode == LaunchMode::Application);
   MX_EXPECT(!ordinary.options->multiMonitor);
   MX_EXPECT(!ordinary.options->forceSoftware);
+  MX_EXPECT(ordinary.options->appId.isEmpty());
 
   const auto application = ParseCommandLine({
     QStringLiteral("MatrixCode"), QStringLiteral("--multi-monitor"),
@@ -30,6 +31,28 @@ void RunCommandLineTests() {
   MX_EXPECT(saver.options.has_value());
   MX_EXPECT(saver.options->mode == LaunchMode::ScreenSaver);
   MX_EXPECT(saver.options->multiMonitor);
+
+  const auto omarchySaver = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("--screensaver"),
+    QStringLiteral("--multi-monitor"), QStringLiteral("--app-id"),
+    QStringLiteral("org.omarchy.screensaver")});
+  MX_EXPECT(omarchySaver.options.has_value());
+  MX_EXPECT(omarchySaver.options->mode == LaunchMode::ScreenSaver);
+  MX_EXPECT(omarchySaver.options->multiMonitor);
+  MX_EXPECT_EQ(omarchySaver.options->appId, QStringLiteral("org.omarchy.screensaver"));
+
+  const auto appIdBeforeMode = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("--app-id=org.example.Matrix-Code"),
+    QStringLiteral("--screensaver")});
+  MX_EXPECT(appIdBeforeMode.options.has_value());
+  MX_EXPECT_EQ(appIdBeforeMode.options->appId, QStringLiteral("org.example.Matrix-Code"));
+
+  const QString longestAppId = QStringLiteral("org.") + QString(251, QLatin1Char('a'));
+  const auto boundedAppId = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("--screensaver"),
+    QStringLiteral("--app-id"), longestAppId});
+  MX_EXPECT(boundedAppId.options.has_value());
+  MX_EXPECT_EQ(boundedAppId.options->appId, longestAppId);
 
   const auto rootSaver = ParseCommandLine({
     QStringLiteral("MatrixCode"), QStringLiteral("-root")});
@@ -90,6 +113,23 @@ void RunCommandLineTests() {
   MX_EXPECT(CommandLineHelp().contains(QStringLiteral("-root")));
   MX_EXPECT(CommandLineHelp().contains(QStringLiteral("--root")));
   MX_EXPECT(CommandLineHelp().contains(QStringLiteral("-window-id")));
+  MX_EXPECT(CommandLineHelp().contains(QStringLiteral("--app-id")));
+
+  for (const auto& invalidAppId : {
+         QString(), QStringLiteral("screensaver"), QStringLiteral(".org.saver"),
+         QStringLiteral("org..saver"), QStringLiteral("org.saver."),
+         QStringLiteral("org.saver.desktop"), QStringLiteral("/org.saver"),
+         QStringLiteral("org/saver"), QStringLiteral("org.1saver"),
+         QStringLiteral("org.saver\n"), QStringLiteral("org.saver\t"),
+         QStringLiteral("org.saver extra"), QStringLiteral("org.savér"),
+         longestAppId + QLatin1Char('a'),
+       }) {
+    const auto result = ParseCommandLine({
+      QStringLiteral("MatrixCode"), QStringLiteral("--screensaver"),
+      QStringLiteral("--app-id"), invalidAppId});
+    MX_EXPECT(!result.options.has_value());
+    MX_EXPECT(result.error.contains(QStringLiteral("--app-id")));
+  }
 
   for (const auto& invalid : {
          QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--unknown")},
@@ -108,6 +148,18 @@ void RunCommandLineTests() {
            QStringLiteral("--settings")},
          QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--software"),
            QStringLiteral("--software")},
+         QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--app-id")},
+         QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--screensaver"),
+           QStringLiteral("--app-id=org.saver"), QStringLiteral("--app-id=org.saver")},
+         QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--app-id=org.saver")},
+         QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--settings"),
+           QStringLiteral("--app-id=org.saver")},
+         QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--capture=/tmp/frame.png"),
+           QStringLiteral("--app-id=org.saver")},
+         QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--preview=42"),
+           QStringLiteral("--app-id=org.saver")},
+         QStringList{QStringLiteral("MatrixCode"), QStringLiteral("--help"),
+           QStringLiteral("--app-id=org.saver")},
        }) {
     const auto result = ParseCommandLine(invalid);
     MX_EXPECT(!result.options.has_value());
@@ -124,4 +176,10 @@ void RunCommandLineTests() {
     QStringLiteral("--multi-monitor")}, QStringLiteral("42"));
   MX_EXPECT(!hostedMultiMonitor.options.has_value());
   MX_EXPECT(!hostedMultiMonitor.error.isEmpty());
+
+  const auto hostedAppId = ParseCommandLine({
+    QStringLiteral("MatrixCode"), QStringLiteral("--app-id=org.omarchy.screensaver"),
+    QStringLiteral("--root")}, QStringLiteral("42"));
+  MX_EXPECT(!hostedAppId.options.has_value());
+  MX_EXPECT(hostedAppId.error.contains(QStringLiteral("standalone")));
 }

@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Omarchy Quattro uses the app ID both for idle window tracking and lock cleanup.
+set -u
+
+fail() { printf 'MatrixCode Omarchy: %s\n' "$*" >&2; exit 1; }
+case ${1:-} in
+  ""|force) ;;
+  -h|--help)
+    printf 'Usage: matrixcode-omarchy-screensaver [force]\n'
+    exit 0
+    ;;
+  *) fail "unknown argument: $1" ;;
+esac
+(( $# <= 1 )) || fail "unexpected arguments"
+[[ -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] ||
+  fail "run this launcher inside an Omarchy Hyprland session"
+for tool in flock pgrep setsid omarchy-shell omarchy-toggle-enabled hyprctl omarchy-hyprland-monitor-focused; do
+  command -v "$tool" >/dev/null || fail "required command is missing: $tool"
+done
+
+launcher_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+binary="$launcher_dir/MatrixCode"
+[[ -x $binary ]] || fail "install MatrixCode beside this launcher"
+
+# The descriptor remains inherited by the renderer until all its windows exit.
+exec 9>"$XDG_RUNTIME_DIR/matrixcode-omarchy-screensaver.lock"
+flock -n 9 || exit 0
+pgrep -f '[o]rg.omarchy.screensaver' >/dev/null && exit 0
+if omarchy-toggle-enabled screensaver-off && [[ ${1:-} != force ]]; then exit 1; fi
+is_unlocked() {
+  local state secure_pattern requested_pattern
+  state=$(omarchy-shell lock status 2>/dev/null) || return 1
+  secure_pattern='"secure"[[:space:]]*:[[:space:]]*false'
+  requested_pattern='"requested"[[:space:]]*:[[:space:]]*false'
+  [[ $state =~ $secure_pattern && $state =~ $requested_pattern ]]
+}
+is_unlocked || fail "the Omarchy shell is locking, locked, or unavailable"
+
+focused=$(omarchy-hyprland-monitor-focused) || fail "cannot read the focused monitor"
+child_pid=
+signal_status=
+restore_focus() {
+  local escaped_monitor
+  # A secure lock keeps its own focus; restore the previous monitor after dismissal.
+  if [[ -n $focused ]] && is_unlocked; then
+    escaped_monitor=${focused//\\/\\\\}
+    escaped_monitor=${escaped_monitor//\"/\\\"}
+    escaped_monitor=${escaped_monitor//$'\n'/\\n}
+    escaped_monitor=${escaped_monitor//$'\r'/\\r}
+    escaped_monitor=${escaped_monitor//$'\t'/\\t}
+    hyprctl dispatch "hl.dsp.focus({ monitor = \"$escaped_monitor\" })" >/dev/null 2>&1 ||
+      hyprctl dispatch focusmonitor "$focused" >/dev/null 2>&1 || true
+  fi
+}
+trap restore_focus EXIT
+forward_signal() {
+  local signal_name=$1 status=$2
+  signal_status=$status
+  if [[ -n $child_pid ]]; then
+    kill "-$signal_name" "-$child_pid" 2>/dev/null || kill "-$signal_name" "$child_pid" 2>/dev/null || true
+    wait "$child_pid" 2>/dev/null || true
+    exit "$status"
+  fi
+}
+trap 'forward_signal HUP 129' HUP
+trap 'forward_signal INT 130' INT
+trap 'forward_signal TERM 143' TERM
+
+software_fallback=false
+while :; do
+  arguments=(--screensaver --multi-monitor --app-id org.omarchy.screensaver)
+  [[ $software_fallback == true ]] && arguments+=(--software)
+  is_unlocked || fail "the Omarchy shell is locking, locked, or unavailable"
+  # Wayland app identity must be visible to Hyprland's idle service.
+  setsid env --default-signal=HUP,INT,TERM QT_QPA_PLATFORM=wayland "$binary" "${arguments[@]}" &
+  child_pid=$!
+  [[ -z $signal_status ]] || forward_signal TERM "$signal_status"
+  wait "$child_pid"
+  status=$?
+  # Omarchy lock kills the renderer by app ID; stop any remaining Qt helpers too.
+  kill -TERM "-$child_pid" 2>/dev/null || true
+  child_pid=
+  [[ -z $signal_status ]] || exit "$signal_status"
+  if (( status == 75 )) && [[ $software_fallback == false ]]; then
+    software_fallback=true
+    continue
+  fi
+  exit "$status"
+done

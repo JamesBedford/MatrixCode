@@ -14,6 +14,7 @@ void RunSettingsTests();
 void RunTokenResolverTests();
 void RunUtf8Tests();
 void RunCommandLineTests();
+void RunScreenSaverActivityTests();
 void RunSettingsStoreLinuxTests();
 void RunImageImportQtTests();
 void RunShaderContractTests();
@@ -32,6 +33,7 @@ int main() {
     RunTokenResolverTests();
     RunUtf8Tests();
     RunCommandLineTests();
+    RunScreenSaverActivityTests();
     RunSettingsStoreLinuxTests();
     RunImageImportQtTests();
     RunShaderContractTests();

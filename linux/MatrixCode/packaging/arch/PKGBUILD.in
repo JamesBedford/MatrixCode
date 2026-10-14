@@ -1,0 +1,41 @@
+# Generated with scripts/package-arch.sh from the checked-out native sources.
+pkgname=matrixcode
+pkgver=@MATRIXCODE_VERSION@
+pkgrel=1
+pkgdesc='Native Matrix digital rain with Qt settings and continuous multi-monitor playback'
+arch=('x86_64')
+url='https://github.com/JamesBedford/MatrixCode'
+license=('MIT')
+depends=('bash' 'coreutils' 'glibc' 'libgcc' 'libstdc++' 'qt6-base>=6.10' 'libglvnd' 'libx11' 'libxcb')
+makedepends=('cmake>=3.28' 'ninja' 'python')
+optdepends=(
+  'python: Omarchy screen saver integration installer'
+  'hyprland: Omarchy screen saver window management'
+  'util-linux: isolated Omarchy screen saver process groups and launch locking'
+  'procps-ng: Omarchy shell process detection'
+  'qt6-imageformats: additional image import formats'
+  'noto-fonts-cjk: Japanese glyphs for the Matrix character atlas'
+  'xscreensaver: screen saver integration on X11'
+)
+source=("matrixcode-${pkgver}.tar.gz")
+sha256sums=('@MATRIXCODE_SOURCE_SHA256@')
+
+build() {
+  cmake -S "${srcdir}/matrixcode-${pkgver}/linux/MatrixCode" -B "${srcdir}/build" -G Ninja \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DBUILD_TESTING=ON
+  cmake --build "${srcdir}/build"
+}
+
+check() {
+  QT_QPA_PLATFORM=offscreen ctest --test-dir "${srcdir}/build" --output-on-failure
+}
+
+package() {
+  DESTDIR="${pkgdir}" cmake --install "${srcdir}/build"
+  install -d "${pkgdir}/usr/share/licenses/${pkgname}"
+  install -m644 "${srcdir}/matrixcode-${pkgver}/LICENSE" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

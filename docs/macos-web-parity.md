@@ -52,6 +52,9 @@ The following are platform integration differences, not rain-feature gaps:
 - Stock GNOME Wayland has no supported third-party secure lock-screen renderer;
   Ubuntu provides full application/fullscreen/multi-monitor behavior there and
   XScreenSaver integration on X11 without replacing the GNOME lock screen.
+- Omarchy's optional integration changes its user-owned idle-plugin launcher
+  to start the native Linux saver. Its secure lock screen and idle/lock timing
+  stay with Omarchy; the rain renderer and shared simulation are unchanged.
 - Image reveals are optional and off by default on every platform. Strict
   comparisons either disable them or provide the same `mx-images` document and
   deterministic timing inputs to the compared renderers.
@@ -76,6 +79,13 @@ native gate separately:
 ```sh
 npm run verify:linux
 ```
+
+On current Omarchy, build the Arch package with
+`linux/MatrixCode/scripts/package-arch.sh`; `makepkg` runs the Linux native gate
+before packaging. The integration tests also run independently with
+`npm run test:omarchy`, using mocked desktop commands. These test installation
+and process lifecycle, not live Hyprland rendering. Native graphics and
+idle/lock checks are listed in `linux/MatrixCode/OMARCHY.md`.
 
 Windows validation remains `npm run verify:windows` on an appropriate Visual
 Studio host. Architecture-specific release and hardware gates in each native

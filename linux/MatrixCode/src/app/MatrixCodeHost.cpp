@@ -19,8 +19,8 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QElapsedTimer>
+#include <QEnterEvent>
 #include <QFileInfo>
-#include <QFocusEvent>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -57,6 +57,7 @@
 #include "matrixcode/core/Settings.h"
 #include "matrixcode/core/TokenResolver.h"
 #include "matrixcode/platform/CommandLine.h"
+#include "matrixcode/platform/ScreenSaverActivity.h"
 #include "matrixcode/platform/SettingsStoreLinux.h"
 #include "matrixcode/platform/X11Window.h"
 #include "matrixcode/render/OpenGLRenderer.h"
@@ -111,23 +112,25 @@ bool ToolkitReducedMotionRequested() {
 class ReducedMotionMonitor final {
  public:
   ReducedMotionMonitor() {
+    const QString gsettings = QStandardPaths::findExecutable(QStringLiteral("gsettings"));
+    if (gsettings.isEmpty()) return;
     QProcess query;
-    query.start(QStringLiteral("gsettings"), {
+    query.start(gsettings, {
       QStringLiteral("get"), QStringLiteral("org.gnome.desktop.interface"),
       QStringLiteral("enable-animations")});
-    if (query.waitForStarted(250)) {
-      if (query.waitForFinished(500)) {
-        ApplyGnomeValue(query.readAllStandardOutput());
-      } else {
-        query.kill();
-        query.waitForFinished(250);
-      }
+    if (!query.waitForStarted(250)) return;
+    if (!query.waitForFinished(500)) {
+      query.kill();
+      query.waitForFinished(250);
+      return;
     }
+    if (query.exitStatus() != QProcess::NormalExit || query.exitCode() != 0) return;
+    ApplyGnomeValue(query.readAllStandardOutput());
 
     QObject::connect(&monitor_, &QProcess::readyReadStandardOutput, &monitor_, [this] {
       ApplyGnomeValue(monitor_.readAllStandardOutput());
     });
-    monitor_.start(QStringLiteral("gsettings"), {
+    monitor_.start(gsettings, {
       QStringLiteral("monitor"), QStringLiteral("org.gnome.desktop.interface"),
       QStringLiteral("enable-animations")});
   }
@@ -264,10 +267,10 @@ class RainWidget final : public QOpenGLWidget {
   void mousePressEvent(QMouseEvent* event) override;
   void mouseDoubleClickEvent(QMouseEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
+  void enterEvent(QEnterEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
   bool event(QEvent* event) override;
   void closeEvent(QCloseEvent* event) override;
-  void focusOutEvent(QFocusEvent* event) override;
 
  private:
   MatrixCodeHost& host_;
@@ -305,7 +308,7 @@ class MatrixCodeHost final : public QObject {
     QObject::connect(&timer_, &QTimer::timeout, this, [this] { Tick(); });
     QObject::connect(&application_, &QGuiApplication::applicationStateChanged,
       this, [this](const Qt::ApplicationState state) {
-        if (!IsEmbedded()) SetPauseReason(kPauseInactive, state != Qt::ApplicationActive);
+        HandleApplicationStateChanged(state);
       });
     QObject::connect(&application_, &QGuiApplication::screenAdded,
       this, [this](QScreen*) { ScreensChanged(); });
@@ -321,11 +324,11 @@ class MatrixCodeHost final : public QObject {
   void HandleMousePress(RainWidget& widget, QMouseEvent& event);
   void HandleDoubleClick(RainWidget& widget, QMouseEvent& event);
   void HandleMouseMove(RainWidget& widget, QMouseEvent& event);
+  void HandlePointerEnter(RainWidget& widget, QEnterEvent& event);
   void HandleWheel(QWheelEvent& event);
   void HandlePointerActivity(QEvent& event);
   void HandleRendererFailure(RainWidget& widget, const QString& diagnostic);
   void HandleClose(QCloseEvent& event);
-  void HandleFocusOut();
   [[nodiscard]] bool IsCapture() const noexcept {
     return options_.mode == platform::LaunchMode::Capture;
   }
@@ -394,6 +397,8 @@ class MatrixCodeHost final : public QObject {
   [[nodiscard]] RainWindow* WindowFor(RainWidget& widget);
   [[nodiscard]] RainWindow* ControlsWindow();
   void HandleEmbeddedWindowDestroyed();
+  void HandleApplicationStateChanged(Qt::ApplicationState state);
+  [[nodiscard]] bool PointerDismissesSaver(RainWidget& widget, const QPointF& position);
   void ScreensChanged();
   void ExitAll();
 
@@ -452,7 +457,7 @@ class MatrixCodeHost final : public QObject {
   double toastStartSeconds_ = 0.0;
   qint64 lastClickMilliseconds_ = 0;
   int clickCount_ = 0;
-  QPoint saverInitialCursor_;
+  platform::ScreenSaverActivity saverActivity_;
   QElapsedTimer saverGrace_;
   bool captureSaved_ = false;
   bool saverCursorHidden_ = false;
@@ -549,6 +554,11 @@ void RainWidget::mouseMoveEvent(QMouseEvent* event) {
   if (!event->isAccepted()) QOpenGLWidget::mouseMoveEvent(event);
 }
 
+void RainWidget::enterEvent(QEnterEvent* event) {
+  host_.HandlePointerEnter(*this, *event);
+  QOpenGLWidget::enterEvent(event);
+}
+
 void RainWidget::wheelEvent(QWheelEvent* event) {
   host_.HandleWheel(*event);
   if (!event->isAccepted()) QOpenGLWidget::wheelEvent(event);
@@ -565,11 +575,6 @@ bool RainWidget::event(QEvent* event) {
 
 void RainWidget::closeEvent(QCloseEvent* event) {
   host_.HandleClose(*event);
-}
-
-void RainWidget::focusOutEvent(QFocusEvent* event) {
-  host_.HandleFocusOut();
-  QOpenGLWidget::focusOutEvent(event);
 }
 
 MatrixCodeHost::~MatrixCodeHost() {
@@ -720,7 +725,6 @@ int MatrixCodeHost::Run() {
     rainSeed_ = RandomSessionSeed();
   }
   if (!CreateWindows()) return 2;
-  saverInitialCursor_ = QCursor::pos();
   saverGrace_.start();
   if (IsStandaloneSaver()) {
     application_.setOverrideCursor(Qt::BlankCursor);
@@ -746,7 +750,7 @@ int MatrixCodeHost::Run() {
     WarmStaticRain();
   }
   if (!IsEmbedded()) {
-    SetPauseReason(kPauseInactive, application_.applicationState() != Qt::ApplicationActive);
+    HandleApplicationStateChanged(application_.applicationState());
   }
   timer_.start();
   return application_.exec();
@@ -1521,14 +1525,21 @@ void MatrixCodeHost::HandleDoubleClick(RainWidget& widget, QMouseEvent& event) {
   event.accept();
 }
 
-void MatrixCodeHost::HandleMouseMove(RainWidget&, QMouseEvent& event) {
+bool MatrixCodeHost::PointerDismissesSaver(RainWidget& widget, const QPointF& position) {
+  if (!IsStandaloneSaver()) return false;
+  const qint64 elapsed = saverGrace_.isValid() ? saverGrace_.elapsed() : 0;
+  if (!saverActivity_.ObservePointer(&widget, position.x(), position.y(), elapsed)) return false;
+  ExitAll();
+  return true;
+}
+
+void MatrixCodeHost::HandleMouseMove(RainWidget& widget, QMouseEvent& event) {
   event.ignore();
-  if (IsStandaloneSaver() && saverGrace_.elapsed() > 300 &&
-      (std::abs(QCursor::pos().x() - saverInitialCursor_.x()) >= 4 ||
-       std::abs(QCursor::pos().y() - saverInitialCursor_.y()) >= 4)) {
-    ExitAll();
-    event.accept();
-  }
+  if (PointerDismissesSaver(widget, event.position())) event.accept();
+}
+
+void MatrixCodeHost::HandlePointerEnter(RainWidget& widget, QEnterEvent& event) {
+  if (PointerDismissesSaver(widget, event.position())) event.accept();
 }
 
 void MatrixCodeHost::HandleWheel(QWheelEvent& event) {
@@ -1551,7 +1562,7 @@ void MatrixCodeHost::HandleRendererFailure(
     RainWidget& widget, const QString& diagnostic) {
   if (exiting_) return;
   if (!options_.forceSoftware) {
-    if (options_.xscreensaverHosted) {
+    if (options_.xscreensaverHosted || !options_.appId.isEmpty()) {
       QCoreApplication::exit(kSoftwareFallbackExitCode);
       return;
     }
@@ -1630,8 +1641,24 @@ void MatrixCodeHost::HandleClose(QCloseEvent& event) {
   }
 }
 
-void MatrixCodeHost::HandleFocusOut() {
-  if (IsStandaloneSaver() && saverGrace_.elapsed() > 300) ExitAll();
+void MatrixCodeHost::HandleApplicationStateChanged(const Qt::ApplicationState state) {
+  if (IsEmbedded()) return;
+  const bool active = state == Qt::ApplicationActive;
+  SetPauseReason(kPauseInactive, !active);
+  if (!IsStandaloneSaver()) return;
+  saverActivity_.ObserveApplicationFocus(active);
+  if (active) return;
+  const qint64 elapsed = saverGrace_.isValid() ? saverGrace_.elapsed() : 0;
+  const int delay = static_cast<int>(std::max<qint64>(
+    0, platform::kScreenSaverStartupGraceMilliseconds + 1 - elapsed));
+  // Check the application after focus has settled between its display windows.
+  QTimer::singleShot(delay, Qt::PreciseTimer, this, [this] {
+    if (saverActivity_.ShouldDismissForInactivity(
+          application_.applicationState() == Qt::ApplicationActive,
+          saverGrace_.isValid() ? saverGrace_.elapsed() : 0)) {
+      ExitAll();
+    }
+  });
 }
 
 void MatrixCodeHost::ScreensChanged() {

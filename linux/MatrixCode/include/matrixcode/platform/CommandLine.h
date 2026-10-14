@@ -23,6 +23,7 @@ struct CommandLineOptions {
   bool xscreensaverHosted = false;
   quint64 parentWindowId = 0;
   QString capturePath;
+  QString appId;
 };
 
 struct CommandLineParseResult {

@@ -146,7 +146,7 @@ SettingsDialog::SettingsDialog(
   title->setFont(titleFont);
   title->setObjectName("settingsTitle");
   root->addWidget(title);
-  root->addWidget(Hint(tr("Native Ubuntu renderer · settings are shared by app, fullscreen, multi-monitor and XScreenSaver modes.")));
+  root->addWidget(Hint(tr("Native Linux renderer · settings are shared by app, fullscreen, multi-monitor and screen-saver modes.")));
 
   tabs_ = new QTabWidget;
   tabs_->setDocumentMode(true);
