@@ -133,8 +133,9 @@ void RunMessageSchedulerTests() {
         dynamic = text;
         scheduler.Update(100.0, sink, region);
         const auto bounds = TargetBounds(sink);
-        const double columnExtent = layout == MessageLayout::Row ? text.size() : 1;
-        const double rowExtent = layout == MessageLayout::Drop ? text.size() : 1;
+        const double textLength = static_cast<double>(text.size());
+        const double columnExtent = layout == MessageLayout::Row ? textLength : 1.0;
+        const double rowExtent = layout == MessageLayout::Drop ? textLength : 1.0;
         // Quantization can move a centre by at most half a cell; edges clamp.
         const double expectedColumnCentre = std::clamp(position * 80.0,
           columnExtent / 2.0, 80.0 - columnExtent / 2.0);
