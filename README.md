@@ -6,7 +6,7 @@
 
 | Platform | Download | Includes / requirements |
 |---|---|---|
-| macOS | [Notarized DMG](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-macos-arm64.dmg) | App + screen saver; Apple Silicon, macOS 13+ |
+| macOS | [Download DMG](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-macos-arm64.dmg) | App + screen saver; Apple Silicon, macOS 13+ |
 | Linux | [Ubuntu amd64](https://julimbob.com/matrixcode/releases/v1.1.0/matrixcode_1.1.0_amd64.deb) · [Ubuntu arm64](https://julimbob.com/matrixcode/releases/v1.1.0/matrixcode_1.1.0_arm64.deb) | Native app + XScreenSaver support; Ubuntu 24.04+ |
 | Windows | [x64 installer](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64.msi) · [ARM64 installer](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64.msi) | Native app + screen saver; Windows 10/11 |
 | Windows — Wallpaper Engine | [Wallpaper package](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-wallpaper-engine.zip) | Extract, then import `index.html` with Create Wallpaper |
