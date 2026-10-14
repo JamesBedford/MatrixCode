@@ -40,7 +40,6 @@ BASE_SETTINGS = {
 class Scene:
     name: str
     title: str
-    subtitle: str
     accent: str
     seconds: float
     settings: dict
@@ -49,17 +48,17 @@ class Scene:
 
 
 SCENES = [
-    Scene("classic", "Classic green", "The original digital rain.", "#00FF41", 5.5,
+    Scene("classic", "Classic green", "#00FF41", 5.5,
           {"preset": "classic", "density": 5, "size": 1.5, "glow": 1.2, "speed": 1, "trail": 0.25}),
-    Scene("blue", "Electric blue", "A new colour. A different code.", "#27D6FF", 4.5,
+    Scene("blue", "Electric blue", "#27D6FF", 4.5,
           {"preset": "blue", "glyphs": "binary", "density": 7, "size": 1.8, "glow": 1.35, "speed": 1.4, "trail": 0.16}),
-    Scene("amber", "Amber terminal", "Slow it down. Go retro.", "#FFB000", 4.5,
+    Scene("amber", "Amber terminal", "#FFB000", 4.5,
           {"preset": "amber", "glyphs": "digits", "font": "terminal", "density": 6, "size": 2, "glow": 0.85, "speed": 0.75, "trail": 0.18, "scanlines": "true"}),
-    Scene("purple", "Neon purple", "Turn up the glow.", "#B23BFF", 4.5,
+    Scene("purple", "Neon purple", "#B23BFF", 4.5,
           {"preset": "purple", "glyphs": "katakana", "density": 8, "size": 1.4, "glow": 1.9, "speed": 1.05, "trail": 0.32}),
-    Scene("white", "Monochrome", "Strip it back. Make it yours.", "#EDEDED", 4.5,
+    Scene("white", "Monochrome", "#EDEDED", 4.5,
           {"preset": "white", "glyphs": "symbols", "font": "mono", "density": 5, "size": 1.9, "glow": 0.65, "speed": 1.1, "trail": 0.14, "scanlines": "true"}),
-    Scene("invitation", "Your Matrix. Your style.", "", "#00FF41", 9,
+    Scene("invitation", "Your Matrix Code. Your style.", "#00FF41", 9,
           {"preset": "classic", "density": 12, "size": 4.4, "glow": 1.3, "speed": 1.5, "trail": 0.24},
           warmup=3, message=True),
 ]
@@ -137,7 +136,6 @@ def shade() -> Image.Image:
 SHADE = shade()
 BRAND_FONT = font(27, bold=True)
 TITLE_FONT = font(72, bold=True)
-BODY_FONT = font(28)
 SMALL_FONT = font(19, mono=True)
 
 
@@ -162,7 +160,7 @@ def message_mask() -> Image.Image:
 MESSAGE_MASK = message_mask()
 
 
-def finish_frame(frame: Image.Image, scene: Scene, index: int, seconds: float) -> Image.Image:
+def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Image:
     frame = frame.convert("RGB")
     if scene.message:
         # Bring forward only letters already revealed by the app. Ambient rain keeps
@@ -187,23 +185,15 @@ def finish_frame(frame: Image.Image, scene: Scene, index: int, seconds: float) -
         caption = Image.new("RGBA", SIZE)
         caption_draw = ImageDraw.Draw(caption)
         y = round(788 + 18 * (1 - reveal))
-        tracked_text(caption_draw, (82, y), f"0{index + 1}  /  FIND YOUR STYLE", SMALL_FONT, accent, 2)
         caption_draw.text((78, y + 45), scene.title, font=TITLE_FONT, fill="#F5F7F6")
-        caption_draw.text((82, y + 139), scene.subtitle, font=BODY_FONT, fill="#D0D8D3")
         caption.putalpha(caption.getchannel("A").point(lambda value: round(value * reveal)))
         chrome = Image.alpha_composite(chrome, caption)
-        draw = ImageDraw.Draw(chrome)
-        for dot_index, dot_scene in enumerate(SCENES[:-1]):
-            x = SIZE[0] - 248 + dot_index * 34
-            draw.ellipse((x, 966, x + 11, 977), fill=dot_scene.accent if dot_index == index else "#515957")
     else:
         ending = Image.new("RGBA", SIZE)
         ending_draw = ImageDraw.Draw(ending)
-        ending_draw.text((SIZE[0] / 2, 391), "YOUR MATRIX. YOUR STYLE.",
+        ending_draw.text((SIZE[0] / 2, 391), scene.title,
                          font=font(25, bold=True), fill="#EEF5EF", anchor="mm")
         ending_draw.text((SIZE[0] / 2, 729), SITE, font=font(33), fill="#F5FFF7", anchor="mm")
-        ending_draw.text((SIZE[0] / 2, 786), "OPEN IN YOUR BROWSER", font=SMALL_FONT,
-                         fill="#95B39E", anchor="mm")
         ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
         chrome = Image.alpha_composite(chrome, ending)
     return Image.alpha_composite(frame, chrome).convert("RGB")
@@ -261,7 +251,7 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
             if preview_only and frame_number != preview_frame:
                 continue
             image = Image.open(io.BytesIO(page.screenshot(type="png")))
-            output = finish_frame(image, scene, index, frame_number / FPS)
+            output = finish_frame(image, scene, frame_number / FPS)
             if encoder:
                 encoder.stdin.write(output.tobytes())
             if frame_number == preview_frame:
