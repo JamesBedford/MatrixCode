@@ -40,7 +40,6 @@ BASE_SETTINGS = {
 class Scene:
     name: str
     title: str
-    accent: str
     seconds: float
     settings: dict
     warmup: float = 18
@@ -48,17 +47,17 @@ class Scene:
 
 
 SCENES = [
-    Scene("classic", "Classic green", "#00FF41", 5.5,
+    Scene("classic", "Classic green", 5.5,
           {"preset": "classic", "density": 5, "size": 1.5, "glow": 1.2, "speed": 1, "trail": 0.25}),
-    Scene("blue", "Electric blue", "#27D6FF", 4.5,
+    Scene("blue", "Electric blue", 4.5,
           {"preset": "blue", "glyphs": "binary", "density": 7, "size": 1.8, "glow": 1.35, "speed": 1.4, "trail": 0.16}),
-    Scene("amber", "Amber terminal", "#FFB000", 4.5,
+    Scene("amber", "Amber terminal", 4.5,
           {"preset": "amber", "glyphs": "digits", "font": "terminal", "density": 6, "size": 2, "glow": 0.85, "speed": 0.75, "trail": 0.18, "scanlines": "true"}),
-    Scene("purple", "Neon purple", "#B23BFF", 4.5,
+    Scene("purple", "Neon purple", 4.5,
           {"preset": "purple", "glyphs": "katakana", "density": 8, "size": 1.4, "glow": 1.9, "speed": 1.05, "trail": 0.32}),
-    Scene("white", "Monochrome", "#EDEDED", 4.5,
+    Scene("white", "Monochrome", 4.5,
           {"preset": "white", "glyphs": "symbols", "font": "mono", "density": 5, "size": 1.9, "glow": 0.65, "speed": 1.1, "trail": 0.14, "scanlines": "true"}),
-    Scene("invitation", "Your Matrix Code. Your style.", "#00FF41", 9,
+    Scene("invitation", "Your Matrix Code. Your style.", 9,
           {"preset": "classic", "density": 12, "size": 4.4, "glow": 1.3, "speed": 1.5, "trail": 0.24},
           warmup=3, message=True),
 ]
@@ -111,13 +110,6 @@ def font(size: int, bold: bool = False, mono: bool = False):
     return ImageFont.load_default(size=size)
 
 
-def tracked_text(draw, position, text, face, fill, tracking=3):
-    x, y = position
-    for char in text:
-        draw.text((x, y), char, font=face, fill=fill)
-        x += draw.textlength(char, font=face) + tracking
-
-
 def ease(value: float) -> float:
     value = min(1, max(0, value))
     return value * value * (3 - 2 * value)
@@ -134,7 +126,6 @@ def shade() -> Image.Image:
 
 
 SHADE = shade()
-BRAND_FONT = font(27, bold=True)
 TITLE_FONT = font(72, bold=True)
 SMALL_FONT = font(19, mono=True)
 
@@ -173,11 +164,6 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
     frame = Image.alpha_composite(frame.convert("RGBA"), SHADE)
     chrome = Image.new("RGBA", SIZE)
     draw = ImageDraw.Draw(chrome)
-    accent = scene.accent
-    for column, height in enumerate([30, 42, 24]):
-        x = 82 + column * 9
-        draw.rectangle((x, 88 - height, x + 3, 88), fill=accent)
-    tracked_text(draw, (128, 55), "MATRIX CODE", BRAND_FONT, "#F1F5F2", 4)
     if not scene.message:
         draw.text((SIZE[0] - 82, 63), SITE, font=SMALL_FONT, fill="#CED6D2", anchor="ra")
     reveal = ease(seconds / 0.65)
@@ -295,6 +281,7 @@ def assemble(clips: list[Path], audio: Path, output: Path):
         *inputs, "-i", str(audio), "-filter_complex", ";".join(filters),
         "-map", f"[{last}]", "-map", f"{len(clips)}:a", "-c:v", "libx264",
         "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS),
+        "-af", "loudnorm=I=-14:TP=-1.5:LRA=7", "-ar", "48000",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", str(DURATION),
         "-metadata", "title=Matrix Code — Find your style",
         "-metadata", "comment=Actual Matrix Code WebGL capture; original generated soundtrack",

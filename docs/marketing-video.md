@@ -7,14 +7,15 @@ monochrome symbols, then returns to green with **Try it now!** revealed by the
 app's own in-rain message scheduler. The final scene includes the public app URL.
 
 The video includes style names, half-second dissolves, and an original
-electronic soundtrack synthesized by `scripts/marketing_audio.py`. No external
+industrial electronic soundtrack synthesized by `scripts/marketing_audio.py`,
+with distorted bass, punchy drums, tense synths, and transition impacts. No external
 music, footage, or generated rain visuals are used. The ending applies a finishing
 brightness grade to the app's existing message glyphs while dimming the surrounding
 rain; the invitation is not drawn as a separate text overlay. Scene settings use
 ordinary app controls and live in the capture script.
 
 The style scenes use only their main titles, with no supporting subtitles,
-numbered chapter labels, or navigation dots. The closing line reads
+numbered chapter labels, navigation dots, or a top-left logo. The closing line reads
 **Your Matrix Code. Your style.** above the invitation.
 
 ## Render
