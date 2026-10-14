@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Capture a 30-second marketing film from the actual, unmodified WebGL app.
+"""Capture a 40-second marketing film from the actual, unmodified WebGL app.
 
 Requires a production build, Python Playwright/Pillow/NumPy, Chromium, and FFmpeg.
-Run with --preview-only to review the six scenes before rendering the MP4.
+Run with --preview-only to review every style before rendering the MP4.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -44,6 +44,7 @@ class Scene:
     settings: dict
     warmup: float = 18
     message: bool = False
+    overlap_comparison: bool = False
 
 
 SCENES = [
@@ -57,6 +58,11 @@ SCENES = [
           {"preset": "purple", "glyphs": "katakana", "density": 8, "size": 1.4, "glow": 1.9, "speed": 1.05, "trail": 0.32}),
     Scene("white", "Monochrome", 4.5,
           {"preset": "white", "glyphs": "symbols", "font": "mono", "density": 5, "size": 1.9, "glow": 0.65, "speed": 1.1, "trail": 0.14, "scanlines": "true"}),
+    Scene("columns", "More columns", 4.5,
+          {"preset": "classic", "density": 12, "size": 0.65, "glow": 0.9, "speed": 1.15, "trail": 0.18}),
+    Scene("non-overlapping", "Non-overlapping rain", 6.5,
+          {"preset": "classic", "density": 60, "size": 1.6, "glow": 0.65, "speed": 1.2, "trail": 0.12},
+          overlap_comparison=True),
     Scene("invitation", "Your Matrix Code. Your style.", 9,
           {"preset": "classic", "density": 12, "size": 4.4, "glow": 1.3, "speed": 1.5, "trail": 0.24},
           warmup=3, message=True),
@@ -64,6 +70,19 @@ SCENES = [
 DURATION = sum(scene.seconds for scene in SCENES) - TRANSITION * (len(SCENES) - 1)
 TRANSITIONS = [sum(scene.seconds - TRANSITION for scene in SCENES[:index])
                for index in range(1, len(SCENES))]
+
+
+def scene_versions(scene: Scene) -> list[Scene]:
+    """Keep the overlap comparison identical apart from its overlap control."""
+    if not scene.overlap_comparison:
+        return [scene]
+    return [scene, replace(scene, name="overlapping", title="Overlapping rain",
+                           settings={**scene.settings, "overlap": "true"},
+                           overlap_comparison=False)]
+
+
+def preview_path(directory: Path, index: int, scene: Scene) -> Path:
+    return directory / f"{index:02d}-{scene.name}.jpg"
 
 # Advance the normal app's RAF loop in exact frame increments; capture speed cannot
 # change the motion. Fresh storage lives only in the throwaway browser context.
@@ -191,8 +210,8 @@ def open_scene(browser, dist: Path, scene: Scene):
                                   reduced_motion="no-preference")
     doc = {
         "messages": [CTA] if scene.message else [], "enabled": scene.message,
-        "frequencyMs": 500, "persistenceMs": 60000, "appearMs": 1800,
-        "disappearMs": 0, "flickerOut": True, "brightnessFade": False,
+        "frequencyMs": 500, "persistenceMs": 8000, "appearMs": 1800,
+        "disappearMs": 2000, "flickerOut": True, "brightnessFade": False,
         "messageLayout": "row", "verticalPosition": 0.5, "verticalJitter": 0,
         "horizontalPosition": 0.5, "horizontalJitter": 0,
     }
@@ -215,11 +234,15 @@ def open_scene(browser, dist: Path, scene: Scene):
     dimensions = page.locator("#app > canvas").evaluate("canvas => [canvas.width, canvas.height]")
     if tuple(dimensions) != SIZE:
         raise RuntimeError(f"{scene.name}: unexpected canvas dimensions {dimensions}")
+    overlap = page.get_by_role("button", name="Allow overlap", include_hidden=True).get_attribute("aria-pressed")
+    if overlap != {**BASE_SETTINGS, **scene.settings}["overlap"]:
+        raise RuntimeError(f"{scene.name}: incorrect overlap setting {overlap}")
     return context, page, problems
 
 
 def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, preview_only: bool):
-    context, page, problems = open_scene(browser, dist, scene)
+    versions = scene_versions(scene)
+    sessions = [open_scene(browser, dist, version) for version in versions]
     clip = directory / f"{index:02d}-{scene.name}.mp4"
     encoder = None
     try:
@@ -231,23 +254,33 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
                 "-preset", "ultrafast", "-crf", "0", "-pix_fmt", "yuv420p", str(clip),
             ], stdin=subprocess.PIPE)
         count = round(scene.seconds * FPS)
-        preview_frame = round((5 if scene.message else 1.5) * FPS)
+        switch_frame = math.ceil(count / len(versions))
+        preview_frames = {index * switch_frame + round((5 if scene.message else 1.5) * FPS)
+                          for index in range(len(versions))}
         for frame_number in range(count):
-            page.evaluate("window.__videoAdvance()")
-            if preview_only and frame_number != preview_frame:
+            # Both comparison views share the same clock and are already full of rain
+            # when the full-screen switch happens; the extra lanes never start empty.
+            for _, page, _ in sessions:
+                page.evaluate("window.__videoAdvance()")
+            if preview_only and frame_number not in preview_frames:
                 continue
+            version_index = min(frame_number // switch_frame, len(versions) - 1)
+            version = versions[version_index]
+            page = sessions[version_index][1]
             image = Image.open(io.BytesIO(page.screenshot(type="png")))
-            output = finish_frame(image, scene, frame_number / FPS)
+            output = finish_frame(image, version, (frame_number - version_index * switch_frame) / FPS)
             if encoder:
                 encoder.stdin.write(output.tobytes())
-            if frame_number == preview_frame:
-                output.save(directory / f"{index:02d}-{scene.name}.jpg", quality=95, subsampling=0)
-            if preview_only:
+            if frame_number in preview_frames:
+                output.save(preview_path(directory, index, version), quality=95, subsampling=0)
+            if preview_only and frame_number == max(preview_frames):
                 break
-        if problems:
-            raise RuntimeError(f"{scene.name}: browser errors: {problems}")
+        for version, (_, _, problems) in zip(versions, sessions):
+            if problems:
+                raise RuntimeError(f"{version.name}: browser errors: {problems}")
     finally:
-        context.close()
+        for context, _, _ in sessions:
+            context.close()
         if encoder:
             encoder.stdin.close()
             if encoder.wait() != 0:
@@ -257,12 +290,15 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
 
 
 def contact_sheet(directory: Path, output: Path):
-    sheet = Image.new("RGB", (1440, 810), "black")
-    for index, scene in enumerate(SCENES):
-        still = Image.open(directory / f"{index:02d}-{scene.name}.jpg")
+    previews = [preview_path(directory, index, version)
+                for index, scene in enumerate(SCENES) for version in scene_versions(scene)]
+    columns = 3
+    sheet = Image.new("RGB", (columns * 480, math.ceil(len(previews) / columns) * 270), "black")
+    for index, preview in enumerate(previews):
+        still = Image.open(preview)
         sheet.paste(still.resize((480, 270), Image.Resampling.LANCZOS),
-                    ((index % 3) * 480, (index // 3) * 270))
-    sheet.crop((0, 0, 1440, 540)).save(output, quality=93, subsampling=0)
+                    ((index % columns) * 480, (index // columns) * 270))
+    sheet.save(output, quality=93, subsampling=0)
 
 
 def assemble(clips: list[Path], audio: Path, output: Path):
@@ -311,7 +347,8 @@ def main():
             finally:
                 browser.close()
         contact_sheet(directory, args.out.with_name("matrixcode-storyboard.jpg"))
-        shutil.copyfile(directory / "05-invitation.jpg", args.out.with_name("matrixcode-poster.jpg"))
+        shutil.copyfile(preview_path(directory, len(SCENES) - 1, SCENES[-1]),
+                        args.out.with_name("matrixcode-poster.jpg"))
         if not args.preview_only:
             audio = directory / "soundtrack.wav"
             write_soundtrack(audio, DURATION, TRANSITIONS)

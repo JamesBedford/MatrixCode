@@ -13,7 +13,7 @@ import numpy as np
 SAMPLE_RATE = 48_000
 BEAT_SECONDS = 0.5
 BASS_RIFF = (38, 38, 50, 38, None, 38, 41, 39, 38, None, 50, 38, 45, 41, 39, 38)
-SCENE_ROOTS = (38, 38, 36, 38, 41, 38)
+SCENE_ROOTS = (38, 38, 36, 38, 41, 38, 36, 38)
 
 
 def note_frequency(midi_note: int) -> float:
@@ -139,7 +139,7 @@ def write_soundtrack(
         if scene == 2 and index % 2:
             continue
         stab(start, SCENE_ROOTS[scene] + 12, 0.145 if start >= final_start else 0.115)
-        if scene in (3, 4, 5):
+        if scene >= 3:
             stab(start + 0.75, SCENE_ROOTS[scene] + 12, 0.064, 0.36)
 
     def impact(start: float, gain: float) -> None:
@@ -193,7 +193,7 @@ def write_soundtrack(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--duration", type=float, default=30)
-    parser.add_argument("--transitions", type=float, nargs="*", default=[5, 9, 13, 17, 21])
+    parser.add_argument("--duration", type=float, default=40)
+    parser.add_argument("--transitions", type=float, nargs="*", default=[5, 9, 13, 17, 21, 25, 31])
     arguments = parser.parse_args()
     write_soundtrack(arguments.output, arguments.duration, arguments.transitions)
