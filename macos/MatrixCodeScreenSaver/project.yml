@@ -40,8 +40,8 @@ targets:
         CFBundleInfoDictionaryVersion: "6.0"
         CFBundleName: "$(PRODUCT_NAME)"
         CFBundlePackageType: BNDL
-        CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: "1.1.0"
+        CFBundleVersion: "4"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSHumanReadableCopyright: MIT License
         NSPrincipalClass: MatrixCodeScreenSaverView
@@ -80,8 +80,8 @@ targets:
         CFBundleInfoDictionaryVersion: "6.0"
         CFBundleName: "$(PRODUCT_NAME)"
         CFBundlePackageType: APPL
-        CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: "1.1.0"
+        CFBundleVersion: "4"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSHumanReadableCopyright: MIT License
         NSPrincipalClass: NSApplication

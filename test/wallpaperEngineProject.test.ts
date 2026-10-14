@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { packageHtml } from "../scripts/wallpaper-engine/lib.mjs";
 
 const projectPath = resolve(process.cwd(), "wallpaper-engine/project.json");
 const generatorPath = resolve(process.cwd(), "scripts/wallpaper-engine/generate-project.mjs");
@@ -24,6 +25,16 @@ function project() {
 }
 
 describe("Wallpaper Engine generated project", () => {
+  it("packages the browser metadata without a hosted canonical reference", () => {
+    const html = packageHtml(readFileSync(resolve(process.cwd(), "index.html"), "utf8"));
+    expect(html).not.toMatch(/<link\b[^>]*rel=["']canonical["']/i);
+    expect(html).toContain('<meta name="matrixcode-wallpaper-engine" content="1">');
+    expect(html).toContain('href="favicon.svg"');
+    expect(html).toContain('href="icons/apple-touch-icon.png"');
+    expect(html).toContain('src="src/main.ts"');
+    expect(html).toContain("connect-src 'none'");
+  });
+
   it("is current with the canonical property catalog", () => {
     const result = spawnSync(process.execPath, [generatorPath, "--check"], {
       cwd: process.cwd(),

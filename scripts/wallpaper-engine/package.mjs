@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   canonicalJson,
   generateProject,
+  packageHtml,
   readCatalog,
   repositoryRoot,
   validateCatalog,
@@ -20,12 +21,7 @@ mkdirSync(resolve(outputRoot, "icons"), { recursive: true });
 
 // Vite inlines the application, but public PWA assets remain root-relative. WPE
 // loads from a local project directory, so make those references package-relative.
-const html = readFileSync(sourceHtml, "utf8")
-  .replace("<head>", '<head><meta name="matrixcode-wallpaper-engine" content="1">')
-  .replaceAll('href="/', 'href="')
-  .replaceAll("href='/", "href='")
-  .replaceAll('src="/', 'src="')
-  .replaceAll("src='/", "src='");
+const html = packageHtml(readFileSync(sourceHtml, "utf8"));
 writeFileSync(resolve(outputRoot, "index.html"), html, "utf8");
 writeFileSync(resolve(outputRoot, "project.json"), canonicalJson(generateProject(catalog)), "utf8");
 copyFileSync(resolve(repositoryRoot, "docs/screenshot.png"), resolve(outputRoot, "preview.png"));

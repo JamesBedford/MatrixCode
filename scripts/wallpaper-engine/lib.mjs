@@ -168,6 +168,16 @@ export function canonicalJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
+export function packageHtml(html) {
+  return html
+    .replace(/<link\b(?=[^>]*\brel\s*=\s*["']canonical["'])[^>]*>\s*/gi, "")
+    .replace("<head>", '<head><meta name="matrixcode-wallpaper-engine" content="1">')
+    .replaceAll('href="/', 'href="')
+    .replaceAll("href='/", "href='")
+    .replaceAll('src="/', 'src="')
+    .replaceAll("src='/", "src='");
+}
+
 export function validateProject(project, catalog) {
   validateCatalog(catalog);
   const expected = canonicalJson(generateProject(catalog));

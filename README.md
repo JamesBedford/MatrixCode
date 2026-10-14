@@ -2,6 +2,20 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+## Download v1.1.0
+
+| Platform | Download | Includes / requirements |
+|---|---|---|
+| macOS | [Notarized DMG](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-macos-arm64.dmg) | App + screen saver; Apple Silicon, macOS 13+ |
+| Linux | [Ubuntu amd64](https://julimbob.com/matrixcode/releases/v1.1.0/matrixcode_1.1.0_amd64.deb) · [Ubuntu arm64](https://julimbob.com/matrixcode/releases/v1.1.0/matrixcode_1.1.0_arm64.deb) | Native app + XScreenSaver support; Ubuntu 24.04+ |
+| Windows | [x64 installer](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64.msi) · [ARM64 installer](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64.msi) | Native app + screen saver; Windows 10/11 |
+| Windows — Wallpaper Engine | [Wallpaper package](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-wallpaper-engine.zip) | Extract, then import `index.html` with Create Wallpaper |
+
+Windows portable packages: [x64](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64-portable.zip) · [ARM64](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64-portable.zip).
+Windows installers and binaries are unsigned. Linux XScreenSaver embedding requires X11.
+
+[Release notes](https://github.com/JamesBedford/MatrixCode/releases/tag/v1.1.0) · [SHA-256 checksums](https://julimbob.com/matrixcode/releases/v1.1.0/SHA256SUMS.txt) · [Run in your browser](https://julimbob.com/matrixcode/)
+
 MatrixCode is an open-source **Matrix digital rain effect** with a browser/WebGL
 implementation as its visual source of truth, native applications for Ubuntu,
 macOS, and Windows, and a browser-derived Wallpaper Engine package. The web
@@ -15,6 +29,7 @@ screen.
 
 ## Contents
 
+- [Download v1.1.0](#download-v110)
 - [Why MatrixCode](#why-matrixcode)
 - [Features](#features)
 - [Screenshots](#screenshots)
