@@ -1,9 +1,9 @@
 # Matrix Code marketing video
 
-`scripts/capture_marketing_video.py` creates a 40-second, 1920 × 1080,
+`scripts/capture_marketing_video.py` creates a 36-second, 1920 × 1080,
 30 fps landscape video from the actual production WebGL app. It starts with
-classic green, shows blue binary, amber terminal digits, purple katakana, and
-monochrome symbols, then adds a green style with many more columns and a full-screen
+classic green, shows blue binary, amber terminal digits, and purple katakana,
+then adds a green style with many more columns and a full-screen
 comparison of non-overlapping and overlapping rain. It returns to green with
 **Try it now!** revealed by the app's own in-rain message scheduler. The invitation
 flickers in over roughly the first five seconds of the closing shot, then stays
@@ -42,7 +42,7 @@ The default output directory is `output/marketing/`, ignored by Git:
 
 - `matrixcode-styles.mp4`: H.264/AAC video with web-streaming fast start.
 - `matrixcode-poster.jpg`: a frame of the final invitation.
-- `matrixcode-storyboard.jpg`: nine previews, including both overlap states.
+- `matrixcode-storyboard.jpg`: eight previews, including both overlap states.
 
 Use `--dist DIRECTORY` for another production build and `--out PATH.mp4` to choose
 the video destination. Capture clips and the WAV score are temporary and removed
@@ -60,7 +60,7 @@ incorrect canvas size, or failed encoding. macOS uses GPU-backed ANGLE Metal;
 other systems need a working WebGL2 implementation.
 
 Review the storyboard, decoded transition frames, and final frame after rendering.
-FFprobe should report 1920 × 1080, 30 fps, 1200 video frames, a 40-second duration,
+FFprobe should report 1920 × 1080, 30 fps, 1080 video frames, a 36-second duration,
 and a stereo 48 kHz audio stream. Decode the complete MP4 to check for stream errors:
 
 ```sh

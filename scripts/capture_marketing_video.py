@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture a 40-second marketing film from the actual, unmodified WebGL app.
+"""Capture a 36-second marketing film from the actual, unmodified WebGL app.
 
 Requires a production build, Python Playwright/Pillow/NumPy, Chromium, and FFmpeg.
 Run with --preview-only to review every style before rendering the MP4.
@@ -56,8 +56,6 @@ SCENES = [
           {"preset": "amber", "glyphs": "digits", "font": "terminal", "density": 6, "size": 2, "glow": 0.85, "speed": 0.75, "trail": 0.18, "scanlines": "true"}),
     Scene("purple", "Neon purple", 4.5,
           {"preset": "purple", "glyphs": "katakana", "density": 8, "size": 1.4, "glow": 1.9, "speed": 1.05, "trail": 0.32}),
-    Scene("white", "Monochrome", 4.5,
-          {"preset": "white", "glyphs": "symbols", "font": "mono", "density": 5, "size": 1.9, "glow": 0.65, "speed": 1.1, "trail": 0.14, "scanlines": "true"}),
     Scene("columns", "More columns", 4.5,
           {"preset": "classic", "density": 12, "size": 0.65, "glow": 0.9, "speed": 1.15, "trail": 0.18}),
     Scene("non-overlapping", "Non-overlapping rain columns", 6.5,
