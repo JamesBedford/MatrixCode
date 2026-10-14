@@ -6,10 +6,10 @@
 
 | Platform | Download | Includes / requirements |
 |---|---|---|
-| macOS | [Download DMG](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-macos-arm64.dmg) | App + screen saver; Apple Silicon, macOS 13+ |
-| Linux | [Ubuntu amd64](https://julimbob.com/matrixcode/releases/v1.1.0/matrixcode_1.1.0_amd64.deb) · [Ubuntu arm64](https://julimbob.com/matrixcode/releases/v1.1.0/matrixcode_1.1.0_arm64.deb) | Native app + XScreenSaver support; Ubuntu 24.04+ |
-| Windows | [x64 installer](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64.msi) · [ARM64 installer](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64.msi) | Native app + screen saver; Windows 10/11 |
-| Windows — Wallpaper Engine | [Wallpaper package](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-wallpaper-engine.zip) | Extract, then import `index.html` with Create Wallpaper |
+| macOS | [Download DMG](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-macos-arm64.dmg) | App + screensaver; Apple Silicon, macOS 13+ |
+| Linux | [Download DEB (amd64)](https://julimbob.com/matrixcode/releases/v1.1.0/matrixcode_1.1.0_amd64.deb) · [Download DEB (ARM64)](https://julimbob.com/matrixcode/releases/v1.1.0/matrixcode_1.1.0_arm64.deb) | App + screensaver; Ubuntu 24.04+ |
+| Windows | [Download MSI (x64)](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64.msi) · [Download MSI (ARM64)](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64.msi) | App + screensaver; Windows 10/11 |
+| Windows — Wallpaper Engine | [Download ZIP](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-wallpaper-engine.zip) | Extract, then import `index.html` with Create Wallpaper |
 
 Windows portable packages: [x64](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64-portable.zip) · [ARM64](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64-portable.zip).
 Windows installers and binaries are unsigned. Linux XScreenSaver embedding requires X11.
