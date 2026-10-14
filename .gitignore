@@ -10,3 +10,4 @@ linux/MatrixCode/out/
 .claude/
 __pycache__/
 .pytest_cache/
+output/marketing/
