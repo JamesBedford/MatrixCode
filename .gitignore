@@ -7,7 +7,10 @@ dist-ssr
 coverage
 windows/MatrixCode/out/
 linux/MatrixCode/out/
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/matrixcode-marketing-video/
 __pycache__/
 .pytest_cache/
 output/marketing/

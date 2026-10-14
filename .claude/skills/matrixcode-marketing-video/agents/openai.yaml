@@ -1,0 +1,4 @@
+interface:
+  display_name: "MatrixCode Marketing Video"
+  short_description: "Create and revise MatrixCode marketing videos"
+  default_prompt: "Use $matrixcode-marketing-video to create or update a MatrixCode marketing video from the real app."

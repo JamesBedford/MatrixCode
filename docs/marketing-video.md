@@ -1,77 +1,18 @@
 # Matrix Code marketing video
 
-`scripts/capture_marketing_video.py` creates a 36-second, 1920 × 1080,
-30 fps landscape video from the actual production WebGL app. It starts with
-classic green, shows blue binary, amber terminal digits, and purple katakana,
-then adds a green style with many more columns and a full-screen
-comparison of non-overlapping and overlapping rain. It returns to green with
-**Try it now!** revealed by the app's own in-rain message scheduler. The invitation
-flickers in over roughly the first five seconds of the closing shot, then stays
-fully resolved through the final frame. The final scene includes the public app URL.
+Use the project-local [MatrixCode marketing video skill](../.claude/skills/matrixcode-marketing-video/SKILL.md)
+to recreate the film, produce a new one, or update the scenes, captions, soundtrack,
+and social-player layout. It bundles the canonical Python capture and soundtrack
+scripts and their dependencies.
 
-The video includes style names, half-second dissolves, and an original
-industrial electronic soundtrack synthesized by `scripts/marketing_audio.py`,
-with distorted bass, punchy drums, tense synths, descending percussion fills, and
-transition impacts. The music ducks gently around the kick while the drum attacks
-remain clear. No external music, footage, or generated rain visuals are used.
-The ending applies a finishing
-brightness grade to the app's existing message glyphs while dimming the surrounding
-rain; the invitation is not drawn as a separate text overlay. Scene settings use
-ordinary app controls and live in the capture script.
+The [production reference](../.claude/skills/matrixcode-marketing-video/references/production.md)
+covers setup from a fresh checkout, preview/full render commands, editing points,
+verification, output handoff, and cleanup. Follow it before replacing a finished video.
 
-During the final second, the capture renders the message cells at their held
-brightness with head highlights disabled. Every invitation character finishes as
-a plain green glyph while the surrounding rain keeps moving.
+Claude and Codex use the same skill source: `.agents/skills` is a relative symlink
+to `.claude/skills`. The established `scripts/capture_marketing_video.py` and
+`scripts/marketing_audio.py` command paths also link to the bundled source files.
 
-The extra-column style uses smaller glyphs and higher density. The overlap
-comparison keeps its settings identical and switches from overlap off to on
-halfway through, using two warmed views running on the same capture clock.
-
-The style scenes use only their main titles, with no supporting subtitles,
-numbered chapter labels, navigation dots, or a top-left logo. The closing line reads
-**Your Matrix Code. Your style.** above the invitation and the public app URL below it.
-
-## Render
-
-Install FFmpeg, Python Playwright, Pillow, and NumPy, plus Playwright Chromium:
-
-```sh
-python3 -m pip install playwright pillow numpy
-python3 -m playwright install chromium
-npm run build
-python3 scripts/capture_marketing_video.py --preview-only
-python3 scripts/capture_marketing_video.py
-```
-
-The default output directory is `output/marketing/`, ignored by Git:
-
-- `matrixcode-styles.mp4`: H.264/AAC video with web-streaming fast start.
-- `matrixcode-poster.jpg`: a frame of the final invitation.
-- `matrixcode-storyboard.jpg`: eight previews, including both overlap states.
-
-Use `--dist DIRECTORY` for another production build and `--out PATH.mp4` to choose
-the video destination. Capture clips and the WAV score are temporary and removed
-after encoding. The script opens the self-contained build directly; no dev server
-or network connection is needed.
-
-## Capture and verification
-
-Each scene gets a fresh, isolated Chromium context. Capture advances the app's
-normal animation loop in exact 1/30-second increments, disables adaptive resolution,
-and fixes the calendar to an ordinary date so holiday overrides cannot change the
-selected styles. Intro, message, and UI state affect only these throwaway contexts.
-The script fails on page errors, a compatibility fallback, visible settings, an
-incorrect canvas size, or failed encoding. macOS uses GPU-backed ANGLE Metal;
-other systems need a working WebGL2 implementation.
-
-Review the storyboard, decoded transition frames, and final frame after rendering.
-FFprobe should report 1920 × 1080, 30 fps, 1080 video frames, a 36-second duration,
-and a stereo 48 kHz audio stream. Decode the complete MP4 to check for stream errors:
-
-```sh
-ffprobe -v error -show_streams -show_format output/marketing/matrixcode-styles.mp4
-ffmpeg -v error -i output/marketing/matrixcode-styles.mp4 -f null -
-```
-
-This workflow adds marketing assets only and does not change rendering or behavior
-in the web or native applications.
+The latest finished video and its poster, storyboard, and encoded final frame live
+under `output/marketing/`, which is ignored by Git. Keep current deliverables there
+and remove superseded versions after validating their replacements.
