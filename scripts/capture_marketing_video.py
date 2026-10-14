@@ -199,6 +199,8 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         ending_draw.text((SIZE[0] / 2, 391), scene.title,
                          font=font(25, bold=True), fill="#EEF5EF", anchor="mm")
         ending_draw.text((SIZE[0] / 2, 729), SITE, font=font(33), fill="#F5FFF7", anchor="mm")
+        ending_draw.text((SIZE[0] / 2, 775), "Web app and screen savers",
+                         font=font(23), fill="#CED6D2", anchor="mm")
         ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
         chrome = Image.alpha_composite(chrome, ending)
     return Image.alpha_composite(frame, chrome).convert("RGB")
@@ -212,7 +214,7 @@ def open_scene(browser, dist: Path, scene: Scene):
         "messages": [CTA] if scene.message else [], "enabled": scene.message,
         # Include preroll in the entrance, then hold the resolved invitation through the clip.
         "frequencyMs": 500, "persistenceMs": round(scene.seconds * 1000),
-        "appearMs": round((scene.warmup + 3) * 1000),
+        "appearMs": round((scene.warmup + 5) * 1000),
         "disappearMs": 0, "flickerOut": True, "brightnessFade": False,
         "messageLayout": "row", "verticalPosition": 0.5, "verticalJitter": 0,
         "horizontalPosition": 0.5, "horizontalJitter": 0,
@@ -257,8 +259,10 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
             ], stdin=subprocess.PIPE)
         count = round(scene.seconds * FPS)
         switch_frame = math.ceil(count / len(versions))
-        preview_frames = {index * switch_frame + round((5 if scene.message else 1.5) * FPS)
-                          for index in range(len(versions))}
+        preview_frames = (
+            {count - 1} if scene.message else
+            {index * switch_frame + round(1.5 * FPS) for index in range(len(versions))}
+        )
         for frame_number in range(count):
             # Both comparison views share the same clock and are already full of rain
             # when the full-screen switch happens; the extra lanes never start empty.
