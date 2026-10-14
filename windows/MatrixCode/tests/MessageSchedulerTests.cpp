@@ -141,8 +141,10 @@ void RunMessageSchedulerTests() {
           columnExtent / 2.0, 80.0 - columnExtent / 2.0);
         const double expectedRowCentre = std::clamp(position * 60.0,
           rowExtent / 2.0, 60.0 - rowExtent / 2.0);
-        const double columnCentre = (bounds.firstColumn + bounds.lastColumn + 1) / 2.0 - 10.0;
-        const double rowCentre = (bounds.firstRow + bounds.lastRow + 1) / 2.0 - 20.0;
+        const double columnCentre =
+          static_cast<double>(bounds.firstColumn + bounds.lastColumn + 1) / 2.0 - 10.0;
+        const double rowCentre =
+          static_cast<double>(bounds.firstRow + bounds.lastRow + 1) / 2.0 - 20.0;
         MX_EXPECT(std::abs(columnCentre - expectedColumnCentre) <= 0.5);
         MX_EXPECT(std::abs(rowCentre - expectedRowCentre) <= 0.5);
         MX_EXPECT_EQ(sink.targets.size(), text.size());

@@ -893,18 +893,22 @@ suppressesIntroOverlay:YES];
     NSDate *runStartDate = [NSDate dateWithTimeIntervalSince1970:1700000000];
     NSDate *rainStartDate = [runStartDate dateByAddingTimeInterval:1];
     NSDate *deferredRainStartDate = [runStartDate dateByAddingTimeInterval:20];
+    NSDate *pauseStartedDate = [NSDate dateWithTimeIntervalSinceNow:-10];
     MatrixCodeTokenResolver *tokenResolver =
         [[MatrixCodeTokenResolver alloc] initWithStoredValues:@{} runStartDate:runStartDate];
     [hostView setValue:probe forKey:@"metalView"];
     [hostView setValue:@YES forKey:@"hostActive"];
     [hostView setValue:@YES forKey:@"userPaused"];
-    [hostView setValue:[NSDate dateWithTimeIntervalSinceNow:-10] forKey:@"pauseStartedDate"];
+    [hostView setValue:pauseStartedDate forKey:@"pauseStartedDate"];
     [hostView setValue:runStartDate forKey:@"runStartDate"];
     [hostView setValue:rainStartDate forKey:@"rainStartDate"];
     [hostView setValue:deferredRainStartDate forKey:@"deferredRainStartDate"];
     [hostView setValue:tokenResolver forKey:@"tokenResolver"];
 
+    // Bound the actual pause interval around the resume call, including setup and scheduling time.
+    NSTimeInterval minimumPausedDuration = [NSDate.date timeIntervalSinceDate:pauseStartedDate];
     [hostView toggleUserPaused];
+    NSTimeInterval maximumPausedDuration = [NSDate.date timeIntervalSinceDate:pauseStartedDate];
 
     NSTimeInterval runShift = [[hostView valueForKey:@"runStartDate"]
         timeIntervalSinceDate:runStartDate];
@@ -914,7 +918,8 @@ suppressesIntroOverlay:YES];
         timeIntervalSinceDate:deferredRainStartDate];
     NSTimeInterval resolverShift = [[tokenResolver valueForKey:@"runStartDate"]
         timeIntervalSinceDate:runStartDate];
-    XCTAssertEqualWithAccuracy(runShift, 10, 0.25);
+    XCTAssertGreaterThanOrEqual(runShift, minimumPausedDuration - 0.001);
+    XCTAssertLessThanOrEqual(runShift, maximumPausedDuration + 0.001);
     XCTAssertEqualWithAccuracy(rainShift, runShift, 0.001);
     XCTAssertEqualWithAccuracy(deferredShift, runShift, 0.001);
     XCTAssertEqualWithAccuracy(resolverShift, runShift, 0.001);
