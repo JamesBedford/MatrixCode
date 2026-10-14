@@ -170,8 +170,8 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
     if not scene.message:
         caption = Image.new("RGBA", SIZE)
         caption_draw = ImageDraw.Draw(caption)
-        y = round(788 + 18 * (1 - reveal))
-        caption_draw.text((78, y + 45), scene.title, font=TITLE_FONT, fill="#F5F7F6")
+        y = round(SIZE[1] - 82 + 18 * (1 - reveal))
+        caption_draw.text((78, y), scene.title, font=TITLE_FONT, fill="#F5F7F6", anchor="lb")
         caption.putalpha(caption.getchannel("A").point(lambda value: round(value * reveal)))
         chrome = Image.alpha_composite(chrome, caption)
     else:
