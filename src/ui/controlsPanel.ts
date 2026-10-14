@@ -89,7 +89,7 @@ export class ControlsPanel {
 
     this.panel.append(
       this.externalLink("Follow @Mr_Bedford on X", "https://x.com/Mr_Bedford"),
-      this.externalLink("Open source on GitHub", "https://github.com/JamesBedford/MatrixCode"),
+      this.externalLink("Open source and screensavers on GitHub", "https://github.com/JamesBedford/MatrixCode"),
     );
 
     if (!options.multiMonitor) this.viewerName();
