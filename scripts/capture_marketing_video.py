@@ -210,8 +210,10 @@ def open_scene(browser, dist: Path, scene: Scene):
                                   reduced_motion="no-preference")
     doc = {
         "messages": [CTA] if scene.message else [], "enabled": scene.message,
-        "frequencyMs": 500, "persistenceMs": 8000, "appearMs": 1800,
-        "disappearMs": 2000, "flickerOut": True, "brightnessFade": False,
+        # Include preroll in the entrance, then hold the resolved invitation through the clip.
+        "frequencyMs": 500, "persistenceMs": round(scene.seconds * 1000),
+        "appearMs": round((scene.warmup + 3) * 1000),
+        "disappearMs": 0, "flickerOut": True, "brightnessFade": False,
         "messageLayout": "row", "verticalPosition": 0.5, "verticalJitter": 0,
         "horizontalPosition": 0.5, "horizontalJitter": 0,
     }

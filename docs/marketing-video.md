@@ -6,8 +6,8 @@ classic green, shows blue binary, amber terminal digits, purple katakana, and
 monochrome symbols, then adds a green style with many more columns and a full-screen
 comparison of non-overlapping and overlapping rain. It returns to green with
 **Try it now!** revealed by the app's own in-rain message scheduler. The invitation
-starts dissolving into flickering glyphs in roughly the final two seconds. The
-final scene includes the public app URL.
+flickers in over the first few seconds of the closing shot, then stays fully
+resolved through the final frame. The final scene includes the public app URL.
 
 The video includes style names, half-second dissolves, and an original
 industrial electronic soundtrack synthesized by `scripts/marketing_audio.py`,
