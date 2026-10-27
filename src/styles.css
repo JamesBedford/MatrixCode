@@ -296,7 +296,7 @@ html.mx-native-config .mx-panel {
   inset: 0;
   display: grid;
   place-items: center;
-  z-index: 15;
+  z-index: 5;
   pointer-events: none;
   padding: 6vw;
 }
