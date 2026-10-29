@@ -1,5 +1,6 @@
 #import <XCTest/XCTest.h>
 
+#import <float.h>
 #import <math.h>
 #import <string.h>
 
@@ -214,17 +215,53 @@ static NSString *MatrixCodeTestJSON(id object) {
     NSData *sample = [NSData dataWithBytes:sampleBytes length:sizeof(sampleBytes)];
     XCTAssertEqualWithAccuracy(MatrixCodeImageSampleMask(sample, 2, 2, 0.25f, 0.75f),
                                0.4855392, 0.000001);
-    XCTAssertEqual(MatrixCodeImageSampleMask(sample, 2, 2, -0.01f, 0.5f), 0);
-
-    XCTAssertEqualWithAccuracy(MatrixCodeImageSignalForLuminance(0.08f),
-                               0.2486473, 0.000001);
-    XCTAssertEqualWithAccuracy(MatrixCodeImageSignalForLuminance(0.5f), 0.36, 0.000001);
-    XCTAssertEqualWithAccuracy(MatrixCodeImageEdgeFeather(0.05f, 0.1f, 0.1f, 0.2f),
-                               0.25, 0.000001);
     XCTAssertEqualWithAccuracy(MatrixCodeImageFallingGate(17, 9, 2.5f, 24680),
                                0.01588745, 0.000001);
     XCTAssertEqualWithAccuracy(MatrixCodeImageFallingGate(12, 8, 2.5f, 0x1a2b3cU),
                                0.0509755093, 0.000001);
+}
+
+- (void)testMaskSamplingExtendsEverySideAndCorner {
+    const uint8_t sampleBytes[] = {0, 64, 128, 255};
+    NSData *sample = [NSData dataWithBytes:sampleBytes length:sizeof(sampleBytes)];
+    const struct { float u; float v; float luminance; } samples[] = {
+        {-0.25f, 0.25f, 32.0f / 255.0f},
+        {1.25f, 0.25f, 111.75f / 255.0f},
+        {0.25f, -0.5f, 16.0f / 255.0f},
+        {0.25f, 1.5f, 159.75f / 255.0f},
+        {-1000, -1000, 0},
+        {1000, -1000, 64.0f / 255.0f},
+        {-1000, 1000, 128.0f / 255.0f},
+        {1000, 1000, 1},
+        {FLT_MAX, -FLT_MAX, 64.0f / 255.0f},
+    };
+    for (NSUInteger index = 0; index < sizeof(samples) / sizeof(samples[0]); index++) {
+        XCTAssertEqualWithAccuracy(
+            MatrixCodeImageSampleMask(sample, 2, 2, samples[index].u, samples[index].v),
+            samples[index].luminance, 0.000001,
+            @"u/v=%g/%g", samples[index].u, samples[index].v);
+    }
+}
+
+- (void)testMaskSamplingHandlesSinglePixelsAndInvalidInputs {
+    const uint8_t pixel = 73;
+    NSData *sample = [NSData dataWithBytes:&pixel length:sizeof(pixel)];
+    XCTAssertEqualWithAccuracy(MatrixCodeImageSampleMask(sample, 1, 1, -100, 80),
+                               73.0f / 255.0f, 0.000001);
+    XCTAssertEqual(MatrixCodeImageSampleMask(sample, 2, 2, 0.5f, 0.5f), 0);
+    XCTAssertEqual(MatrixCodeImageSampleMask(sample, 0, 1, 0.5f, 0.5f), 0);
+    XCTAssertEqual(MatrixCodeImageSampleMask(sample, 1, 1, NAN, 0.5f), 0);
+    XCTAssertEqual(MatrixCodeImageSampleMask(sample, 1, 1, 0.5f, INFINITY), 0);
+    XCTAssertEqual(MatrixCodeImageSampleMask(sample, 1, 1, -INFINITY, 0.5f), 0);
+}
+
+- (void)testImageSignalIncludesPureBlackAndPreservesBrightContrast {
+    XCTAssertEqualWithAccuracy(MatrixCodeImageSignalForLuminance(0), 1, 0.000001);
+    XCTAssertEqualWithAccuracy(MatrixCodeImageSignalForLuminance(0.08f), 0.84, 0.000001);
+    XCTAssertEqualWithAccuracy(MatrixCodeImageSignalForLuminance(0.5f), 0.36, 0.000001);
+    XCTAssertEqualWithAccuracy(MatrixCodeImageSignalForLuminance(1), 1, 0.000001);
+    XCTAssertEqualWithAccuracy(MatrixCodeImageSignalForLuminance(-1), 1, 0.000001);
+    XCTAssertEqualWithAccuracy(MatrixCodeImageSignalForLuminance(2), 1, 0.000001);
 }
 
 - (void)testGlyphMappingGoldenPreservesCurrentModesAndBinaryQuirk {

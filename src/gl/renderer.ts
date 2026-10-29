@@ -188,7 +188,6 @@ export class Renderer {
       uImageMask: this.imageTexture,
       uImageMaskSize: [image?.maskWidth ?? 1, image?.maskHeight ?? 1],
       uImageRect: [image?.originCol ?? 0, image?.originRow ?? 0, image?.cols ?? 1, image?.rows ?? 1],
-      uImageFeather: [image?.featherU ?? 0, image?.featherV ?? 0],
       uImageIntensity: image?.intensity ?? 0,
       uImageScramble: image?.scramble ?? 0,
       uImageSeed: image?.seed ?? 0,

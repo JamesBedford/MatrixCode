@@ -49,8 +49,6 @@ struct ImagePlacement {
   double rows = 0.0;
   double originColumn = 0.0;
   double originRow = 0.0;
-  double featherU = 0.0;
-  double featherV = 0.0;
 };
 
 [[nodiscard]] ImagePlacement ComputeImagePlacement(
@@ -59,10 +57,9 @@ struct ImagePlacement {
   const ActiveImageState& state,
   std::size_t virtualColumns,
   std::size_t virtualRows) noexcept;
+// Finite UVs clamp to the nearest image border, extending its sides and corners.
 [[nodiscard]] double SampleImageMask(const ImageMask& image, double u, double v) noexcept;
 [[nodiscard]] double ImageSignal(double luminance) noexcept;
-[[nodiscard]] double ImageEdgeFeather(
-  double u, double v, double featherU, double featherV) noexcept;
 [[nodiscard]] double ImageFallingGate(
   std::int32_t globalColumn,
   std::int32_t globalRow,
@@ -80,7 +77,6 @@ struct ImageCellResult {
   std::uint8_t currentGlyph,
   GlyphMode mode,
   double luminance,
-  double edgeFeather,
   double fallingGate,
   double intensity,
   double scramble,

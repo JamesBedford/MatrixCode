@@ -2424,8 +2424,6 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     float imageRows = 0;
     float imageOriginColumn = 0;
     float imageOriginRow = 0;
-    float imageFeatherU = 0;
-    float imageFeatherV = 0;
     if (imageActive) {
         float scale = MatrixCodeNumber(self.images, @"imageScale", 0.72, 0.05, 1);
         float targetColumns = fmaxf(1, virtualColumns * scale);
@@ -2444,10 +2442,6 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
         float placementY = 0.5f + (self.activeImagePlacementY - 0.5f) * jitter;
         imageOriginColumn = remainingColumns * fminf(1, fmaxf(0, placementX));
         imageOriginRow = remainingRows * fminf(1, fmaxf(0, placementY));
-        float featherColumns = fminf(4.0f, fmaxf(1.0f, imageColumns * 0.04f));
-        float featherRows = fminf(4.0f, fmaxf(1.0f, imageRows * 0.04f));
-        imageFeatherU = featherColumns / fmaxf(1.0f, imageColumns);
-        imageFeatherV = featherRows / fmaxf(1.0f, imageRows);
     }
     float imageIntensity = self.activeImageFrameIntensity;
     float imageScramble = self.activeImageFrameScramble;
@@ -2507,75 +2501,69 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
                 if (imageActive && position == 0 && imageColumns > 0 && imageRows > 0) {
                     float u = ((float)globalColumn + 0.5f - imageOriginColumn) / imageColumns;
                     float v = ((float)globalRow + 0.5f - imageOriginRow) / imageRows;
-                    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
-                        float imageLuminance = MatrixCodeImageSampleMask(
-                            activeImageMaskData,
-                            activeImageWidth,
-                            activeImageHeight,
-                            u,
-                            v);
-                        float signal = MatrixCodeImageSignalForLuminance(imageLuminance);
-                        if (signal > 0.001f) {
-                            signal *= MatrixCodeImageEdgeFeather(
-                                u, v, imageFeatherU, imageFeatherV);
+                    float imageLuminance = MatrixCodeImageSampleMask(
+                        activeImageMaskData,
+                        activeImageWidth,
+                        activeImageHeight,
+                        u,
+                        v);
+                    float signal = MatrixCodeImageSignalForLuminance(imageLuminance);
+                    if (signal > 0.001f) {
+                        uint32_t identity =
+                            MatrixCodeImageCellIdentity(laneSeed, globalColumn, globalRow);
+                        float packedBrightness = brightness;
+                        float trailGate =
+                            fminf(1, fmaxf(0, (brightness - 0.028f) / 0.42f));
+                        float fallingGate = MatrixCodeImageFallingGate(
+                            globalColumn,
+                            globalRow,
+                            imageRainElapsed,
+                            laneSeed);
+                        float revealGate = fmaxf(trailGate, fallingGate * 0.48f);
+                        float dissolve = 1;
+                        if (imageScramble > 0) {
+                            float roll = MatrixCodeImageUnit(
+                                identity ^ animationBucket * 0x9e3779b9U ^ 0xb4b82e39U);
+                            dissolve = roll >= imageScramble ? 1 : 0;
                         }
-                        if (signal > 0.001f) {
-                            uint32_t identity =
-                                MatrixCodeImageCellIdentity(laneSeed, globalColumn, globalRow);
-                            float packedBrightness = brightness;
-                            float trailGate =
-                                fminf(1, fmaxf(0, (brightness - 0.028f) / 0.42f));
-                            float fallingGate = MatrixCodeImageFallingGate(
-                                globalColumn,
-                                globalRow,
-                                imageRainElapsed,
-                                laneSeed);
-                            float revealGate = fmaxf(trailGate, fallingGate * 0.48f);
-                            float dissolve = 1;
-                            if (imageScramble > 0) {
-                                float roll = MatrixCodeImageUnit(
-                                    identity ^ animationBucket * 0x9e3779b9U ^ 0xb4b82e39U);
-                                dissolve = roll >= imageScramble ? 1 : 0;
-                            }
-                            float influence = fminf(
-                                1, signal * revealGate * imageIntensity * dissolve);
-                            if (influence > 0.001f) {
-                                uint32_t imageKey =
-                                    identity ^
-                                    (uint32_t)floorf(imageLuminance * 255.0f) * 0x85ebca6bU;
-                                NSInteger imageGlyph = MatrixCodeImageGlyphForLuminance(
-                                    imageLuminance, imageKey, glyphMode);
-                                float bright = fmaxf(
-                                    0, (imageLuminance - 0.38f) / 0.62f);
-                                float dark = fmaxf(
-                                    0, (0.58f - imageLuminance) / 0.58f);
-                                brightness *= 1.0f - 0.46f * dark * influence;
-                                brightness = fmaxf(
-                                    brightness,
-                                    bright * influence * (0.12f + 0.48f * fallingGate));
-                                brightness = fminf(
-                                    1.45f,
-                                    brightness +
-                                        bright * influence *
-                                        fmaxf(packedBrightness, 0.08f) * 0.58f);
+                        float influence = fminf(
+                            1, signal * revealGate * imageIntensity * dissolve);
+                        if (influence > 0.001f) {
+                            uint32_t imageKey =
+                                identity ^
+                                (uint32_t)floorf(imageLuminance * 255.0f) * 0x85ebca6bU;
+                            NSInteger imageGlyph = MatrixCodeImageGlyphForLuminance(
+                                imageLuminance, imageKey, glyphMode);
+                            float bright = fmaxf(
+                                0, (imageLuminance - 0.38f) / 0.62f);
+                            float dark = fmaxf(
+                                0, (0.58f - imageLuminance) / 0.58f);
+                            brightness *= 1.0f - 0.46f * dark * influence;
+                            brightness = fmaxf(
+                                brightness,
+                                bright * influence * (0.12f + 0.48f * fallingGate));
+                            brightness = fminf(
+                                1.45f,
+                                brightness +
+                                    bright * influence *
+                                    fmaxf(packedBrightness, 0.08f) * 0.58f);
 
-                                float glyphRoll = MatrixCodeImageUnit(
-                                    identity ^ animationBucket * 0x27d4eb2dU ^ 0x68e31da4U);
-                                if (glyph < rainGlyphCount &&
-                                    glyphRoll < fminf(0.96f, 0.18f + influence * 0.78f)) {
-                                    NSInteger replacement = imageGlyph;
-                                    float scrambleRoll = MatrixCodeImageUnit(
-                                        identity ^ animationBucket * 0x85ebca6bU ^ 0xd3a2646cU);
-                                    if (imageScramble > 0 &&
-                                        scrambleRoll < imageScramble * 0.75f) {
-                                        replacement = MatrixCodeRainGlyphIndex(
-                                            identity ^ animationBucket ^ 0x3c6ef372U,
-                                            glyphMode);
-                                    }
-                                    oldGlyph = glyph;
-                                    glyph = replacement;
-                                    crossfade = 1;
+                            float glyphRoll = MatrixCodeImageUnit(
+                                identity ^ animationBucket * 0x27d4eb2dU ^ 0x68e31da4U);
+                            if (glyph < rainGlyphCount &&
+                                glyphRoll < fminf(0.96f, 0.18f + influence * 0.78f)) {
+                                NSInteger replacement = imageGlyph;
+                                float scrambleRoll = MatrixCodeImageUnit(
+                                    identity ^ animationBucket * 0x85ebca6bU ^ 0xd3a2646cU);
+                                if (imageScramble > 0 &&
+                                    scrambleRoll < imageScramble * 0.75f) {
+                                    replacement = MatrixCodeRainGlyphIndex(
+                                        identity ^ animationBucket ^ 0x3c6ef372U,
+                                        glyphMode);
                                 }
+                                oldGlyph = glyph;
+                                glyph = replacement;
+                                crossfade = 1;
                             }
                         }
                     }

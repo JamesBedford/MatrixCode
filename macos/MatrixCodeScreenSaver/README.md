@@ -312,10 +312,11 @@ previously valid item (including a raw name or numeric dimension, or a legacy
 mask declared above 96 cells; the prior effective cap was 128), the original
 raw JSON is preserved once in the private local
 defaults key `mx-images-portable-backup-v0`; that backup is not synchronized
-through a host bridge. Users can choose how much of the rain field width each
-reveal uses and randomize placement inside the unused area when the reveal is
-smaller than the full screen. The Images editor also includes **Max Visibility**,
-which applies the image and rain settings most likely to make image reveals
+through a host bridge. Users can choose how much of the rain field width the
+image subject uses and randomize its placement inside the unused area when the
+subject is smaller than the full screen. Image border pixels extend across the
+surrounding rain, including black pixels that darken it. The Images editor also
+includes **Max Visibility**, which applies the image and rain settings most likely to make image reveals
 obvious while leaving unrelated content settings untouched. These keep
 keyboard navigation, accessibility, locale handling, Screen Saver Options
 hosting, and native image import aligned with macOS while the standalone app's

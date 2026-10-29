@@ -60,6 +60,15 @@ static NSUInteger MatrixCodeGreenPixelCount(NSData *frame) {
     return greenPixels;
 }
 
+static NSUInteger MatrixCodeGreenChannelTotal(NSData *frame) {
+    const uint8_t *pixels = frame.bytes;
+    NSUInteger total = 0;
+    for (NSUInteger index = 0; index + 3 < frame.length; index += 4) {
+        total += pixels[index + 1];
+    }
+    return total;
+}
+
 static NSUInteger MatrixCodeBrightPackedCellCount(NSData *state) {
     const uint8_t *bytes = state.bytes;
     NSUInteger brightCells = 0;
@@ -1710,7 +1719,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
                          @"Image-enabled render should remain animated rain, not a blank mask");
 }
 
-- (void)testZeroMaskImageDoesNotStampInvisibleRectangle {
+- (void)testZeroMaskDarkensRainWithoutScaledOrPlacedRectangle {
     NSMutableData *mask = [NSMutableData dataWithLength:64];
     NSDictionary *session = @{
         @"seed": @86420,
@@ -1728,7 +1737,7 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
     };
     NSDictionary *images = @{
         @"enabled": @YES,
-        @"images": @[@{@"name": @"Empty", @"width": @8, @"height": @8,
+        @"images": @[@{@"name": @"Black", @"width": @8, @"height": @8,
                        @"data": [mask base64EncodedStringWithOptions:0]}],
         @"frequencyMs": @500,
         @"persistenceMs": @10000,
@@ -1752,16 +1761,36 @@ static uint64_t MatrixCodeRenderedGlyphSignature(NSData *frame,
         @"mx-controls": MatrixCodeJSONString(controls),
         @"mx-images": MatrixCodeJSONString(images),
     }];
+    NSMutableDictionary *scaledImages = [images mutableCopy];
+    scaledImages[@"imageScale"] = @0.25;
+    scaledImages[@"imagePlacementJitter"] = @1;
+    MatrixCodeMetalView *scaledImageView =
+        [[MatrixCodeDeterministicMetalView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+                                           session:session
+                                      storedValues:@{
+        @"mx-controls": MatrixCodeJSONString(controls),
+        @"mx-images": MatrixCodeJSONString(scaledImages),
+    }];
 
     [baselineView setDensityScale:1 rainElapsed:2.5];
     [imageView setDensityScale:1 rainElapsed:2.5];
+    [scaledImageView setDensityScale:1 rainElapsed:2.5];
     NSData *baseline = [baselineView diagnosticBGRAFrameWithWidth:640 height:360];
     NSData *imageFrame = [imageView diagnosticBGRAFrameWithWidth:640 height:360];
+    NSData *scaledImageFrame = [scaledImageView diagnosticBGRAFrameWithWidth:640 height:360];
 
     XCTAssertNotNil(baseline);
     XCTAssertNotNil(imageFrame);
+    XCTAssertNotNil(scaledImageFrame);
     XCTAssertNotNil([imageView valueForKey:@"activeImage"]);
-    XCTAssertEqualObjects(imageFrame, baseline);
+    XCTAssertNotNil([scaledImageView valueForKey:@"activeImage"]);
+    XCTAssertNotEqualObjects(imageFrame, baseline);
+    XCTAssertLessThan(MatrixCodeGreenChannelTotal(imageFrame), MatrixCodeGreenChannelTotal(baseline));
+    XCTAssertEqualObjects(scaledImageFrame, imageFrame,
+                          @"Black border extension must cover the rain independently of subject bounds");
+    NSData *baselineState = [baselineView diagnosticPackedStateWithWidth:640 height:360];
+    XCTAssertEqualObjects([imageView diagnosticPackedStateWithWidth:640 height:360], baselineState);
+    XCTAssertEqualObjects([scaledImageView diagnosticPackedStateWithWidth:640 height:360], baselineState);
 }
 
 - (void)testNativeImageExtensionDoesNotMutateCanonicalPackedMessageState {

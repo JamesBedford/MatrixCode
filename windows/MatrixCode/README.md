@@ -24,6 +24,12 @@ token resolver, rain-message scheduler, settings sanitizers, compact image
 masks, and deterministic image scheduling/reveal math. The golden checksums in
 `tests/fixtures/core-golden.json` come from the web implementation.
 
+Image masks keep their configured size, aspect ratio, and placement. Bilinear
+sampling extends each border pixel outwards across the surrounding virtual grid,
+using the nearest edge or corner. Image influence remains continuous at the mask's
+boundaries. Black is an opaque dark image pixel and contributes to the rain's
+image reveal.
+
 `MatrixCodeRenderD3D11` consumes those packed states. Its render graph uses an
 RGBA16F scene whose alpha channel carries the head/glint bloom signal, a
 floating-point image-influence texture that preserves the full 1.45 HDR range,

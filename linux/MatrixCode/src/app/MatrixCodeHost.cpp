@@ -981,7 +981,6 @@ void MatrixCodeHost::ApplyImageToBaseLayer(const double nowSeconds) {
     for (std::size_t column = 0; column < columns_; ++column) {
       const double u = (static_cast<double>(column) + 0.5 - placement.originColumn) / placement.columns;
       const double v = (static_cast<double>(row) + 0.5 - placement.originRow) / placement.rows;
-      if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) continue;
       const std::size_t index = row * columns_ + column;
       const std::size_t output = index * 4;
       const std::uint32_t identity = Hash32(rainSeed_ ^
@@ -990,7 +989,6 @@ void MatrixCodeHost::ApplyImageToBaseLayer(const double nowSeconds) {
       const auto result = ApplyImageReveal(
         renderStates_.front()[output + 1] / 255.0, renderStates_.front()[output],
         settings_.controls.glyphMode, SampleImageMask(*mask, u, v),
-        ImageEdgeFeather(u, v, placement.featherU, placement.featherV),
         ImageFallingGate(static_cast<std::int32_t>(column), static_cast<std::int32_t>(row),
           active->rainElapsedSeconds, rainSeed_), active->intensity, active->scramble,
         identity, active->animationBucket);

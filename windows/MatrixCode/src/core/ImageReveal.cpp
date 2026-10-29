@@ -9,12 +9,6 @@
 namespace matrixcode {
 namespace {
 
-[[nodiscard]] double SmoothStep(const double edge0, const double edge1, const double value) noexcept {
-  if (edge0 == edge1) return value < edge0 ? 0.0 : 1.0;
-  const double t = std::clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
-  return t * t * (3.0 - 2.0 * t);
-}
-
 [[nodiscard]] double PositiveModulo(const double value, const double divisor) noexcept {
   double result = std::fmod(value, divisor);
   if (result < 0.0) result += divisor;
@@ -223,17 +217,15 @@ ImagePlacement ComputeImagePlacement(
     rows,
     remainingColumns * std::clamp(placementX, 0.0, 1.0),
     remainingRows * std::clamp(placementY, 0.0, 1.0),
-    std::min(4.0, std::max(1.0, columns * 0.04)) / std::max(1.0, columns),
-    std::min(4.0, std::max(1.0, rows * 0.04)) / std::max(1.0, rows),
   };
 }
 
 double SampleImageMask(const ImageMask& image, const double u, const double v) noexcept {
   if (image.width == 0 || image.height == 0 ||
       image.luminance.size() != static_cast<std::size_t>(image.width) * image.height ||
-      u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) return 0.0;
-  const double x = std::clamp(u * static_cast<double>(image.width - 1), 0.0, static_cast<double>(image.width - 1));
-  const double y = std::clamp(v * static_cast<double>(image.height - 1), 0.0, static_cast<double>(image.height - 1));
+      !std::isfinite(u) || !std::isfinite(v)) return 0.0;
+  const double x = std::clamp(u, 0.0, 1.0) * static_cast<double>(image.width - 1);
+  const double y = std::clamp(v, 0.0, 1.0) * static_cast<double>(image.height - 1);
   const auto x0 = static_cast<std::uint32_t>(std::floor(x));
   const auto y0 = static_cast<std::uint32_t>(std::floor(y));
   const auto x1 = std::min(image.width - 1, x0 + 1);
@@ -254,17 +246,9 @@ double SampleImageMask(const ImageMask& image, const double u, const double v) n
 
 double ImageSignal(const double luminance) noexcept {
   const double value = std::clamp(luminance, 0.0, 1.0);
-  const double nonEmpty = SmoothStep(0.035, 0.12, value);
-  const double contrast = std::abs(value - 0.5) * 2.0 * nonEmpty;
+  const double contrast = std::abs(value - 0.5) * 2.0;
   const double bright = value * 0.72;
-  return std::max(contrast, bright) * nonEmpty;
-}
-
-double ImageEdgeFeather(
-    const double u, const double v, const double featherU, const double featherV) noexcept {
-  const double horizontal = std::min(SmoothStep(0.0, featherU, u), SmoothStep(0.0, featherU, 1.0 - u));
-  const double vertical = std::min(SmoothStep(0.0, featherV, v), SmoothStep(0.0, featherV, 1.0 - v));
-  return horizontal * vertical;
+  return std::max(contrast, bright);
 }
 
 double ImageFallingGate(
@@ -289,13 +273,12 @@ ImageCellResult ApplyImageReveal(
     const std::uint8_t currentGlyph,
     const GlyphMode mode,
     const double luminance,
-    const double edgeFeather,
     const double fallingGate,
     const double intensity,
     const double scramble,
     const std::uint32_t cellIdentity,
     const std::uint32_t animationBucket) noexcept {
-  const double signal = ImageSignal(luminance) * std::clamp(edgeFeather, 0.0, 1.0);
+  const double signal = ImageSignal(luminance);
   const double trailGate = std::clamp((packedBrightness - 0.028) / 0.42, 0.0, 1.0);
   const double revealGate = std::max(trailGate, fallingGate * 0.48);
   const double roll = HashUnit(

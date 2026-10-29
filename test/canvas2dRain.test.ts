@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_IMAGES } from "../src/config/imagesStore.ts";
+import { DEFAULT_IMAGES, encodeBase64Mask } from "../src/config/imagesStore.ts";
 import { shouldSparkleGoldHead, startCanvas2dRain } from "../src/fallback/canvas2dRain.ts";
+import type { CanvasImageRevealSource } from "../src/fallback/canvas2dRain.ts";
 import { WallpaperEngineFpsLimiter } from "../src/platform/wallpaperEngine.ts";
 import { nextFullMoonMs } from "../src/sim/holidays.ts";
+import * as imageReveal from "../src/sim/imageReveal.ts";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -300,5 +302,205 @@ describe("Canvas2D host lifecycle", () => {
 
     expect(imageSource).toHaveBeenCalledOnce();
     expect(imageSource).toHaveBeenCalledWith(1234);
+  });
+});
+
+interface CanvasPaint {
+  kind: "rect" | "text";
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  text?: string;
+  fillStyle: CanvasRenderingContext2D["fillStyle"];
+  alpha: number;
+  shadowBlur: number;
+  composite: GlobalCompositeOperation;
+}
+
+function imageCanvasHarness() {
+  const harness = canvasHarness();
+  Object.defineProperties(harness.canvas, {
+    width: { value: 72 }, height: { value: 72 },
+    clientWidth: { value: 72 }, clientHeight: { value: 72 },
+  });
+  const ctx = harness.context;
+  ctx.globalCompositeOperation = "source-over";
+  const paints: CanvasPaint[] = [];
+  let translation = { x: 0, y: 0 };
+  const snapshot = () => ({
+    fillStyle: ctx.fillStyle, globalAlpha: ctx.globalAlpha,
+    shadowColor: ctx.shadowColor, shadowBlur: ctx.shadowBlur,
+    globalCompositeOperation: ctx.globalCompositeOperation,
+    font: ctx.font, textAlign: ctx.textAlign, textBaseline: ctx.textBaseline,
+    ...translation,
+  });
+  const stack: ReturnType<typeof snapshot>[] = [];
+  vi.mocked(ctx.save).mockImplementation(() => { stack.push(snapshot()); });
+  vi.mocked(ctx.restore).mockImplementation(() => {
+    const state = stack.pop();
+    if (!state) throw new Error("Unbalanced canvas restore");
+    const { x, y, ...properties } = state;
+    Object.assign(ctx, properties);
+    translation = { x, y };
+  });
+  vi.mocked(ctx.translate).mockImplementation((x, y) => {
+    translation.x += x;
+    translation.y += y;
+  });
+  harness.fillRect.mockImplementation((x: number, y: number, width: number, height: number) => {
+    paints.push({ kind: "rect", x: x + translation.x, y: y + translation.y, width, height,
+      fillStyle: ctx.fillStyle, alpha: ctx.globalAlpha, shadowBlur: ctx.shadowBlur,
+      composite: ctx.globalCompositeOperation });
+  });
+  harness.fillText.mockImplementation((text: string, x: number, y: number) => {
+    paints.push({ kind: "text", text, x: x + translation.x, y: y + translation.y,
+      fillStyle: ctx.fillStyle, alpha: ctx.globalAlpha, shadowBlur: ctx.shadowBlur,
+      composite: ctx.globalCompositeOperation });
+  });
+  return { ...harness, paints };
+}
+
+function imageRevealSource(values: number[], intensity = 1, scramble = 0): CanvasImageRevealSource {
+  const mask = new Uint8Array(values);
+  const image = { name: "Edges", width: 2, height: 2, data: encodeBase64Mask(mask) };
+  return {
+    frame: { image, mask, intensity, scramble, placementX: 0.5, placementY: 0.5,
+      rainElapsed: 2.5, animationBucket: 45 },
+    doc: { ...DEFAULT_IMAGES, enabled: true, images: [image], imageScale: 0.5, imagePlacementJitter: 0 },
+    seed: 7,
+  };
+}
+
+describe("Canvas2D image border extension", () => {
+  beforeEach(() => {
+    vi.spyOn(imageReveal, "imageFallingGate").mockReturnValue(1);
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("extends a uniform bright mask to every grid cell outside its fitted rectangle", () => {
+    const harness = imageCanvasHarness();
+    const rain = startCanvas2dRain(harness.canvas, "classic", 1, undefined,
+      () => imageRevealSource([255, 255, 255, 255]));
+    harness.runNextFrame(0);
+    rain.stop();
+
+    const glyphs = harness.paints.filter((paint) => paint.kind === "text");
+    expect(glyphs).toHaveLength(16);
+    for (const [x, y] of [[9, 9], [63, 9], [9, 63], [63, 63]]) {
+      expect(glyphs).toContainEqual(expect.objectContaining({ x, y, text: "W", alpha: 0.48 }));
+    }
+    expect(harness.context.globalAlpha).toBe(1);
+    expect(harness.context.shadowBlur).toBe(0);
+  });
+
+  it("uses each nearest corner's luminance for brightening or darkening surrounding rain", () => {
+    const harness = imageCanvasHarness();
+    const rain = startCanvas2dRain(harness.canvas, "classic", 1, undefined,
+      () => imageRevealSource([0, 255, 255, 0]));
+    harness.runNextFrame(0);
+    rain.stop();
+
+    for (const [x, y] of [[0, 0], [54, 54]]) {
+      const darkened = harness.paints.find((paint) => paint.kind === "rect" && paint.x === x && paint.y === y && paint.width === 18);
+      expect(darkened).toMatchObject({ height: 18, fillStyle: "rgba(13,2,8,1)", shadowBlur: 0, composite: "darken" });
+      expect(darkened!.alpha).toBeCloseTo(0.46 * 0.48);
+    }
+    for (const [x, y] of [[63, 9], [9, 63]]) {
+      expect(harness.paints).toContainEqual(expect.objectContaining({
+        kind: "text", x, y, text: "W", fillStyle: "rgba(0,255,65,1)", composite: "source-over",
+      }));
+    }
+  });
+
+  it("preserves incoming compositing for bright glyphs after a dark cell", () => {
+    const harness = imageCanvasHarness();
+    harness.context.globalCompositeOperation = "screen";
+    const rain = startCanvas2dRain(harness.canvas, "classic", 1, undefined,
+      () => imageRevealSource([0, 255, 255, 0]));
+    harness.runNextFrame(0);
+    rain.stop();
+    const glyphs = harness.paints.filter((paint) => paint.kind === "text");
+    expect(glyphs.length).toBeGreaterThan(0);
+    expect(glyphs.every((paint) => paint.composite === "screen")).toBe(true);
+    expect(harness.context.globalCompositeOperation).toBe("screen");
+  });
+
+  it.each([0, 64, 96])("darkens a mask of luminance byte %i without adding glowing dots", (value) => {
+    const harness = imageCanvasHarness();
+    const rain = startCanvas2dRain(harness.canvas, "classic", 1, undefined,
+      () => imageRevealSource([value, value, value, value]));
+    harness.runNextFrame(0);
+    rain.stop();
+
+    const darkened = harness.paints.filter((paint) => paint.kind === "rect" && paint.width === 18);
+    expect(darkened).toHaveLength(16);
+    expect(darkened.every((paint) => paint.alpha > 0 && paint.alpha <= 0.46 * 0.48 && paint.shadowBlur === 0)).toBe(true);
+    expect(harness.fillText).not.toHaveBeenCalled();
+    expect(harness.context.globalAlpha).toBe(1);
+    expect(harness.context.globalCompositeOperation).toBe("source-over");
+  });
+
+  it("lets a faint bright reveal fade below the ordinary glyph opacity floor", () => {
+    const harness = imageCanvasHarness();
+    const rain = startCanvas2dRain(harness.canvas, "classic", 1, undefined,
+      () => imageRevealSource([255, 255, 255, 255], 0.05));
+    harness.runNextFrame(0);
+    rain.stop();
+    const glyphs = harness.paints.filter((paint) => paint.kind === "text");
+    expect(glyphs).toHaveLength(16);
+    expect(glyphs.every((paint) => Math.abs(paint.alpha - 0.024) < 1e-10)).toBe(true);
+  });
+
+  it.each([0, 255])("retains intensity and scramble gates for luminance byte %i", (value) => {
+    for (const [intensity, scramble] of [[0, 0], [1, 1]]) {
+      const harness = imageCanvasHarness();
+      const rain = startCanvas2dRain(harness.canvas, "classic", 1, undefined,
+        () => imageRevealSource([value, value, value, value], intensity, scramble));
+      harness.runNextFrame(0);
+      rain.stop();
+      expect(harness.paints.filter((paint) => paint.kind === "rect" && paint.width === 18)).toHaveLength(0);
+      expect(harness.fillText).not.toHaveBeenCalled();
+    }
+  });
+
+  it("leaves the rain's glyph, sparkle, and position streams unchanged after images stop", () => {
+    const trace = (withImages: boolean) => {
+      const harness = imageCanvasHarness();
+      let active = true;
+      const source = imageRevealSource([0, 255, 255, 0]);
+      const rain = startCanvas2dRain(harness.canvas, "gold", 1, undefined,
+        withImages ? () => ({ ...source, frame: active ? source.frame : null }) : undefined);
+      for (let index = 0; index < 180; index++) harness.runNextFrame(index * 16);
+      active = false;
+      harness.fillText.mockClear();
+      vi.mocked(harness.context.translate).mockClear();
+      harness.runNextFrame(180 * 16);
+      rain.stop();
+      return { glyphs: harness.fillText.mock.calls, positions: vi.mocked(harness.context.translate).mock.calls };
+    };
+    expect(trace(true)).toEqual(trace(false));
+  });
+
+  it("recolors an active image on paused rain without resampling or advancing its frame", () => {
+    const harness = imageCanvasHarness();
+    const source = vi.fn(() => imageRevealSource([0, 255, 255, 0], 0.6));
+    const rain = startCanvas2dRain(harness.canvas, "classic", 1, undefined, source);
+    rain.renderStatic(0);
+    rain.stop();
+    source.mockClear();
+    const signature = () => harness.paints.map(({ fillStyle: _fillStyle, ...paint }) => paint);
+
+    harness.paints.length = 0;
+    vi.setSystemTime(new Date(2026, 1, 14));
+    rain.refreshTheme();
+    const redFrame = signature();
+    harness.paints.length = 0;
+    vi.setSystemTime(new Date(2026, 2, 17));
+    rain.refreshTheme();
+    expect(signature()).toEqual(redFrame);
+    expect(source).not.toHaveBeenCalled();
+    expect(harness.pendingFrames()).toBe(0);
   });
 });

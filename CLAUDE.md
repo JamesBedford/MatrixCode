@@ -64,7 +64,7 @@ Every persisted document follows the same shape: a `DEFAULT_*`, a `sanitize*`/`c
 
 ## Image reveals
 
-`src/config/imagesStore.ts` owns the portable `mx-images` document: at most 64 masks, each at most 96 × 96 cells, with standard padded Base64 containing exactly one greyscale byte per cell. `src/sim/imageMask.ts` aspect-fits imports without upscaling and preserves the established alpha-squared edge treatment. `ImageScheduler` independently selects images and placement and drives appear/hold/disappear, flicker, and brightness-fade envelopes. `imageReveal.ts` defines bilinear mask sampling, contrast/brightness signal, edge feather, virtual-grid placement, falling-rain gate, cell identity, and glyph selection. These constants and rounding rules are cross-platform contracts; change them in web, macOS, and the shared Windows/Linux core together with fixtures/tests.
+`src/config/imagesStore.ts` owns the portable `mx-images` document: at most 64 masks, each at most 96 × 96 cells, with standard padded Base64 containing exactly one greyscale byte per cell. `src/sim/imageMask.ts` aspect-fits imports without upscaling and preserves the established alpha-squared edge treatment. `ImageScheduler` independently selects images and placement and drives appear/hold/disappear, flicker, and brightness-fade envelopes. `imageReveal.ts` defines bilinear mask sampling, contrast/brightness signal, clamped border extension, virtual-grid placement, falling-rain gate, cell identity, and glyph selection. These constants and rounding rules are cross-platform contracts; change them in web, macOS, and the shared Windows/Linux core together with fixtures/tests.
 
 ## Overlays & UI
 

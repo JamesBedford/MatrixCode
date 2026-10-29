@@ -8,8 +8,6 @@ export interface ImageRevealGeometry {
   originRow: number;
   cols: number;
   rows: number;
-  featherU: number;
-  featherV: number;
 }
 
 export interface ImageRenderState extends ImageRevealGeometry {
@@ -51,15 +49,11 @@ export function imageRevealGeometry(
   const jitter = doc.imageScale >= 0.999 ? 0 : doc.imagePlacementJitter;
   const x = 0.5 + (frame.placementX - 0.5) * jitter;
   const y = 0.5 + (frame.placementY - 0.5) * jitter;
-  const featherCols = Math.min(4, Math.max(1, cols * 0.04));
-  const featherRows = Math.min(4, Math.max(1, rows * 0.04));
   return {
     originCol: remainingCols * Math.min(1, Math.max(0, x)),
     originRow: remainingRows * Math.min(1, Math.max(0, y)),
     cols,
     rows,
-    featherU: featherCols / Math.max(1, cols),
-    featherV: featherRows / Math.max(1, rows),
   };
 }
 
@@ -97,18 +91,13 @@ export function buildImageRenderState(args: {
   };
 }
 
-export function smoothstep(edge0: number, edge1: number, value: number): number {
-  if (edge0 === edge1) return value < edge0 ? 0 : 1;
-  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
 export function sampleImageMask(mask: Uint8Array, width: number, height: number, u: number, v: number): number {
-  if (mask.length !== width * height || width < 1 || height < 1 || u < 0 || u > 1 || v < 0 || v > 1) {
+  if (mask.length !== width * height || width < 1 || height < 1 || !Number.isFinite(u) || !Number.isFinite(v)) {
     return 0;
   }
-  const x = Math.min(width - 1, Math.max(0, u * (width - 1)));
-  const y = Math.min(height - 1, Math.max(0, v * (height - 1)));
+  // Continue the border pixels across the virtual grid while keeping the image's fitted size.
+  const x = Math.min(1, Math.max(0, u)) * (width - 1);
+  const y = Math.min(1, Math.max(0, v)) * (height - 1);
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
   const x1 = Math.min(width - 1, x0 + 1);
@@ -125,16 +114,9 @@ export function sampleImageMask(mask: Uint8Array, width: number, height: number,
 
 export function imageSignal(luminance: number): number {
   const value = Math.min(1, Math.max(0, luminance));
-  const nonEmpty = smoothstep(0.035, 0.12, value);
-  const contrast = Math.abs(value - 0.5) * 2 * nonEmpty;
+  const contrast = Math.abs(value - 0.5) * 2;
   const bright = value * 0.72;
-  return Math.max(contrast, bright) * nonEmpty;
-}
-
-export function imageEdgeFeather(u: number, v: number, featherU: number, featherV: number): number {
-  const horizontal = Math.min(smoothstep(0, featherU, u), smoothstep(0, featherU, 1 - u));
-  const vertical = Math.min(smoothstep(0, featherV, v), smoothstep(0, featherV, 1 - v));
-  return horizontal * vertical;
+  return Math.max(contrast, bright);
 }
 
 export function imageFallingGate(globalCol: number, globalRow: number, rainElapsed: number, seed: number): number {

@@ -27,7 +27,6 @@ uniform int uImageEnabled;
 uniform sampler2D uImageMask;  // active portable R8 luminance mask (NEAREST; bilinear is explicit below)
 uniform vec2 uImageMaskSize;
 uniform vec4 uImageRect;       // origin column/row, width/height in the full virtual grid
-uniform vec2 uImageFeather;
 uniform float uImageIntensity;
 uniform float uImageScramble;
 uniform uint uImageSeed;
@@ -75,20 +74,9 @@ float sampleImageMask(vec2 uv) {
 
 float imageSignal(float luminance) {
   float value = clamp(luminance, 0.0, 1.0);
-  float nonEmpty = smoothstep(0.035, 0.12, value);
-  float contrastSignal = abs(value - 0.5) * 2.0 * nonEmpty;
+  float contrastSignal = abs(value - 0.5) * 2.0;
   float brightSignal = value * 0.72;
-  return max(contrastSignal, brightSignal) * nonEmpty;
-}
-
-float imageEdgeFeather(vec2 uv) {
-  float horizontal = min(
-    smoothstep(0.0, uImageFeather.x, uv.x),
-    smoothstep(0.0, uImageFeather.x, 1.0 - uv.x));
-  float vertical = min(
-    smoothstep(0.0, uImageFeather.y, uv.y),
-    smoothstep(0.0, uImageFeather.y, 1.0 - uv.y));
-  return horizontal * vertical;
+  return max(contrastSignal, brightSignal);
 }
 
 float imageFallingGate(ivec2 globalCell) {
@@ -174,43 +162,41 @@ void main() {
   if (uImageEnabled != 0) {
     ivec2 globalCell = ivec2(cellId + uGlobalCellOffset);
     vec2 imageUv = (vec2(globalCell) + 0.5 - uImageRect.xy) / uImageRect.zw;
-    if (all(greaterThanEqual(imageUv, vec2(0.0))) && all(lessThanEqual(imageUv, vec2(1.0)))) {
-      float imageLuminance = sampleImageMask(imageUv);
-      float signal = imageSignal(imageLuminance);
-      if (signal > 0.001) signal *= imageEdgeFeather(imageUv);
-      if (signal > 0.001) {
-        uint identity = imageHash(
-          uImageSeed ^ uint(globalCell.x) * 73856093u ^ uint(globalCell.y) * 19349663u);
-        float packedBrightness = bright;
-        float trailGate = clamp((bright - 0.028) / 0.42, 0.0, 1.0);
-        float fallingGate = imageFallingGate(globalCell);
-        float revealGate = max(trailGate, fallingGate * 0.48);
-        float dissolve = 1.0;
-        if (uImageScramble > 0.0) {
-          float roll = imageUnit(identity ^ uImageAnimationBucket * 0x9e3779b9u ^ 0xb4b82e39u);
-          dissolve = roll >= uImageScramble ? 1.0 : 0.0;
-        }
-        float influence = min(1.0, signal * revealGate * uImageIntensity * dissolve);
-        if (influence > 0.001) {
-          uint imageKey = identity ^ uint(floor(imageLuminance * 255.0)) * 0x85ebca6bu;
-          float imageGlyph = imageGlyphForLuminance(imageLuminance, imageKey);
-          float imageBright = max(0.0, (imageLuminance - 0.38) / 0.62);
-          float imageDark = max(0.0, (0.58 - imageLuminance) / 0.58);
-          bright *= 1.0 - 0.46 * imageDark * influence;
-          bright = max(bright, imageBright * influence * (0.12 + 0.48 * fallingGate));
-          bright = min(1.45, bright + imageBright * influence * max(packedBrightness, 0.08) * 0.58);
+    // Clamp-to-edge sampling extends border rows, columns, and corners over the virtual grid.
+    float imageLuminance = sampleImageMask(imageUv);
+    float signal = imageSignal(imageLuminance);
+    if (signal > 0.001) {
+      uint identity = imageHash(
+        uImageSeed ^ uint(globalCell.x) * 73856093u ^ uint(globalCell.y) * 19349663u);
+      float packedBrightness = bright;
+      float trailGate = clamp((bright - 0.028) / 0.42, 0.0, 1.0);
+      float fallingGate = imageFallingGate(globalCell);
+      float revealGate = max(trailGate, fallingGate * 0.48);
+      float dissolve = 1.0;
+      if (uImageScramble > 0.0) {
+        float roll = imageUnit(identity ^ uImageAnimationBucket * 0x9e3779b9u ^ 0xb4b82e39u);
+        dissolve = roll >= uImageScramble ? 1.0 : 0.0;
+      }
+      float influence = min(1.0, signal * revealGate * uImageIntensity * dissolve);
+      if (influence > 0.001) {
+        uint imageKey = identity ^ uint(floor(imageLuminance * 255.0)) * 0x85ebca6bu;
+        float imageGlyph = imageGlyphForLuminance(imageLuminance, imageKey);
+        float imageBright = max(0.0, (imageLuminance - 0.38) / 0.62);
+        float imageDark = max(0.0, (0.58 - imageLuminance) / 0.58);
+        bright *= 1.0 - 0.46 * imageDark * influence;
+        bright = max(bright, imageBright * influence * (0.12 + 0.48 * fallingGate));
+        bright = min(1.45, bright + imageBright * influence * max(packedBrightness, 0.08) * 0.58);
 
-          float glyphRoll = imageUnit(identity ^ uImageAnimationBucket * 0x27d4eb2du ^ 0x68e31da4u);
-          if (giNew < uRainRanges.w && glyphRoll < min(0.96, 0.18 + influence * 0.78)) {
-            float replacement = imageGlyph;
-            float scrambleRoll = imageUnit(identity ^ uImageAnimationBucket * 0x85ebca6bu ^ 0xd3a2646cu);
-            if (uImageScramble > 0.0 && scrambleRoll < uImageScramble * 0.75) {
-              replacement = randomRainGlyph(identity ^ uImageAnimationBucket ^ 0x3c6ef372u);
-            }
-            giOld = giNew;
-            giNew = replacement;
-            phase = 1.0;
+        float glyphRoll = imageUnit(identity ^ uImageAnimationBucket * 0x27d4eb2du ^ 0x68e31da4u);
+        if (giNew < uRainRanges.w && glyphRoll < min(0.96, 0.18 + influence * 0.78)) {
+          float replacement = imageGlyph;
+          float scrambleRoll = imageUnit(identity ^ uImageAnimationBucket * 0x85ebca6bu ^ 0xd3a2646cu);
+          if (uImageScramble > 0.0 && scrambleRoll < uImageScramble * 0.75) {
+            replacement = randomRainGlyph(identity ^ uImageAnimationBucket ^ 0x3c6ef372u);
           }
+          giOld = giNew;
+          giNew = replacement;
+          phase = 1.0;
         }
       }
     }

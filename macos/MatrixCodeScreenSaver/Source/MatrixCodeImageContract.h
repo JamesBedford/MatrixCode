@@ -55,16 +55,13 @@ FOUNDATION_EXPORT uint32_t MatrixCodeImageAnimationBucket(NSTimeInterval nowSeco
 FOUNDATION_EXPORT uint32_t MatrixCodeImageCellIdentity(uint32_t laneSeed,
                                                        NSInteger globalColumn,
                                                        NSInteger globalRow);
+/** Bilinear sampling extends border pixels by clamping finite normalized coordinates. */
 FOUNDATION_EXPORT float MatrixCodeImageSampleMask(NSData *mask,
                                                   NSInteger width,
                                                   NSInteger height,
                                                   float u,
                                                   float v);
 FOUNDATION_EXPORT float MatrixCodeImageSignalForLuminance(float luminance);
-FOUNDATION_EXPORT float MatrixCodeImageEdgeFeather(float u,
-                                                   float v,
-                                                   float featherU,
-                                                   float featherV);
 FOUNDATION_EXPORT float MatrixCodeImageFallingGate(NSInteger globalColumn,
                                                    NSInteger globalRow,
                                                    float rainElapsed,

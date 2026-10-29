@@ -25,6 +25,12 @@ Christmas Day, and a full-moon day, the rain leads with that day's greeting
 in the configured glyph font as soon as the rain is running, even when
 messages are switched off.
 
+Image masks keep their configured size, aspect ratio, and placement. Bilinear
+sampling extends each border pixel outwards across the surrounding virtual grid,
+using the nearest edge or corner. Image influence remains continuous at the mask's
+boundaries. Black is an opaque dark image pixel and contributes to the rain's
+image reveal.
+
 `MatrixCodeRenderGL` consumes that state through a hardware OpenGL context. Its
 render graph uses an RGBA16F scene whose alpha carries bloom energy, floating
 point image influence, one to three Gaussian bloom levels, additive bloom, ACES

@@ -287,9 +287,11 @@ float MatrixCodeImageSampleMask(NSData *mask,
                                 float v) {
     if (!mask || width <= 0 || height <= 0 ||
         mask.length != (NSUInteger)(width * height) ||
-        u < 0 || u > 1 || v < 0 || v > 1) {
+        !isfinite(u) || !isfinite(v)) {
         return 0;
     }
+    u = fminf(1, fmaxf(0, u));
+    v = fminf(1, fmaxf(0, v));
     const uint8_t *bytes = mask.bytes;
     float x = fminf(width - 1, fmaxf(0, u * (width - 1)));
     float y = fminf(height - 1, fmaxf(0, v * (height - 1)));
@@ -306,29 +308,11 @@ float MatrixCodeImageSampleMask(NSData *mask,
     return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
 }
 
-static float MatrixCodeImageSmoothstep(float edge0, float edge1, float value) {
-    if (edge0 == edge1) return value < edge0 ? 0 : 1;
-    float t = fminf(1, fmaxf(0, (value - edge0) / (edge1 - edge0)));
-    return t * t * (3.0f - 2.0f * t);
-}
-
 float MatrixCodeImageSignalForLuminance(float luminance) {
     float value = fminf(1, fmaxf(0, luminance));
-    float nonEmpty = MatrixCodeImageSmoothstep(0.035f, 0.12f, value);
-    float contrastSignal = fabsf(value - 0.5f) * 2.0f * nonEmpty;
+    float contrastSignal = fabsf(value - 0.5f) * 2.0f;
     float brightSignal = value * 0.72f;
-    return fmaxf(contrastSignal, brightSignal) * nonEmpty;
-}
-
-float MatrixCodeImageEdgeFeather(float u,
-                                 float v,
-                                 float featherU,
-                                 float featherV) {
-    float horizontal = fminf(MatrixCodeImageSmoothstep(0, featherU, u),
-                             MatrixCodeImageSmoothstep(0, featherU, 1.0f - u));
-    float vertical = fminf(MatrixCodeImageSmoothstep(0, featherV, v),
-                           MatrixCodeImageSmoothstep(0, featherV, 1.0f - v));
-    return horizontal * vertical;
+    return fmaxf(contrastSignal, brightSignal);
 }
 
 float MatrixCodeImageFallingGate(NSInteger globalColumn,

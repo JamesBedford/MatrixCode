@@ -5,7 +5,6 @@ import type { ActiveImageFrame } from "../sim/imageScheduler.ts";
 import { imageUnit } from "../sim/imageScheduler.ts";
 import {
   imageCellIdentity,
-  imageEdgeFeather,
   imageFallingGate,
   imageRevealGeometry,
   imageSignal,
@@ -117,24 +116,17 @@ export function startCanvas2dRain(
     const active = source?.frame;
     if (!source || !active) return;
     const geometry = imageRevealGeometry(active, source.doc, cols, rows);
-    const firstCol = Math.max(0, Math.floor(geometry.originCol));
-    const lastCol = Math.min(cols - 1, Math.ceil(geometry.originCol + geometry.cols));
-    const firstRow = Math.max(0, Math.floor(geometry.originRow));
-    const lastRow = Math.min(Math.ceil(rows) - 1, Math.ceil(geometry.originRow + geometry.rows));
+    const compositeOperation = ctx.globalCompositeOperation;
     ctx.save();
     ctx.font = `${fontSize}px monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = brightColor;
-    ctx.shadowColor = brightColor;
-    ctx.shadowBlur = 9 * pixelRatio;
-    for (let row = firstRow; row <= lastRow; row++) {
-      for (let col = firstCol; col <= lastCol; col++) {
+    for (let row = 0; row < Math.ceil(rows); row++) {
+      for (let col = 0; col < cols; col++) {
         const u = (col + 0.5 - geometry.originCol) / geometry.cols;
         const v = (row + 0.5 - geometry.originRow) / geometry.rows;
-        if (u < 0 || u > 1 || v < 0 || v > 1) continue;
         const luminance = sampleImageMask(active.mask, active.image.width, active.image.height, u, v);
-        const signal = imageSignal(luminance) * imageEdgeFeather(u, v, geometry.featherU, geometry.featherV);
+        const signal = imageSignal(luminance);
         if (signal <= 0.001) continue;
         const identity = imageCellIdentity(source.seed, col, row);
         if (
@@ -144,9 +136,26 @@ export function startCanvas2dRain(
         const gate = imageFallingGate(col, row, active.rainElapsed, source.seed) * 0.48;
         const influence = Math.min(1, signal * gate * active.intensity);
         if (influence <= 0.001) continue;
+        const imageDark = Math.max(0, (0.58 - luminance) / 0.58);
+        const imageBright = Math.max(0, (luminance - 0.38) / 0.62);
+        if (imageDark > 0) {
+          // Blend baked canvas trails toward their background to approximate scene darkening.
+          ctx.fillStyle = bg;
+          ctx.shadowBlur = 0;
+          ctx.shadowColor = "transparent";
+          ctx.globalAlpha = 0.46 * imageDark * influence;
+          // Keep pixels already below the background from brightening.
+          ctx.globalCompositeOperation = "darken";
+          ctx.fillRect(col * fontSize, row * fontSize, fontSize, fontSize);
+          ctx.globalCompositeOperation = compositeOperation;
+        }
+        if (imageBright <= 0) continue;
         const levels = "·:+*MW";
         const glyph = levels[Math.min(levels.length - 1, Math.floor(luminance * levels.length))]!;
-        ctx.globalAlpha = Math.max(0.08, influence);
+        ctx.fillStyle = brightColor;
+        ctx.shadowColor = brightColor;
+        ctx.shadowBlur = 9 * pixelRatio;
+        ctx.globalAlpha = imageBright * influence;
         ctx.save();
         ctx.translate(col * fontSize + fontSize / 2, row * fontSize + fontSize / 2);
         ctx.scale(-1, 1);

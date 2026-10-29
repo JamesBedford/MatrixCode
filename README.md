@@ -315,7 +315,7 @@ Data flows in one direction each frame:
 
 1. **`src/sim/rainSim.ts`** — headless CPU simulation; packs per-cell state (brightness, glyph index, phase, head flags) into a `Uint8Array`. DOM-free and seedable, so it is fully unit-testable.
 2. **`src/gl/stateTexture.ts`** — uploads the byte array as a GPU texture each frame.
-3. **`src/sim/imageScheduler.ts` and `src/sim/imageReveal.ts`** — schedule image reveals independently from rain motion and convert the active portable mask into deterministic per-cell influence, glyph choice, falling-gate, and edge-feather data.
+3. **`src/sim/imageScheduler.ts` and `src/sim/imageReveal.ts`** — schedule image reveals independently from rain motion and convert the active portable mask into deterministic per-cell influence, glyph choice, border sampling, and falling-rain gating.
 4. **`src/gl/renderer.ts`** — draws glyphs sampling a glyph atlas + state texture, composites messages and image influence, then runs the bloom post-process. Bloom level count scales with the quality tier (`low` / `med` / `high`). Uses `twgl.js` for GL boilerplate.
 5. **`src/gl/glyphAtlas.ts`** — rasterizes the glyph set into a texture atlas; rebuilt when the `mirror` control changes.
 
@@ -327,10 +327,18 @@ one luminance byte per cell. Importers preserve aspect ratio without upscaling;
 the scheduler uses its own deterministic hash sequence so image selection and
 placement never perturb rain or message RNG. Appearance/hold/disappearance,
 flicker resolve, brightness fade, scale, placement jitter, virtual-grid
-coordinates, mask sampling, edge feather, and falling-rain gating are parity
-rules shared with native implementations. Web code lives in
+coordinates, clamped bilinear mask sampling, and falling-rain gating are parity
+rules shared with native implementations. The fitted image keeps its aspect ratio
+and size; its nearest border rows, columns, and corners extend across the full
+virtual grid without a rectangular cutoff or edge fade. Black mask pixels remain
+active and darken the surrounding rain just like black pixels inside the image.
+Web code lives in
 `src/config/imagesStore.ts`, `src/sim/imageMask.ts`,
 `src/sim/imageScheduler.ts`, and `src/sim/imageReveal.ts`.
+
+Canvas2D compatibility mode shares the border sampling and reveal timing, but
+approximates image darkening by compositing over its baked trails rather than
+recalculating each glyph's HDR brightness.
 
 **Multi-monitor mode:** all windows run the same deterministic simulation against a shared seed and `Date.now()` epoch — same clock ⇒ pixel-aligned seams with no per-frame cross-window messaging. A `BroadcastChannel` is used only to coordinate exit. See `src/multimonitor/`.
 
