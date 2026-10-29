@@ -18,9 +18,23 @@ from types import SimpleNamespace
 from unittest import mock
 
 import capture_marketing_video as video
+from PIL import Image, ImageDraw
 
 
 class FilmSelectionTests(unittest.TestCase):
+    def test_new_and_all_groups_keep_every_output_directory_separate(self):
+        root = Path("output")
+        for group, expected in (
+            ("new", ["third", "fourth", "fifth"]),
+            ("all", ["first", "second", "third", "fourth", "fifth"]),
+        ):
+            with self.subTest(group=group):
+                outputs = video.resolve_outputs(group, root, None)
+                self.assertEqual([film.key for film, _ in outputs], expected)
+                self.assertEqual(len({path.parent for _, path in outputs}), len(expected))
+                with self.assertRaises(ValueError):
+                    video.resolve_outputs(group, root, Path("one.mp4"))
+
     def test_existing_command_still_selects_first_film(self):
         arguments = video.parse_args([])
         self.assertEqual(arguments.video, "first")
@@ -53,7 +67,7 @@ class FilmSelectionTests(unittest.TestCase):
 
     def test_invalid_film_is_a_cli_error(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
-            video.parse_args(["--video", "third"])
+            video.parse_args(["--video", "sixth"])
         self.assertEqual(error.exception.code, 2)
 
     def test_invalid_output_options_fail_before_rendering(self):
@@ -101,6 +115,7 @@ class RecipeTests(unittest.TestCase):
             "glow": 1.3, "speed": 1.5, "trail": 0.24,
         })
         for film in video.FILMS.values():
+            self.assertIs(film.scenes[-1], closing)
             self.assertEqual([scene for scene in film.scenes if scene.message], [closing])
 
     def test_second_film_showcase_is_distinct_from_first(self):
@@ -224,6 +239,77 @@ class RenderSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Unexpected frame count"):
                 video.verify_video(Path("film.mp4"), film, Path("last-frame.jpg"))
         run.assert_called_once()
+
+
+class CaptionAndActionTests(unittest.TestCase):
+    def test_requested_caption_sizes(self):
+        self.assertEqual(video.SITE_FONT_SIZE, 56)
+        self.assertEqual(video.ENDING_TITLE_FONT_SIZE, 50)
+        self.assertEqual(video.ENDING_SITE_FONT_SIZE, 66)
+
+    def test_large_closing_copy_is_centered_and_clear_of_invitation(self):
+        draw = ImageDraw.Draw(Image.new("RGB", video.SIZE))
+        boxes = {}
+        for name, position, text, font, anchor in (
+            ("corner", video.CORNER_SITE_POSITION, video.SITE, video.SITE_FONT, "ra"),
+            ("heading", video.ENDING_TITLE_POSITION, video.INVITATION.title, video.ENDING_TITLE_FONT, "mm"),
+            ("footer", video.ENDING_SITE_POSITION, video.SITE, video.ENDING_SITE_FONT, "mm"),
+        ):
+            box = draw.textbbox(position, text, font=font, anchor=anchor)
+            boxes[name] = box
+            self.assertGreaterEqual(box[0], 60)
+            self.assertGreaterEqual(box[1], 60)
+            self.assertLessEqual(box[2], video.SIZE[0] - 60)
+            self.assertLessEqual(box[3], video.SIZE[1] - 60)
+        for name in ("heading", "footer"):
+            self.assertAlmostEqual((boxes[name][0] + boxes[name][2]) / 2, video.SIZE[0] / 2, delta=4)
+        invitation = video.MESSAGE_MASK.getbbox()
+        self.assertGreaterEqual(invitation[1] - boxes["heading"][3], 64)
+        self.assertGreaterEqual(boxes["footer"][1] - invitation[3], 64)
+
+    def test_every_scene_title_fits_the_player_safe_area(self):
+        draw = ImageDraw.Draw(Image.new("RGB", video.SIZE))
+        for film in video.FILMS.values():
+            for scene in film.scenes:
+                for version in video.scene_versions(scene):
+                    if version.message:
+                        continue
+                    with self.subTest(film=film.key, scene=version.name):
+                        box = draw.textbbox((78, video.SIZE[1] - video.TITLE_BOTTOM_MARGIN),
+                                            version.title, font=video.TITLE_FONT, anchor="lb")
+                        self.assertGreaterEqual(box[0], 60)
+                        self.assertLessEqual(box[2], video.SIZE[0] - 60)
+                        self.assertLessEqual(box[3], video.SIZE[1] - 180)
+
+    def test_vertical_focus_geometry_matches_drop_direction_and_edges(self):
+        top_down = video.message_layout(4.4, "CODE", {"messageLayout": "drop"})
+        bottom_up = video.message_layout(4.4, "CODE", {
+            "messageLayout": "drop", "messageDirection": "bottomToTop",
+        })
+        self.assertEqual(top_down["cells"], [132, 156, 180, 204])
+        self.assertEqual(bottom_up["cells"], list(reversed(top_down["cells"])))
+        edge = video.message_layout(4.4, "CODE", {
+            "messageLayout": "drop", "horizontalPosition": 1, "verticalPosition": 1,
+        })
+        self.assertEqual(edge["cells"], [263, 287, 311, 335])
+
+    def test_focused_feature_messages_fit_and_hold_through_capture(self):
+        for film in video.FILMS.values():
+            for scene in film.scenes:
+                if not scene.focus_text:
+                    continue
+                with self.subTest(film=film.key, scene=scene.name):
+                    self.assertIsNotNone(video.scene_focus_mask(scene).getbbox())
+                    document = video.scene_documents(scene)["mx-messages"]
+                    self.assertGreaterEqual(document["persistenceMs"], (scene.warmup + scene.seconds) * 1000)
+
+    def test_keyboard_actions_fire_on_exact_frames_and_dismiss_toasts(self):
+        page = mock.Mock()
+        scene = replace(video.INVITATION, actions=((1, "P"), (3, "P")))
+        for frame in range(120):
+            video.apply_scene_actions(page, scene, frame)
+        self.assertEqual(page.keyboard.press.call_args_list, [mock.call("P"), mock.call("P")])
+        self.assertEqual(page.locator.return_value.evaluate_all.call_count, 2)
 
 
 if __name__ == "__main__":

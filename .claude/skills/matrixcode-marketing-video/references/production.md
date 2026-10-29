@@ -25,24 +25,34 @@ server is unnecessary: Chromium opens the self-contained `dist/matrixcode.html`.
 ## Render and preview
 
 Use the prepared Python environment. The repository aliases and the bundled
-scripts run the same code. Select the original film, the new feature showcase,
-or both:
+scripts run the same code. Select an individual film or a group:
 
 ```sh
 python3 scripts/capture_marketing_video.py --video first
 python3 scripts/capture_marketing_video.py --video second
+python3 scripts/capture_marketing_video.py --video third
+python3 scripts/capture_marketing_video.py --video fourth
+python3 scripts/capture_marketing_video.py --video fifth
 python3 scripts/capture_marketing_video.py --video both
-python3 scripts/capture_marketing_video.py --video both --preview-only
+python3 scripts/capture_marketing_video.py --video new
+python3 scripts/capture_marketing_video.py --video all --preview-only
 ```
 
 `--video first` is the default, preserving the original no-argument command. Each
 recipe produces a 36-second, 1920 × 1080, 30 FPS H.264/AAC MP4 with fast-start
-metadata. Both share the original nine-second in-rain `Try it now!` ending.
+metadata. Every film shares the original nine-second in-rain `Try it now!` reveal.
+`both` preserves the first/second selection, `new` selects third/fourth/fifth,
+and `all` selects all five. New captures use a 56-pixel corner URL, a 50-pixel
+centered closing headline, and a 66-pixel centered closing URL. Their anchors keep
+clear space around the original invitation; existing exports change when regenerated.
 
 | Film | Scenes before the ending | Default MP4 under `output/marketing/` |
 | --- | --- | --- |
 | `first` | Classic green, blue binary, amber terminal, purple, fine columns, overlap comparison | `matrixcode-styles.mp4` |
 | `second` | Red symbols, golden slow motion, monochrome Latin, custom teal, rabbit image reveal, live countdown | `features/matrixcode-features.mp4` |
+| `third` | Personalised names, custom phrases, clock, count-up, vertical drop, positioned messages | `words/matrixcode-words.mp4` |
+| `fourth` | Typed intros, rain during intro, load ramp, pause/resume, density shortcuts, intro skip | `choreography/matrixcode-choreography.mp4` |
+| `fifth` | Graded moon, skyline panorama, image scale, placement, brightness fades, image playlist | `images/matrixcode-images.mp4` |
 
 Each film's directory also contains:
 
@@ -55,11 +65,12 @@ encoded final frame; previews may not match an older MP4 until a full render
 completes. `--dist DIRECTORY` selects another production build.
 `--output-dir DIRECTORY` changes the root while retaining each film's relative
 path. `--out PATH.mp4` overrides one film's destination; it is rejected with
-`--video both`. Keep custom destinations in separate directories because the
+film groups (`both`, `new`, or `all`). Keep custom destinations in separate directories because the
 companion JPEG filenames are shared:
 
 ```sh
 python3 scripts/capture_marketing_video.py --video both --output-dir output/marketing/review
+python3 scripts/capture_marketing_video.py --video new --output-dir output/marketing/review
 python3 scripts/capture_marketing_video.py --video second --out output/marketing/feature-cut/matrixcode-features.mp4
 ```
 
@@ -85,19 +96,25 @@ unexpected canvas dimensions, console errors, and FFmpeg failures are fatal.
 
 ## Change the recipe
 
-Edit `scripts/capture_marketing_video.py` **inside this skill**:
+Edit the Python sources under this skill's `scripts/` directory:
 
 | Setting/function | Purpose |
 | --- | --- |
-| `FIRST_FILM`, `SECOND_FILM`, `FILMS`, `Film`, `Scene` | Named recipes, output paths, scene order, titles, durations, warmup, controls, and special behaviors. |
+| `marketing_model.py` | Shared `Film`, `Scene`, capture format, fixed calendar, and original `INVITATION`. |
+| `FIRST_FILM`, `SECOND_FILM` in `capture_marketing_video.py` | Original styles and alternate-feature recipes. |
+| `marketing_film_third.py`, `marketing_film_fourth.py`, `marketing_film_fifth.py` | Words/tokens, choreography/controls, and image-focused recipes. |
+| `FILMS`, `FILM_GROUPS` | CLI catalog, output paths, and group selections. |
 | `Scene.documents`, `scene_documents` | Isolated app storage for image reveals and countdown/message features. |
 | `Scene.preview_seconds` | Representative storyboard time within a scene; the image scene uses four seconds. |
 | `Scene.start_images_after_warmup` | Prewarm rain with reveals off, then use the normal Shift+X shortcut to start the image schedule; omit its transient toast from the capture. |
+| `Scene.play_intro` | Preserve the real typed intro during recording; use zero preroll to show its entrance. Settings chrome is dismissed with H and its fade is suppressed for clean cold-start frames. |
+| `Scene.actions` | Normal keyboard shortcuts at clip-relative times, such as P pause/resume, = density, or Escape intro skip. Actions run in preview and full capture. |
 | `Scene.focus_text`, `grade_message` | Improve contrast around existing countdown glyphs using a fixed-width resolved example; the token itself still comes from the app. |
 | `BASE_SETTINGS` | Shared capture controls, including disabled adaptive resolution/load ramp. |
 | `SIZE`, `FPS`, `TRANSITION` | Frame size, frame rate, and dissolve length. |
 | `Film.duration`, `Film.transitions` | Derived from each recipe's scenes and dissolves; keep them derived. |
-| `SITE`, `SITE_FONT`, `TITLE_FONT`, `TITLE_BOTTOM_MARGIN` | Public URL, corner type, scene type, and player clearance. |
+| `SITE`, `SITE_FONT_SIZE`, `ENDING_TITLE_FONT_SIZE`, `ENDING_SITE_FONT_SIZE`, caption positions | Public URL, typography, centered ending layout, and frame insets. |
+| `TITLE_FONT`, `TITLE_BOTTOM_MARGIN` | Scene titles and player clearance. |
 | `INVITATION`, `CTA`, `open_scene`, `finish_frame` | Shared in-rain invitation, entrance timing, held brightness, and finishing. |
 | `rabbit_mask` | Original silhouette supplied to the real image scheduler as a portable mask. |
 | `scene_versions` | A same-settings comparison that changes only overlap. |
@@ -110,10 +127,14 @@ Keep enough preroll to fill the rain; the second film's slow-motion scene uses
 40 seconds of warmup. The overlap comparison runs both views on the same clock and switches halfway through; its
 internal switch is independent of the between-scene dissolves.
 
-Both recipes end with the same `INVITATION` scene. Its message geometry comes from
+All recipes end with the same `INVITATION` scene. Its message geometry comes from
 that scene's glyph scale and `CTA`. Reserve `message=True` for this closing scene:
 it enables the invitation's upload hook and finishing mask. Other in-rain messages
 belong in `Scene.documents["mx-messages"]`, as the countdown scene demonstrates.
+Focused row/drop messages follow the document's direction and placement and must
+use zero jitter. Their `focus_text` is a resolved fixed-width geometry example;
+the app supplies and updates the actual letters. Check every changing token in
+early and late encoded samples, since changing glyphs must be claimed by rain.
 Image and countdown documents use `mx-images` and `mx-countdown`, with the same
 schemas as the ordinary app. The feature scenes are actual scheduled reveals and
 tokens, rather than text or images drawn over a capture. `SIZE`, message geometry,
@@ -183,7 +204,7 @@ decode. They also extract `matrixcode-final-frame.jpg` before publishing.
 Run the recipe and CLI regression checks with the prepared Python environment:
 
 ```sh
-python3 -m unittest discover -s .claude/skills/matrixcode-marketing-video/scripts -p test_marketing_video.py
+python3 -m unittest discover -s .claude/skills/matrixcode-marketing-video/scripts -p 'test_*.py'
 ```
 
 Use each recipe's derived size, duration, and FPS when changing the format.
@@ -191,6 +212,10 @@ Inspect the storyboard and encoded final frame rather than trusting the
 pre-encoding poster. Confirm the CTA is fully resolved, plain green, and stays
 visible through the last frame. The new feature scenes also need visual review:
 check that the rabbit resolves clearly and the countdown visibly ticks.
+For the third film check names, clock/count-up updates, vertical words, and message
+placement. For the fourth check actual typed text, a pixel-stable paused canvas,
+resumed motion, density changes, and intro skip. For the fifth check image
+contrast, scale/placement, fade phases, and distinct masks appearing in the playlist.
 
 Check scene frames at the intended smallest player width. A 600-pixel preview of
 the title around 1.5 seconds can be extracted with:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture either Matrix Code showcase, or both, from the real WebGL app.
+"""Capture Matrix Code marketing showcases from the real WebGL app.
 
 Requires a production build, Python Playwright/Pillow/NumPy, Chromium, and FFmpeg.
 Run with --preview-only to review every style before rendering the MP4.
@@ -20,7 +20,7 @@ import sys
 import tempfile
 import traceback
 import wave
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlencode
@@ -31,6 +31,10 @@ import numpy as np
 from playwright.sync_api import sync_playwright
 
 from marketing_audio import write_soundtrack
+from marketing_model import CAPTURE_EPOCH_MS, CTA, FPS, INVITATION, SIZE, TRANSITION, Film, Scene
+from marketing_film_third import THIRD_FILM
+from marketing_film_fourth import FOURTH_FILM
+from marketing_film_fifth import FIFTH_FILM
 
 def find_project_root() -> Path:
     for directory in Path(__file__).resolve().parents:
@@ -40,58 +44,13 @@ def find_project_root() -> Path:
 
 
 ROOT = find_project_root()
-SIZE = (1920, 1080)
-FPS = 30
 TEMP_ROOT = Path("/Volumes/DATA/Temp") if Path("/Volumes/DATA").is_dir() else Path(tempfile.gettempdir())
-TRANSITION = 0.5
-# Fix the calendar to an ordinary date so automatic holiday looks stay out of captures.
-CAPTURE_EPOCH_MS = 1_791_979_200_000  # 2026-10-14 12:00 UTC
-CTA = "Try it now!"
 SITE = "julimbob.com/matrixcode"
 TITLE_BOTTOM_MARGIN = 200
 BASE_SETTINGS = {
     "ramp": 0, "adaptive": 0, "quality": "high", "vignette": 0.15,
     "overlap": "false", "lead": 1.6,
 }
-
-
-@dataclass(frozen=True)
-class Scene:
-    name: str
-    title: str
-    seconds: float
-    settings: dict
-    warmup: float = 18
-    message: bool = False
-    overlap_comparison: bool = False
-    documents: dict | None = None
-    preview_seconds: float = 1.5
-    focus_text: str | None = None
-    start_images_after_warmup: bool = False
-
-
-INVITATION = Scene(
-    "invitation", "Your Matrix Code. Your style.", 9,
-    {"preset": "classic", "density": 12, "size": 4.4, "glow": 1.3, "speed": 1.5, "trail": 0.24},
-    warmup=3, message=True,
-)
-
-
-@dataclass(frozen=True)
-class Film:
-    key: str
-    title: str
-    scenes: tuple[Scene, ...]
-    relative_output: Path
-
-    @property
-    def duration(self) -> float:
-        return sum(scene.seconds for scene in self.scenes) - TRANSITION * (len(self.scenes) - 1)
-
-    @property
-    def transitions(self) -> list[float]:
-        return [sum(scene.seconds - TRANSITION for scene in self.scenes[:index])
-                for index in range(1, len(self.scenes))]
 
 
 def rabbit_mask() -> dict:
@@ -171,7 +130,8 @@ SECOND_FILM = Film("second", "Matrix Code — Beyond the green", (
     INVITATION,
 ), Path("features/matrixcode-features.mp4"))
 
-FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM)}
+FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM, THIRD_FILM, FOURTH_FILM, FIFTH_FILM)}
+FILM_GROUPS = {"both": ("first", "second"), "new": ("third", "fourth", "fifth"), "all": tuple(FILMS)}
 # Preserve imports used by existing audio-preview commands for the first film.
 SCENES = FIRST_FILM.scenes
 DURATION = FIRST_FILM.duration
@@ -276,17 +236,35 @@ def shade() -> Image.Image:
 
 SHADE = shade()
 TITLE_FONT = font(72, bold=True)
-SITE_FONT = font(28, mono=True)
+SITE_FONT_SIZE = 56
+ENDING_TITLE_FONT_SIZE = 50
+ENDING_SITE_FONT_SIZE = 66
+SITE_FONT = font(SITE_FONT_SIZE, mono=True)
+ENDING_TITLE_FONT = font(ENDING_TITLE_FONT_SIZE, bold=True)
+ENDING_SITE_FONT = font(ENDING_SITE_FONT_SIZE)
+CORNER_SITE_POSITION = (SIZE[0] - 82, 63)
+ENDING_TITLE_POSITION = (SIZE[0] / 2, 391)
+ENDING_SITE_POSITION = (SIZE[0] / 2, 729)
 
 
-def message_layout(glyph_scale: float = INVITATION.settings["size"], text: str = CTA) -> dict:
-    """Share the invitation's cell geometry between capture and finishing."""
+def message_layout(glyph_scale: float = INVITATION.settings["size"], text: str = CTA,
+                   config: dict | None = None) -> dict:
+    """Match the app's row/drop placement for capture-only message grading."""
+    config = config or {}
     cols = max(8, math.floor(SIZE[0] / (18 * glyph_scale) + 0.5))
     rows = max(8, math.floor(SIZE[1] / (18 * glyph_scale) + 0.5))
-    start_col = math.floor(cols * 0.5 - len(text) / 2 + 0.5)
-    row = math.floor(rows * 0.5 - 0.5 + 0.5)
+    drop = config.get("messageLayout", "row") == "drop"
+    message_cols, message_rows = (1, len(text)) if drop else (len(text), 1)
+    if message_cols > cols or message_rows > rows:
+        raise ValueError(f"Message does not fit the capture grid: {text!r}")
+    start_col = min(cols - message_cols, max(0, math.floor(
+        cols * config.get("horizontalPosition", 0.5) - message_cols / 2 + 0.5)))
+    start_row = min(rows - message_rows, max(0, math.floor(
+        rows * config.get("verticalPosition", 0.5) - message_rows / 2 + 0.5)))
+    reverse = drop and config.get("messageDirection") == "bottomToTop"
     return {"cols": cols, "rows": rows,
-            "cells": [row * cols + start_col + offset
+            "cells": [(start_row + (len(text) - 1 - offset if reverse else offset)) * cols + start_col
+                      if drop else start_row * cols + start_col + offset
                       for offset, char in enumerate(text) if char != " "]}
 
 
@@ -310,9 +288,24 @@ def message_mask(layout: dict = MESSAGE_LAYOUT) -> Image.Image:
 MESSAGE_MASK = message_mask()
 
 
-@lru_cache(maxsize=16)
-def focus_mask(glyph_scale: float, text: str) -> Image.Image:
-    return message_mask(message_layout(glyph_scale, text))
+@lru_cache(maxsize=32)
+def focus_mask(glyph_scale: float, text: str, layout: str = "row",
+               direction: str = "topToBottom", vertical_position: float = 0.5,
+               horizontal_position: float = 0.5) -> Image.Image:
+    return message_mask(message_layout(glyph_scale, text, {
+        "messageLayout": layout, "messageDirection": direction,
+        "verticalPosition": vertical_position, "horizontalPosition": horizontal_position,
+    }))
+
+
+def scene_focus_mask(scene: Scene) -> Image.Image:
+    document = (scene.documents or {}).get("mx-messages", {})
+    if document.get("verticalJitter", 0) or document.get("horizontalJitter", 0):
+        raise ValueError("Focused marketing messages require fixed placement")
+    return focus_mask(scene.settings["size"], scene.focus_text,
+                      document.get("messageLayout", "row"),
+                      document.get("messageDirection", "topToBottom"),
+                      document.get("verticalPosition", 0.5), document.get("horizontalPosition", 0.5))
 
 
 def grade_message(frame: Image.Image, mask: Image.Image, ink: Image.Image, focus: float,
@@ -334,13 +327,13 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         # Grade only the app's existing message cells; tokens keep ticking underneath.
         red, green, blue = frame.split()
         ink = ImageChops.lighter(ImageChops.lighter(red, green), blue)
-        mask = focus_mask(scene.settings["size"], scene.focus_text)
+        mask = scene_focus_mask(scene)
         frame = grade_message(frame, mask, ink, ease(seconds / 0.65), dim=0.6, boost=2)
     frame = Image.alpha_composite(frame.convert("RGBA"), SHADE)
     chrome = Image.new("RGBA", SIZE)
     draw = ImageDraw.Draw(chrome)
     if not scene.message:
-        draw.text((SIZE[0] - 82, 63), SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
+        draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
     reveal = ease(seconds / 0.65)
     if not scene.message:
         caption = Image.new("RGBA", SIZE)
@@ -352,9 +345,9 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
     else:
         ending = Image.new("RGBA", SIZE)
         ending_draw = ImageDraw.Draw(ending)
-        ending_draw.text((SIZE[0] / 2, 391), scene.title,
-                         font=font(25, bold=True), fill="#EEF5EF", anchor="mm")
-        ending_draw.text((SIZE[0] / 2, 729), SITE, font=font(33), fill="#F5FFF7", anchor="mm")
+        ending_draw.text(ENDING_TITLE_POSITION, scene.title,
+                         font=ENDING_TITLE_FONT, fill="#EEF5EF", anchor="mm")
+        ending_draw.text(ENDING_SITE_POSITION, SITE, font=ENDING_SITE_FONT, fill="#F5FFF7", anchor="mm")
         ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
         chrome = Image.alpha_composite(chrome, ending)
     return Image.alpha_composite(frame, chrome).convert("RGB")
@@ -395,7 +388,12 @@ def open_scene(browser, dist: Path, scene: Scene):
     query = urlencode({**BASE_SETTINGS, **scene.settings})
     page.goto((dist / "matrixcode.html").resolve().as_uri() + "?" + query, wait_until="networkidle")
     page.wait_for_function("Boolean(document.querySelector('.mx-ui') && window.__videoAdvance)", polling=100)
-    page.keyboard.press("Escape")
+    if not scene.play_intro:
+        page.keyboard.press("Escape")
+    elif page.locator(".mx-ui.is-visible").count():
+        page.keyboard.press("H")
+    # Keep the normal settings dismissal from leaving a fading panel in cold-start shots.
+    page.locator(".mx-ui").evaluate("element => { element.style.transition = 'none'; element.style.opacity = '0'; }")
     page.evaluate("frames => window.__videoAdvance(frames)", round(scene.warmup * FPS))
     # Flush initial resize work before recording the stable full-resolution grid.
     page.screenshot()
@@ -418,6 +416,13 @@ def open_scene(browser, dist: Path, scene: Scene):
         }"""):
             raise RuntimeError(f"{scene.name}: image schedule did not start")
     return context, page, problems
+
+
+def apply_scene_actions(page, scene: Scene, frame_number: int):
+    for seconds, key in scene.actions:
+        if frame_number == round(seconds * FPS):
+            page.keyboard.press(key)
+            page.locator(".mx-toast").evaluate_all("toasts => toasts.forEach(toast => toast.remove())")
 
 
 def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, preview_only: bool):
@@ -443,7 +448,8 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
         for frame_number in range(count):
             # Both comparison views share the same clock and are already full of rain
             # when the full-screen switch happens; the extra lanes never start empty.
-            for _, page, _ in sessions:
+            for version, (_, page, _) in zip(versions, sessions):
+                apply_scene_actions(page, version, frame_number)
                 page.evaluate("""plainMessage => {
                     window.__videoPlainMessage = plainMessage;
                     window.__videoAdvance();
@@ -512,9 +518,10 @@ def assemble(clips: list[Path], audio: Path, output: Path, film: Film):
 
 
 def resolve_outputs(video: str, output_directory: Path, output: Path | None) -> list[tuple[Film, Path]]:
-    if video == "both" and output is not None:
-        raise ValueError("--out selects one MP4; use --output-dir with --video both")
-    films = tuple(FILMS.values()) if video == "both" else (FILMS[video],)
+    keys = FILM_GROUPS.get(video, (video,))
+    if len(keys) > 1 and output is not None:
+        raise ValueError("--out selects one MP4; use --output-dir with a film group")
+    films = tuple(FILMS[key] for key in keys)
     return [(film, output if output is not None else output_directory / film.relative_output)
             for film in films]
 
@@ -522,10 +529,10 @@ def resolve_outputs(video: str, output_directory: Path, output: Path | None) -> 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
-    parser.add_argument("--video", choices=[*FILMS, "both"], default="first",
-                        help="first: original styles (default); second: new features; both: render each")
+    parser.add_argument("--video", choices=[*FILMS, *FILM_GROUPS], default="first",
+                        help="select a film; both: first two; new: third through fifth; all: every film")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output/marketing",
-                        help="output root; the second film and its previews use a features/ subfolder")
+                        help="output root; each additional film keeps its previews in its own subfolder")
     parser.add_argument("--out", type=Path, help="override the MP4 path for a single film")
     parser.add_argument("--temp-dir", type=Path, default=TEMP_ROOT,
                         help="scratch directory for lossless clips and audio")

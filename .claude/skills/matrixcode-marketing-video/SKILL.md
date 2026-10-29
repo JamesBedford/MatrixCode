@@ -14,11 +14,12 @@ discovers it through the project's `.agents/skills` symlink.
 ## Choose the work
 
 - **Recreate a film:** build the app and select `--video first` (the default),
-  `--video second`, or `--video both`. The first film showcases styles; the second
-  showcases alternate glyphs, motion, colour, image reveals, and a live countdown.
+  `second`, `third`, `fourth`, or `fifth`. Groups: `both` selects the first two,
+  `new` selects the third through fifth, and `all` selects every film. Themes are
+  styles, alternate features, words/tokens, choreography/controls, and images.
 - **Update a film:** edit the scene, caption, capture, or soundtrack settings that
   implement the request, then regenerate the actual MP4 and preview images.
-- **Make a new film:** use the `Film` and `Scene` definitions as the starting
+- **Make a new film:** use the `Film` and `Scene` definitions in `marketing_model.py` as the starting
   recipe. Choose the audience, scenes, copy, duration, and destination from the
   request. Reuse `INVITATION` when the established ending is requested.
 
@@ -41,12 +42,13 @@ the app itself come from the enclosing MatrixCode checkout.
   swooshes, and preserve clear drum attacks. External music or samples are optional
   only when requested and usable for the intended distribution.
 - Social captions must work without sound. Keep ordinary scene titles above player
-  controls: the current 1080p recipe uses a 200-pixel bottom margin and a 28-pixel
-  top-right URL. Inspect downscaled frames when changing copy, size, or placement.
+  controls: the current 1080p recipes use a 200-pixel bottom margin and a 56-pixel
+  top-right URL. The centered closing headline and URL use 50 and 66 pixels.
+  Inspect downscaled frames and preserve clear gaps around the invitation when changing copy, size, or placement.
   A different format needs its own checked safe area.
 - The closing invitation uses the app's message scheduler and existing glyphs.
   Its final second settles to plain green letters without head highlights while
-  ambient rain continues. Both recipes share the same `INVITATION` scene and
+  ambient rain continues. All recipes share the same `INVITATION` scene and
   finishing. Do not replace it with separately drawn CTA text unless the user
   explicitly requests a different presentation. Feature-scene storage documents
   belong in `Scene.documents`; reserve `message=True` for the closing invitation.
@@ -61,8 +63,8 @@ For soundtrack changes, check the generated WAV for clipping and listen when aud
 preview is available; numerical checks do not establish subjective sound quality.
 
 Keep the final MP4, poster, storyboard, and final-frame image together. The first
-film defaults to `output/marketing/matrixcode-styles.mp4`; the second and its
-companions use `output/marketing/features/`. Preserve both distinct films.
+film defaults to `output/marketing/matrixcode-styles.mp4`; the others and their
+companions use `features/`, `words/`, `choreography/`, and `images/` beneath the same root. Preserve distinct films.
 Temporary capture clips and WAVs already clean themselves up. The user requested removal of
 superseded versions: after a successful replacement, remove obsolete outputs of
 that same film rather than accumulating numbered backups. Preserve distinct films
