@@ -23,13 +23,13 @@ class ChoreographyTimingTests(unittest.TestCase):
         self.assertLessEqual(end_ms, (scene.seconds - 1) * 1000)
         self.assertLessEqual(end_ms + scene.settings["ramp"], scene.seconds * 1000)
 
-    def test_pause_has_visible_movement_on_both_sides(self):
-        scene = self.scene("pause-and-resume")
-        pause, resume = scene.actions
-        self.assertEqual((pause[1], resume[1]), ("P", "P"))
-        self.assertGreaterEqual(pause[0], 1)
-        self.assertGreaterEqual(resume[0] - pause[0], 1)
-        self.assertLessEqual(resume[0], scene.seconds - 1)
+    def test_mirroring_keeps_the_rain_moving(self):
+        scene = self.scene("glyph-mirroring")
+        self.assertGreater(scene.settings["speed"], 0)
+        self.assertEqual(scene.settings["mirror"], "false")
+        self.assertEqual(scene.comparison_settings, {"mirror": "true"})
+        self.assertFalse(scene.actions)
+        self.assertTrue(all(key.upper() != "P" for clip in FOURTH_FILM.scenes for _, key in clip.actions))
 
     def test_skip_key_interrupts_a_still_playing_intro(self):
         scene = self.scene("skip-opening")

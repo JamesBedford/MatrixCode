@@ -27,6 +27,8 @@ class Scene:
     start_images_after_warmup: bool = False
     play_intro: bool = False
     actions: tuple[tuple[float, str], ...] = ()
+    comparison_settings: dict | None = None
+    comparison_title: str | None = None
 
 
 @dataclass(frozen=True)

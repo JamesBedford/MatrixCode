@@ -33,8 +33,12 @@ python3 scripts/capture_marketing_video.py --video second
 python3 scripts/capture_marketing_video.py --video third
 python3 scripts/capture_marketing_video.py --video fourth
 python3 scripts/capture_marketing_video.py --video fifth
+python3 scripts/capture_marketing_video.py --video sixth
+python3 scripts/capture_marketing_video.py --video seventh
+python3 scripts/capture_marketing_video.py --video eighth
 python3 scripts/capture_marketing_video.py --video both
 python3 scripts/capture_marketing_video.py --video new
+python3 scripts/capture_marketing_video.py --video styles
 python3 scripts/capture_marketing_video.py --video all --preview-only
 ```
 
@@ -42,7 +46,7 @@ python3 scripts/capture_marketing_video.py --video all --preview-only
 recipe produces a 36-second, 1920 × 1080, 30 FPS H.264/AAC MP4 with fast-start
 metadata. Every film shares the original nine-second in-rain `Try it now!` reveal.
 `both` preserves the first/second selection, `new` selects third/fourth/fifth,
-and `all` selects all five. New captures use a 56-pixel corner URL, a 50-pixel
+`styles` selects sixth/seventh/eighth, and `all` selects all eight. New captures use a 56-pixel corner URL, a 50-pixel
 centered closing headline, and a 66-pixel centered closing URL. Their anchors keep
 clear space around the original invitation; existing exports change when regenerated.
 
@@ -51,8 +55,15 @@ clear space around the original invitation; existing exports change when regener
 | `first` | Classic green, blue binary, amber terminal, purple, fine columns, overlap comparison | `matrixcode-styles.mp4` |
 | `second` | Red symbols, golden slow motion, monochrome Latin, custom teal, rabbit image reveal, live countdown | `features/matrixcode-features.mp4` |
 | `third` | Personalised names, custom phrases, clock, count-up, vertical drop, positioned messages | `words/matrixcode-words.mp4` |
-| `fourth` | Typed intros, rain during intro, load ramp, pause/resume, density shortcuts, intro skip | `choreography/matrixcode-choreography.mp4` |
+| `fourth` | Typed intros, rain during intro, load ramp, glyph mirroring, density shortcuts, intro skip | `choreography/matrixcode-choreography.mp4` |
 | `fifth` | Graded moon, skyline panorama, image scale, placement, brightness fades, image playlist | `images/matrixcode-images.mp4` |
+| `sixth` | Six saturated neon looks | `styles/neon/matrixcode-neon.mp4` |
+| `seventh` | Six retro phosphor/terminal looks | `styles/phosphor/matrixcode-phosphor.mp4` |
+| `eighth` | Six atmospheric/sculptural looks | `styles/atmospheres/matrixcode-atmospheres.mp4` |
+
+The sixth through eighth films are style-only: normal query controls define each
+look, body documents keep intros/messages/images disabled, and no timed actions
+or comparison demonstrations run. Only the last `INVITATION` scene enables a message.
 
 Each film's directory also contains:
 
@@ -65,12 +76,13 @@ encoded final frame; previews may not match an older MP4 until a full render
 completes. `--dist DIRECTORY` selects another production build.
 `--output-dir DIRECTORY` changes the root while retaining each film's relative
 path. `--out PATH.mp4` overrides one film's destination; it is rejected with
-film groups (`both`, `new`, or `all`). Keep custom destinations in separate directories because the
+film groups (`both`, `new`, `styles`, or `all`). Keep custom destinations in separate directories because the
 companion JPEG filenames are shared:
 
 ```sh
 python3 scripts/capture_marketing_video.py --video both --output-dir output/marketing/review
 python3 scripts/capture_marketing_video.py --video new --output-dir output/marketing/review
+python3 scripts/capture_marketing_video.py --video styles --output-dir output/marketing/review
 python3 scripts/capture_marketing_video.py --video second --out output/marketing/feature-cut/matrixcode-features.mp4
 ```
 
@@ -103,12 +115,14 @@ Edit the Python sources under this skill's `scripts/` directory:
 | `marketing_model.py` | Shared `Film`, `Scene`, capture format, fixed calendar, and original `INVITATION`. |
 | `FIRST_FILM`, `SECOND_FILM` in `capture_marketing_video.py` | Original styles and alternate-feature recipes. |
 | `marketing_film_third.py`, `marketing_film_fourth.py`, `marketing_film_fifth.py` | Words/tokens, choreography/controls, and image-focused recipes. |
+| `marketing_film_sixth.py`, `marketing_film_seventh.py`, `marketing_film_eighth.py` | Pure neon, retro phosphor, and atmospheric style reels. |
 | `FILMS`, `FILM_GROUPS` | CLI catalog, output paths, and group selections. |
 | `Scene.documents`, `scene_documents` | Isolated app storage for image reveals and countdown/message features. |
 | `Scene.preview_seconds` | Representative storyboard time within a scene; the image scene uses four seconds. |
 | `Scene.start_images_after_warmup` | Prewarm rain with reveals off, then use the normal Shift+X shortcut to start the image schedule; omit its transient toast from the capture. |
 | `Scene.play_intro` | Preserve the real typed intro during recording; use zero preroll to show its entrance. Settings chrome is dismissed with H and its fade is suppressed for clean cold-start frames. |
-| `Scene.actions` | Normal keyboard shortcuts at clip-relative times, such as P pause/resume, = density, or Escape intro skip. Actions run in preview and full capture. |
+| `Scene.actions` | Normal keyboard shortcuts at clip-relative times, such as = density or Escape intro skip. Actions run in preview and full capture. |
+| `Scene.comparison_settings`, `Scene.comparison_title` | A same-clock second view that changes declared query controls; the fourth film compares readable and mirrored Latin glyphs while rain keeps moving. |
 | `Scene.focus_text`, `grade_message` | Improve contrast around existing countdown glyphs using a fixed-width resolved example; the token itself still comes from the app. |
 | `BASE_SETTINGS` | Shared capture controls, including disabled adaptive resolution/load ramp. |
 | `SIZE`, `FPS`, `TRANSITION` | Frame size, frame rate, and dissolve length. |
@@ -213,9 +227,11 @@ pre-encoding poster. Confirm the CTA is fully resolved, plain green, and stays
 visible through the last frame. The new feature scenes also need visual review:
 check that the rabbit resolves clearly and the countdown visibly ticks.
 For the third film check names, clock/count-up updates, vertical words, and message
-placement. For the fourth check actual typed text, a pixel-stable paused canvas,
-resumed motion, density changes, and intro skip. For the fifth check image
+placement. For the fourth check actual typed text, continuous motion across
+readable/mirrored glyph views, density changes, and intro skip. For the fifth check image
 contrast, scale/placement, fade phases, and distinct masks appearing in the playlist.
+For the style-only films inspect every look at small-player width, confirm ongoing
+rain motion, and check that no intro/message/image overlays appear before the shared ending.
 
 Check scene frames at the intended smallest player width. A 600-pixel preview of
 the title around 1.5 seconds can be extracted with:

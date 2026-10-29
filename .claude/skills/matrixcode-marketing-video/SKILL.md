@@ -14,9 +14,10 @@ discovers it through the project's `.agents/skills` symlink.
 ## Choose the work
 
 - **Recreate a film:** build the app and select `--video first` (the default),
-  `second`, `third`, `fourth`, or `fifth`. Groups: `both` selects the first two,
-  `new` selects the third through fifth, and `all` selects every film. Themes are
-  styles, alternate features, words/tokens, choreography/controls, and images.
+  `second`, `third`, `fourth`, `fifth`, `sixth`, `seventh`, or `eighth`. Groups:
+  `both` selects the first two, `new` selects the third through fifth, `styles`
+  selects the sixth through eighth, and `all` selects every film. The additional
+  style reels cover neon, retro phosphor, and atmospheric rain looks.
 - **Update a film:** edit the scene, caption, capture, or soundtrack settings that
   implement the request, then regenerate the actual MP4 and preview images.
 - **Make a new film:** use the `Film` and `Scene` definitions in `marketing_model.py` as the starting
@@ -33,6 +34,9 @@ the app itself come from the enclosing MatrixCode checkout.
 - Capture the actual app with normal query controls. Make marketing edits in the
   capture/finishing pipeline; renderer or simulation changes follow the project's
   cross-platform parity workflow.
+- Style-only reels use query controls for each look and keep body-scene intros,
+  image reveals, messages, actions, and comparison demos disabled. Reserve the
+  in-rain message for the shared closing invitation. Name the looks in captions.
 - Preserve the current film's preferences unless the user changes them: style
   titles and a readable corner URL, no extra scene subtitles or navigation labels,
   a closing in-rain `Try it now!` reveal, and the final URL. The removed
@@ -64,7 +68,8 @@ preview is available; numerical checks do not establish subjective sound quality
 
 Keep the final MP4, poster, storyboard, and final-frame image together. The first
 film defaults to `output/marketing/matrixcode-styles.mp4`; the others and their
-companions use `features/`, `words/`, `choreography/`, and `images/` beneath the same root. Preserve distinct films.
+companions use `features/`, `words/`, `choreography/`, `images/`, and themed
+subfolders under `styles/` beneath the same root. Preserve distinct films.
 Temporary capture clips and WAVs already clean themselves up. The user requested removal of
 superseded versions: after a successful replacement, remove obsolete outputs of
 that same film rather than accumulating numbered backups. Preserve distinct films

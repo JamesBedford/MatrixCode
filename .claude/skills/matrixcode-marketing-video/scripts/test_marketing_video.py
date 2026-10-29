@@ -26,7 +26,8 @@ class FilmSelectionTests(unittest.TestCase):
         root = Path("output")
         for group, expected in (
             ("new", ["third", "fourth", "fifth"]),
-            ("all", ["first", "second", "third", "fourth", "fifth"]),
+            ("styles", ["sixth", "seventh", "eighth"]),
+            ("all", ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"]),
         ):
             with self.subTest(group=group):
                 outputs = video.resolve_outputs(group, root, None)
@@ -67,7 +68,7 @@ class FilmSelectionTests(unittest.TestCase):
 
     def test_invalid_film_is_a_cli_error(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
-            video.parse_args(["--video", "sixth"])
+            video.parse_args(["--video", "unknown"])
         self.assertEqual(error.exception.code, 2)
 
     def test_invalid_output_options_fail_before_rendering(self):
@@ -82,6 +83,23 @@ class FilmSelectionTests(unittest.TestCase):
 
 
 class RecipeTests(unittest.TestCase):
+    def test_style_reels_only_enable_messages_for_the_closing_invitation(self):
+        for key in video.FILM_GROUPS["styles"]:
+            film = video.FILMS[key]
+            for scene in film.scenes[:-1]:
+                with self.subTest(film=key, scene=scene.name):
+                    self.assertFalse(scene.message)
+                    self.assertFalse(scene.play_intro)
+                    self.assertFalse(scene.documents)
+                    self.assertFalse(scene.actions)
+                    self.assertFalse(scene.overlap_comparison)
+                    self.assertIsNone(scene.comparison_settings)
+                    self.assertIsNone(scene.focus_text)
+                    documents = video.scene_documents(scene)
+                    for storage_key in ("mx-intro", "mx-messages", "mx-images"):
+                        self.assertFalse(documents[storage_key]["enabled"])
+            self.assertIs(film.scenes[-1], video.INVITATION)
+
     def test_first_film_retains_original_timeline(self):
         film = video.FILMS["first"]
         self.assertEqual(film.duration, 36)
@@ -133,6 +151,18 @@ class RecipeTests(unittest.TestCase):
         self.assertEqual(overlapping.seconds, original.seconds)
         self.assertEqual(overlapping.warmup, original.warmup)
         self.assertEqual(overlapping.documents, original.documents)
+
+    def test_mirror_comparison_changes_only_orientation(self):
+        comparison = next(scene for scene in video.FILMS["fourth"].scenes
+                          if scene.comparison_settings is not None)
+        readable, mirrored = video.scene_versions(comparison)
+        self.assertIs(readable, comparison)
+        self.assertEqual(mirrored.settings, {**readable.settings, "mirror": "true"})
+        self.assertEqual(mirrored.seconds, readable.seconds)
+        self.assertEqual(mirrored.warmup, readable.warmup)
+        self.assertEqual(mirrored.actions, readable.actions)
+        self.assertIsNone(mirrored.comparison_settings)
+        self.assertNotEqual(mirrored.name, readable.name)
 
     def test_image_feature_uses_a_valid_portable_mask(self):
         scene = next(scene for scene in video.FILMS["second"].scenes if scene.name == "images")

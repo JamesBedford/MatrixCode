@@ -35,6 +35,9 @@ from marketing_model import CAPTURE_EPOCH_MS, CTA, FPS, INVITATION, SIZE, TRANSI
 from marketing_film_third import THIRD_FILM
 from marketing_film_fourth import FOURTH_FILM
 from marketing_film_fifth import FIFTH_FILM
+from marketing_film_sixth import SIXTH_FILM
+from marketing_film_seventh import SEVENTH_FILM
+from marketing_film_eighth import EIGHTH_FILM
 
 def find_project_root() -> Path:
     for directory in Path(__file__).resolve().parents:
@@ -130,8 +133,12 @@ SECOND_FILM = Film("second", "Matrix Code — Beyond the green", (
     INVITATION,
 ), Path("features/matrixcode-features.mp4"))
 
-FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM, THIRD_FILM, FOURTH_FILM, FIFTH_FILM)}
-FILM_GROUPS = {"both": ("first", "second"), "new": ("third", "fourth", "fifth"), "all": tuple(FILMS)}
+FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM, THIRD_FILM, FOURTH_FILM,
+                                  FIFTH_FILM, SIXTH_FILM, SEVENTH_FILM, EIGHTH_FILM)}
+FILM_GROUPS = {
+    "both": ("first", "second"), "new": ("third", "fourth", "fifth"),
+    "styles": ("sixth", "seventh", "eighth"), "all": tuple(FILMS),
+}
 # Preserve imports used by existing audio-preview commands for the first film.
 SCENES = FIRST_FILM.scenes
 DURATION = FIRST_FILM.duration
@@ -139,12 +146,17 @@ TRANSITIONS = FIRST_FILM.transitions
 
 
 def scene_versions(scene: Scene) -> list[Scene]:
-    """Keep the overlap comparison identical apart from its overlap control."""
-    if not scene.overlap_comparison:
+    """Run comparison views on the same clock with only declared controls changed."""
+    settings = scene.comparison_settings
+    title = scene.comparison_title or scene.title
+    name = f"{scene.name}-comparison"
+    if settings is None and scene.overlap_comparison:
+        settings, title, name = {"overlap": "true"}, "Overlapping rain columns", "overlapping"
+    if settings is None:
         return [scene]
-    return [scene, replace(scene, name="overlapping", title="Overlapping rain columns",
-                           settings={**scene.settings, "overlap": "true"},
-                           overlap_comparison=False)]
+    return [scene, replace(scene, name=name, title=title,
+                           settings={**scene.settings, **settings}, overlap_comparison=False,
+                           comparison_settings=None, comparison_title=None)]
 
 
 def preview_path(directory: Path, index: int, scene: Scene) -> Path:
@@ -530,7 +542,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
     parser.add_argument("--video", choices=[*FILMS, *FILM_GROUPS], default="first",
-                        help="select a film; both: first two; new: third through fifth; all: every film")
+                        help="select a film; both: first two; new: third–fifth; styles: sixth–eighth; all: every film")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output/marketing",
                         help="output root; each additional film keeps its previews in its own subfolder")
     parser.add_argument("--out", type=Path, help="override the MP4 path for a single film")

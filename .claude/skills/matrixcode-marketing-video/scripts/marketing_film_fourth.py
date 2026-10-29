@@ -44,11 +44,11 @@ FOURTH_FILM = Film("fourth", "Matrix Code — Set the scene", (
         warmup=0, preview_seconds=3.8,
     ),
     Scene(
-        "pause-and-resume", "Pause and resume", 4.5,
-        {"preset": "custom", "color": "#FF875F", "glyphs": "katakana", "font": "rounded",
-         "density": 6, "size": 1.8, "speed": 2.1, "trail": 0.2,
-         "glow": 1.1},
-        actions=((1.0, "P"), (2.4, "P")), preview_seconds=1.8,
+        "glyph-mirroring", "Readable lettering", 4.5,
+        {"preset": "custom", "color": "#FF875F", "glyphs": "latin", "font": "mono",
+         "density": 6, "size": 2.2, "speed": 1.1, "trail": 0.3,
+         "glow": 0.85, "mirror": "false", "glyphrate": 0.25},
+        comparison_settings={"mirror": "true"}, comparison_title="Mirrored lettering",
     ),
     Scene(
         "density-keys", "Turn up the rain", 5.5,

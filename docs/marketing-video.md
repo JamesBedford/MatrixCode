@@ -22,14 +22,18 @@ python3 scripts/capture_marketing_video.py --video second
 python3 scripts/capture_marketing_video.py --video third
 python3 scripts/capture_marketing_video.py --video fourth
 python3 scripts/capture_marketing_video.py --video fifth
+python3 scripts/capture_marketing_video.py --video sixth
+python3 scripts/capture_marketing_video.py --video seventh
+python3 scripts/capture_marketing_video.py --video eighth
 python3 scripts/capture_marketing_video.py --video both
 python3 scripts/capture_marketing_video.py --video new
+python3 scripts/capture_marketing_video.py --video styles
 python3 scripts/capture_marketing_video.py --video all --preview-only
 ```
 
 `--video first` is the default, so the original command still regenerates the
 first film. `both` selects the first two, `new` selects the third through fifth,
-and `all` selects all five. Every film is 36 seconds at 1920 × 1080 and 30 FPS, with the same
+`styles` selects the sixth through eighth, and `all` selects all eight. Every film is 36 seconds at 1920 × 1080 and 30 FPS, with the same
 original synthesized soundtrack style and shared in-rain `Try it now!` ending.
 
 | Selection | Showcase | Default MP4 |
@@ -37,8 +41,14 @@ original synthesized soundtrack style and shared in-rain `Try it now!` ending.
 | `first` | Classic green, blue binary, amber terminal, purple, fine columns, overlap comparison | `output/marketing/matrixcode-styles.mp4` |
 | `second` | Red symbols, golden slow motion, monochrome Latin, custom teal, rabbit image reveal, live countdown | `output/marketing/features/matrixcode-features.mp4` |
 | `third` | Personal names, custom phrases, a live clock, count-up, vertical words, positioned messages | `output/marketing/words/matrixcode-words.mp4` |
-| `fourth` | Typed intros, rain behind text, load ramp, pause/resume, density shortcuts, intro skip | `output/marketing/choreography/matrixcode-choreography.mp4` |
+| `fourth` | Typed intros, rain behind text, load ramp, glyph mirroring, density shortcuts, intro skip | `output/marketing/choreography/matrixcode-choreography.mp4` |
 | `fifth` | Greyscale moon, panoramic skyline, image scale, placement, soft fades, image playlist | `output/marketing/images/matrixcode-images.mp4` |
+| `sixth` | Six saturated neon rain styles | `output/marketing/styles/neon/matrixcode-neon.mp4` |
+| `seventh` | Six retro phosphor and terminal rain styles | `output/marketing/styles/phosphor/matrixcode-phosphor.mp4` |
+| `eighth` | Six spacious, layered, and flowing rain styles | `output/marketing/styles/atmospheres/matrixcode-atmospheres.mp4` |
+
+The `styles` films show only rain looks before the closing invitation. Their body
+scenes contain no intros, image reveals, messages, or interactive demonstrations.
 
 Each film keeps its poster, storyboard, and encoded final frame beside its MP4.
 `--output-dir DIRECTORY` changes the output root for individual films or groups;
