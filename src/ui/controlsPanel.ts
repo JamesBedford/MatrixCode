@@ -88,7 +88,7 @@ export class ControlsPanel {
     if (about) this.panel.appendChild(about);
 
     this.panel.append(
-      this.externalLink("Follow @Mr_Bedford on X", "https://x.com/Mr_Bedford"),
+      this.externalLink("Follow Julimbob on X", "https://x.com/Mr_Bedford"),
       this.externalLink("Open source and screensavers on GitHub", "https://github.com/JamesBedford/MatrixCode"),
     );
 
