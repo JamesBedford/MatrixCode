@@ -13,12 +13,14 @@ discovers it through the project's `.agents/skills` symlink.
 
 ## Choose the work
 
-- **Recreate the current film:** build the app and run the bundled capture script.
+- **Recreate a film:** build the app and select `--video first` (the default),
+  `--video second`, or `--video both`. The first film showcases styles; the second
+  showcases alternate glyphs, motion, colour, image reveals, and a live countdown.
 - **Update a film:** edit the scene, caption, capture, or soundtrack settings that
   implement the request, then regenerate the actual MP4 and preview images.
-- **Make a new film:** use `Scene` definitions as the starting recipe. Choose the
-  audience, scenes, copy, duration, and destination from the request; use the current
-  landscape showcase as the default when no new direction is given.
+- **Make a new film:** use the `Film` and `Scene` definitions as the starting
+  recipe. Choose the audience, scenes, copy, duration, and destination from the
+  request. Reuse `INVITATION` when the established ending is requested.
 
 Read [references/production.md](references/production.md) for setup, commands,
 capture mechanics, editing points, verification, and cleanup. The bundled
@@ -44,8 +46,10 @@ the app itself come from the enclosing MatrixCode checkout.
   A different format needs its own checked safe area.
 - The closing invitation uses the app's message scheduler and existing glyphs.
   Its final second settles to plain green letters without head highlights while
-  ambient rain continues. Do not replace it with separately drawn CTA text unless
-  the user explicitly requests a different presentation.
+  ambient rain continues. Both recipes share the same `INVITATION` scene and
+  finishing. Do not replace it with separately drawn CTA text unless the user
+  explicitly requests a different presentation. Feature-scene storage documents
+  belong in `Scene.documents`; reserve `message=True` for the closing invitation.
 
 ## Finish the requested deliverable
 
@@ -56,8 +60,10 @@ MP4 and verify its streams against the recipe's derived size, FPS, and duration.
 For soundtrack changes, check the generated WAV for clipping and listen when audio
 preview is available; numerical checks do not establish subjective sound quality.
 
-Keep the final MP4, poster, storyboard, and final-frame image together. Temporary
-capture clips and WAVs already clean themselves up. The user requested removal of
+Keep the final MP4, poster, storyboard, and final-frame image together. The first
+film defaults to `output/marketing/matrixcode-styles.mp4`; the second and its
+companions use `output/marketing/features/`. Preserve both distinct films.
+Temporary capture clips and WAVs already clean themselves up. The user requested removal of
 superseded versions: after a successful replacement, remove obsolete outputs of
 that same film rather than accumulating numbered backups. Preserve distinct films
 or explicitly requested archives. Never remove unrelated project files or caches

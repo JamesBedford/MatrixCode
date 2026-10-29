@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture a 36-second marketing film from the actual, unmodified WebGL app.
+"""Capture either Matrix Code showcase, or both, from the real WebGL app.
 
 Requires a production build, Python Playwright/Pillow/NumPy, Chromium, and FFmpeg.
 Run with --preview-only to review every style before rendering the MP4.
@@ -8,18 +8,26 @@ Run with --preview-only to review every style before rendering the MP4.
 from __future__ import annotations
 
 import argparse
+import base64
+import contextlib
 import io
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
+import wave
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFont
+import numpy as np
 from playwright.sync_api import sync_playwright
 
 from marketing_audio import write_soundtrack
@@ -34,7 +42,10 @@ def find_project_root() -> Path:
 ROOT = find_project_root()
 SIZE = (1920, 1080)
 FPS = 30
+TEMP_ROOT = Path("/Volumes/DATA/Temp") if Path("/Volumes/DATA").is_dir() else Path(tempfile.gettempdir())
 TRANSITION = 0.5
+# Fix the calendar to an ordinary date so automatic holiday looks stay out of captures.
+CAPTURE_EPOCH_MS = 1_791_979_200_000  # 2026-10-14 12:00 UTC
 CTA = "Try it now!"
 SITE = "julimbob.com/matrixcode"
 TITLE_BOTTOM_MARGIN = 200
@@ -53,9 +64,54 @@ class Scene:
     warmup: float = 18
     message: bool = False
     overlap_comparison: bool = False
+    documents: dict | None = None
+    preview_seconds: float = 1.5
+    focus_text: str | None = None
+    start_images_after_warmup: bool = False
 
 
-SCENES = [
+INVITATION = Scene(
+    "invitation", "Your Matrix Code. Your style.", 9,
+    {"preset": "classic", "density": 12, "size": 4.4, "glow": 1.3, "speed": 1.5, "trail": 0.24},
+    warmup=3, message=True,
+)
+
+
+@dataclass(frozen=True)
+class Film:
+    key: str
+    title: str
+    scenes: tuple[Scene, ...]
+    relative_output: Path
+
+    @property
+    def duration(self) -> float:
+        return sum(scene.seconds for scene in self.scenes) - TRANSITION * (len(self.scenes) - 1)
+
+    @property
+    def transitions(self) -> list[float]:
+        return [sum(scene.seconds - TRANSITION for scene in self.scenes[:index])
+                for index in range(1, len(self.scenes))]
+
+
+def rabbit_mask() -> dict:
+    """An original silhouette imported through the app's portable image format."""
+    background = 60
+    mask = Image.new("L", (384, 384), color=background)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((63, 155, 277, 351), fill=255)  # body
+    draw.ellipse((195, 103, 326, 231), fill=255)  # head
+    draw.ellipse((218, 12, 249, 143), fill=255)  # upright ears
+    draw.ellipse((269, 24, 301, 151), fill=255)
+    draw.ellipse((32, 230, 104, 302), fill=255)  # tail
+    draw.ellipse((148, 315, 319, 357), fill=255)  # foot
+    draw.ellipse((287, 142, 301, 157), fill=background)  # eye
+    mask = mask.resize((96, 96), Image.Resampling.LANCZOS)
+    return {"name": "White rabbit", "width": mask.width, "height": mask.height,
+            "data": base64.b64encode(mask.tobytes()).decode("ascii")}
+
+
+FIRST_FILM = Film("first", "Matrix Code — Find your style", (
     Scene("classic", "Classic green", 5.5,
           {"preset": "classic", "density": 5, "size": 1.5, "glow": 1.2, "speed": 1, "trail": 0.25}),
     Scene("blue", "Electric blue binary", 4.5,
@@ -69,13 +125,57 @@ SCENES = [
     Scene("non-overlapping", "Non-overlapping rain columns", 6.5,
           {"preset": "classic", "density": 60, "size": 1.6, "glow": 0.65, "speed": 1.2, "trail": 0.12},
           overlap_comparison=True),
-    Scene("invitation", "Your Matrix Code. Your style.", 9,
-          {"preset": "classic", "density": 12, "size": 4.4, "glow": 1.3, "speed": 1.5, "trail": 0.24},
-          warmup=3, message=True),
-]
-DURATION = sum(scene.seconds for scene in SCENES) - TRANSITION * (len(SCENES) - 1)
-TRANSITIONS = [sum(scene.seconds - TRANSITION for scene in SCENES[:index])
-               for index in range(1, len(SCENES))]
+    INVITATION,
+), Path("matrixcode-styles.mp4"))
+
+SECOND_FILM = Film("second", "Matrix Code — Beyond the green", (
+    Scene("red", "Red symbol storm", 5.5,
+          {"preset": "red", "glyphs": "symbols", "density": 9, "size": 1.4,
+           "glow": 1.1, "speed": 2.5, "trail": 0.1, "glyphrate": 4}),
+    Scene("gold", "Golden slow motion", 4.5,
+          {"preset": "gold", "font": "mincho", "density": 5, "size": 2.3,
+           "glow": 0.65, "speed": 0.35, "trail": 0.42, "trailvar": 0.15,
+           "glyphrate": 0.15}, warmup=40),
+    Scene("white", "Monochrome lettering", 4.5,
+          {"preset": "white", "glyphs": "latin", "font": "mono", "mirror": "false",
+           "density": 7, "size": 1.8, "glow": 0.3, "speed": 0.9, "trail": 0.24}),
+    Scene("teal", "Your own colour", 4.5,
+          {"preset": "custom", "color": "#00FFD5", "font": "rounded", "density": 9,
+           "size": 1.2, "glow": 2.2, "speed": 1.2, "trail": 0.36, "lead": 2}),
+    Scene("images", "Images in the rain", 5.5,
+          {"preset": "orange", "glyphs": "latin", "font": "mono", "mirror": "false",
+           "density": 25, "size": 0.65, "glow": 0.3, "lead": 0,
+           "speed": 1.3, "trail": 0.4},
+          documents={"mx-images": {
+              "images": [rabbit_mask()], "enabled": True, "frequencyMs": 500,
+              "persistenceMs": 10000, "appearMs": 2200, "disappearMs": 0,
+              "flickerOut": True, "brightnessFade": True,
+              "imageScale": 0.72, "imagePlacementJitter": 0,
+          }}, preview_seconds=4, start_images_after_warmup=True),
+    Scene("countdown", "Count down to anything", 5.5,
+          {"preset": "pink", "density": 6, "size": 3.3, "glow": 0.8,
+           "speed": 1.5, "trail": 0.32, "glyphs": "digits", "lead": 0.7,
+           "glyphrate": 5}, warmup=12,
+          documents={
+              "mx-countdown": {"targetMs": None, "moments": [
+                  {"name": "Launch", "targetMs": CAPTURE_EPOCH_MS + 60_000},
+              ]},
+              "mx-messages": {
+                  "messages": ["LAUNCH {countdown:Launch}"], "enabled": True,
+                  "frequencyMs": 500, "persistenceMs": 60000, "appearMs": 800,
+                  "disappearMs": 0, "flickerOut": False, "brightnessFade": False,
+                  "messageLayout": "row", "verticalPosition": 0.5, "verticalJitter": 0,
+                  "horizontalPosition": 0.5, "horizontalJitter": 0,
+              },
+          }, focus_text="LAUNCH 00:00"),
+    INVITATION,
+), Path("features/matrixcode-features.mp4"))
+
+FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM)}
+# Preserve imports used by existing audio-preview commands for the first film.
+SCENES = FIRST_FILM.scenes
+DURATION = FIRST_FILM.duration
+TRANSITIONS = FIRST_FILM.transitions
 
 
 def scene_versions(scene: Scene) -> list[Scene]:
@@ -110,17 +210,18 @@ CLOCK_SCRIPT = r"""(() => {
     }
   };
   const OriginalDate = Date;
-  const epoch = OriginalDate.parse('2026-10-14T12:00:00Z');
+  const epoch = CAPTURE_EPOCH;
   window.Date = class extends OriginalDate {
     constructor(...args) { super(...(args.length ? args : [epoch + now])); }
     static now() { return epoch + now; }
   };
   localStorage.clear();
   sessionStorage.clear();
-  localStorage.setItem('mx-intro', JSON.stringify({enabled: false}));
-  const messageDoc = MESSAGE_DOCUMENT;
-  localStorage.setItem('mx-messages', JSON.stringify(messageDoc));
-  if (messageDoc.enabled && typeof WebGL2RenderingContext !== 'undefined') {
+  const documents = STORAGE_DOCUMENTS;
+  for (const [key, value] of Object.entries(documents)) {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+  if (CLOSING_INVITATION && typeof WebGL2RenderingContext !== 'undefined') {
     const {cols, rows, cells} = MESSAGE_LAYOUT;
     const upload = WebGL2RenderingContext.prototype.texSubImage2D;
     WebGL2RenderingContext.prototype.texSubImage2D = function (...args) {
@@ -178,28 +279,27 @@ TITLE_FONT = font(72, bold=True)
 SITE_FONT = font(28, mono=True)
 
 
-def message_layout() -> dict:
+def message_layout(glyph_scale: float = INVITATION.settings["size"], text: str = CTA) -> dict:
     """Share the invitation's cell geometry between capture and finishing."""
-    glyph_scale = SCENES[-1].settings["size"]
     cols = max(8, math.floor(SIZE[0] / (18 * glyph_scale) + 0.5))
     rows = max(8, math.floor(SIZE[1] / (18 * glyph_scale) + 0.5))
-    start_col = math.floor(cols * 0.5 - len(CTA) / 2 + 0.5)
+    start_col = math.floor(cols * 0.5 - len(text) / 2 + 0.5)
     row = math.floor(rows * 0.5 - 0.5 + 0.5)
     return {"cols": cols, "rows": rows,
             "cells": [row * cols + start_col + offset
-                      for offset, char in enumerate(CTA) if char != " "]}
+                      for offset, char in enumerate(text) if char != " "]}
 
 
 MESSAGE_LAYOUT = message_layout()
 
 
-def message_mask() -> Image.Image:
+def message_mask(layout: dict = MESSAGE_LAYOUT) -> Image.Image:
     """Select existing message cells for a finishing grade, without drawing text."""
-    cols, rows = MESSAGE_LAYOUT["cols"], MESSAGE_LAYOUT["rows"]
+    cols, rows = layout["cols"], layout["rows"]
     cell_w, cell_h = SIZE[0] / cols, SIZE[1] / rows
     mask = Image.new("L", SIZE)
     draw = ImageDraw.Draw(mask)
-    for cell in MESSAGE_LAYOUT["cells"]:
+    for cell in layout["cells"]:
         col, row = cell % cols, cell // cols
         draw.rectangle((round(col * cell_w), round(row * cell_h),
                         round((col + 1) * cell_w) - 1,
@@ -210,16 +310,32 @@ def message_mask() -> Image.Image:
 MESSAGE_MASK = message_mask()
 
 
+@lru_cache(maxsize=16)
+def focus_mask(glyph_scale: float, text: str) -> Image.Image:
+    return message_mask(message_layout(glyph_scale, text))
+
+
+def grade_message(frame: Image.Image, mask: Image.Image, ink: Image.Image, focus: float,
+                  dim: float = 0.66, boost: float = 1.65) -> Image.Image:
+    ambient = ImageEnhance.Brightness(frame).enhance(1 - dim * focus)
+    letters = ImageEnhance.Brightness(frame).enhance(1 + boost * focus)
+    ink = ink.point(lambda value: min(255, max(0, (value - 12) * 9)))
+    return Image.composite(letters, ambient, ImageChops.multiply(mask, ink))
+
+
 def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Image:
     frame = frame.convert("RGB")
     if scene.message:
         # Bring forward only letters already revealed by the app. Ambient rain keeps
         # moving behind the invitation; no replacement or overlaid CTA text is used.
         focus = ease((seconds - 0.5) / 1.6)
-        ambient = ImageEnhance.Brightness(frame).enhance(1 - 0.66 * focus)
-        letters = ImageEnhance.Brightness(frame).enhance(1 + 1.65 * focus)
-        ink = frame.getchannel("G").point(lambda value: min(255, max(0, (value - 12) * 9)))
-        frame = Image.composite(letters, ambient, ImageChops.multiply(MESSAGE_MASK, ink))
+        frame = grade_message(frame, MESSAGE_MASK, frame.getchannel("G"), focus)
+    elif scene.focus_text:
+        # Grade only the app's existing message cells; tokens keep ticking underneath.
+        red, green, blue = frame.split()
+        ink = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+        mask = focus_mask(scene.settings["size"], scene.focus_text)
+        frame = grade_message(frame, mask, ink, ease(seconds / 0.65), dim=0.6, boost=2)
     frame = Image.alpha_composite(frame.convert("RGBA"), SHADE)
     chrome = Image.new("RGBA", SIZE)
     draw = ImageDraw.Draw(chrome)
@@ -244,10 +360,7 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
     return Image.alpha_composite(frame, chrome).convert("RGB")
 
 
-def open_scene(browser, dist: Path, scene: Scene):
-    context = browser.new_context(viewport={"width": SIZE[0], "height": SIZE[1]},
-                                  device_scale_factor=1, color_scheme="dark",
-                                  reduced_motion="no-preference")
+def scene_documents(scene: Scene) -> dict:
     doc = {
         "messages": [CTA] if scene.message else [], "enabled": scene.message,
         # Include preroll in the entrance, then hold the resolved invitation through the clip.
@@ -257,7 +370,22 @@ def open_scene(browser, dist: Path, scene: Scene):
         "messageLayout": "row", "verticalPosition": 0.5, "verticalJitter": 0,
         "horizontalPosition": 0.5, "horizontalJitter": 0,
     }
-    context.add_init_script(CLOCK_SCRIPT.replace("MESSAGE_DOCUMENT", json.dumps(doc))
+    return {"mx-intro": {"enabled": False}, "mx-messages": doc,
+            "mx-images": {"enabled": False, "images": []},
+            "mx-countdown": {"targetMs": None, "moments": []},
+            **(scene.documents or {})}
+
+
+def open_scene(browser, dist: Path, scene: Scene):
+    context = browser.new_context(viewport={"width": SIZE[0], "height": SIZE[1]},
+                                  device_scale_factor=1, color_scheme="dark",
+                                  reduced_motion="no-preference")
+    documents = scene_documents(scene)
+    if scene.start_images_after_warmup:
+        documents["mx-images"] = {**documents["mx-images"], "enabled": False}
+    context.add_init_script(CLOCK_SCRIPT.replace("STORAGE_DOCUMENTS", json.dumps(documents))
+                           .replace("CLOSING_INVITATION", json.dumps(scene.message))
+                           .replace("CAPTURE_EPOCH", str(CAPTURE_EPOCH_MS))
                            .replace("MESSAGE_LAYOUT", json.dumps(MESSAGE_LAYOUT))
                            .replace("FRAME_MILLISECONDS", str(1000 / FPS)))
     page = context.new_page()
@@ -280,6 +408,15 @@ def open_scene(browser, dist: Path, scene: Scene):
     overlap = page.get_by_role("button", name="Allow overlap", include_hidden=True).get_attribute("aria-pressed")
     if overlap != {**BASE_SETTINGS, **scene.settings}["overlap"]:
         raise RuntimeError(f"{scene.name}: incorrect overlap setting {overlap}")
+    if scene.start_images_after_warmup:
+        # Start the real image schedule over fully populated rain using its normal shortcut.
+        page.keyboard.press("Shift+X")
+        page.locator(".mx-toast").evaluate_all("toasts => toasts.forEach(toast => toast.remove())")
+        if not page.evaluate("""() => {
+            const doc = JSON.parse(localStorage.getItem('mx-images') || '{}');
+            return doc.enabled && doc.images?.length > 0;
+        }"""):
+            raise RuntimeError(f"{scene.name}: image schedule did not start")
     return context, page, problems
 
 
@@ -295,12 +432,13 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
                 "-pixel_format", "rgb24", "-video_size", f"{SIZE[0]}x{SIZE[1]}",
                 "-framerate", str(FPS), "-i", "pipe:0", "-an", "-c:v", "libx264",
                 "-preset", "ultrafast", "-crf", "0", "-pix_fmt", "yuv420p", str(clip),
-            ], stdin=subprocess.PIPE)
+            ], stdin=subprocess.PIPE, stdout=sys.stdout, stderr=sys.stderr)
         count = round(scene.seconds * FPS)
         switch_frame = math.ceil(count / len(versions))
         preview_frames = (
             {count - 1} if scene.message else
-            {index * switch_frame + round(1.5 * FPS) for index in range(len(versions))}
+            {min(count - 1, index * switch_frame + round(scene.preview_seconds * FPS))
+             for index in range(len(versions))}
         )
         for frame_number in range(count):
             # Both comparison views share the same clock and are already full of rain
@@ -337,9 +475,9 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
     return clip
 
 
-def contact_sheet(directory: Path, output: Path):
+def contact_sheet(directory: Path, output: Path, film: Film):
     previews = [preview_path(directory, index, version)
-                for index, scene in enumerate(SCENES) for version in scene_versions(scene)]
+                for index, scene in enumerate(film.scenes) for version in scene_versions(scene)]
     columns = 3
     sheet = Image.new("RGB", (columns * 480, math.ceil(len(previews) / columns) * 270), "black")
     for index, preview in enumerate(previews):
@@ -349,61 +487,186 @@ def contact_sheet(directory: Path, output: Path):
     sheet.save(output, quality=93, subsampling=0)
 
 
-def assemble(clips: list[Path], audio: Path, output: Path):
+def assemble(clips: list[Path], audio: Path, output: Path, film: Film):
     inputs = [argument for clip in clips for argument in ["-i", str(clip)]]
     filters = [f"[{index}:v]settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[v{index}]"
                for index in range(len(clips))]
     last = "v0"
-    offset = SCENES[0].seconds - TRANSITION
+    offset = film.scenes[0].seconds - TRANSITION
     for index in range(1, len(clips)):
         merged = f"blend{index}"
         filters.append(f"[{last}][v{index}]xfade=transition=fade:duration={TRANSITION}:offset={offset}[{merged}]")
         last = merged
-        offset += SCENES[index].seconds - TRANSITION
+        offset += film.scenes[index].seconds - TRANSITION
     subprocess.run([
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-filter_complex_threads", "1",
         *inputs, "-i", str(audio), "-filter_complex", ";".join(filters),
         "-map", f"[{last}]", "-map", f"{len(clips)}:a", "-c:v", "libx264",
         "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS),
         "-af", "loudnorm=I=-14:TP=-1.5:LRA=7", "-ar", "48000",
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", str(DURATION),
-        "-metadata", "title=Matrix Code — Find your style",
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", str(film.duration),
+        "-metadata", f"title={film.title}",
         "-metadata", "comment=Actual Matrix Code WebGL capture; original generated soundtrack",
         str(output),
-    ], check=True)
+    ], check=True, stdout=sys.stdout, stderr=sys.stderr)
+
+
+def resolve_outputs(video: str, output_directory: Path, output: Path | None) -> list[tuple[Film, Path]]:
+    if video == "both" and output is not None:
+        raise ValueError("--out selects one MP4; use --output-dir with --video both")
+    films = tuple(FILMS.values()) if video == "both" else (FILMS[video],)
+    return [(film, output if output is not None else output_directory / film.relative_output)
+            for film in films]
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--dist", type=Path, default=ROOT / "dist")
+    parser.add_argument("--video", choices=[*FILMS, "both"], default="first",
+                        help="first: original styles (default); second: new features; both: render each")
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "output/marketing",
+                        help="output root; the second film and its previews use a features/ subfolder")
+    parser.add_argument("--out", type=Path, help="override the MP4 path for a single film")
+    parser.add_argument("--temp-dir", type=Path, default=TEMP_ROOT,
+                        help="scratch directory for lossless clips and audio")
+    parser.add_argument("--preview-only", action="store_true", help="render scene contact sheet only")
+    args = parser.parse_args(argv)
+    try:
+        resolve_outputs(args.video, args.output_dir, args.out)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.out is not None and args.out.suffix.lower() != ".mp4":
+        parser.error("--out must end in .mp4")
+    return args
+
+
+def verify_soundtrack(audio: Path, film: Film):
+    with wave.open(str(audio), "rb") as source:
+        if (source.getnchannels(), source.getsampwidth(), source.getframerate(), source.getnframes()) != (
+                2, 2, 48000, round(film.duration * 48000)):
+            raise RuntimeError("Soundtrack format or duration does not match the film")
+        pcm = np.frombuffer(source.readframes(source.getnframes()), dtype="<i2")
+    peak = int(np.max(np.abs(pcm.astype(np.int32))))
+    if not 0 < peak <= round(0.87 * 32767):
+        raise RuntimeError(f"Soundtrack exceeds the PCM peak ceiling: {peak}")
+    print(f"Soundtrack verified: stereo 48 kHz, {film.duration:g}s, peak {peak / 32767:.4f}")
+
+
+def verify_video(output: Path, film: Film, final_frame: Path):
+    probe = subprocess.run([
+        "ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(output),
+    ], capture_output=True, text=True)
+    if probe.returncode:
+        print(probe.stderr, file=sys.stderr)
+        probe.check_returncode()
+    streams = json.loads(probe.stdout)["streams"]
+    video = next(stream for stream in streams if stream["codec_type"] == "video")
+    audio = next(stream for stream in streams if stream["codec_type"] == "audio")
+    if (video["codec_name"], video["width"], video["height"], video["r_frame_rate"], video["pix_fmt"]) != (
+            "h264", *SIZE, f"{FPS}/1", "yuv420p"):
+        raise RuntimeError(f"Unexpected video stream: {video}")
+    if (audio["codec_name"], int(audio["sample_rate"]), audio["channels"]) != ("aac", 48000, 2):
+        raise RuntimeError(f"Unexpected audio stream: {audio}")
+    if abs(float(video["duration"]) - film.duration) > 1 / FPS:
+        raise RuntimeError(f"Unexpected video duration: {video['duration']}")
+    if int(video["nb_frames"]) != round(film.duration * FPS):
+        raise RuntimeError(f"Unexpected frame count: {video['nb_frames']}")
+    subprocess.run(["ffmpeg", "-v", "error", "-xerror", "-i", str(output), "-f", "null", "-"],
+                   check=True, stdout=sys.stdout, stderr=sys.stderr)
+    subprocess.run([
+        "ffmpeg", "-v", "error", "-y", "-sseof", str(-1.01 / FPS), "-i", str(output),
+        "-frames:v", "1", "-q:v", "2", str(final_frame),
+    ], check=True, stdout=sys.stdout, stderr=sys.stderr)
+    if not final_frame.is_file():
+        raise RuntimeError("Encoded final frame was not extracted")
+    print(f"Video verified: {SIZE[0]}x{SIZE[1]}, {FPS} FPS, {film.duration:g}s, full decode")
+
+
+def render_film(browser, args, film: Film, output: Path):
+    with tempfile.TemporaryDirectory(prefix=f"matrixcode-{film.key}-", dir=args.temp_dir) as temporary:
+        directory = Path(temporary)
+        clips = [capture(browser, args.dist, scene, index, directory, args.preview_only)
+                 for index, scene in enumerate(film.scenes)]
+        storyboard = directory / "matrixcode-storyboard.jpg"
+        poster = directory / "matrixcode-poster.jpg"
+        contact_sheet(directory, storyboard, film)
+        shutil.copyfile(preview_path(directory, len(film.scenes) - 1, film.scenes[-1]), poster)
+        artifacts = [storyboard, poster]
+        if not args.preview_only:
+            audio = directory / "soundtrack.wav"
+            video = directory / output.name
+            final_frame = directory / "matrixcode-final-frame.jpg"
+            write_soundtrack(audio, film.duration, film.transitions)
+            verify_soundtrack(audio, film)
+            assemble(clips, audio, video, film)
+            verify_video(video, film, final_frame)
+            artifacts += [video, final_frame]
+        output.parent.mkdir(parents=True, exist_ok=True)
+        # Publish only after the complete film has encoded and decoded successfully.
+        staged_artifacts = []
+        try:
+            for artifact in artifacts:
+                destination = output.parent / artifact.name
+                staged = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
+                staged_artifacts.append((staged, destination))
+                shutil.copyfile(artifact, staged)
+            for staged, destination in staged_artifacts:
+                staged.replace(destination)
+        finally:
+            for staged, _ in staged_artifacts:
+                staged.unlink(missing_ok=True)
+        print(f"Wrote {'previews for' if args.preview_only else 'film'} {output}", flush=True)
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--dist", type=Path, default=ROOT / "dist")
-    parser.add_argument("--out", type=Path, default=ROOT / "output/marketing/matrixcode-styles.mp4")
-    parser.add_argument("--preview-only", action="store_true", help="render scene contact sheet only")
-    args = parser.parse_args()
-    if not (args.dist / "matrixcode.html").is_file():
-        parser.error("production build missing; run npm run build first")
-    if not shutil.which("ffmpeg"):
-        parser.error("ffmpeg is required")
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="matrixcode-film-") as temporary:
-        directory = Path(temporary)
-        with sync_playwright() as playwright:
-            browser_args = ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] if sys.platform == "darwin" else []
-            browser = playwright.chromium.launch(args=browser_args)
+    args = parse_args()
+    outputs = resolve_outputs(args.video, args.output_dir, args.out)
+    log_directory = (args.out.parent if args.out else args.output_dir) / "logs"
+    log = log_directory / f"capture-{args.video}-{uuid4().hex[:12]}.log"
+    terminal = sys.stdout
+    try:
+        log_directory.mkdir(parents=True, exist_ok=True)
+        details = log.open("w")
+    except OSError as error:
+        print(f"fail [capture-log]: {error}", file=sys.stderr)
+        return 1
+    print(f"Log: {log}", flush=True)
+    try:
+        with details, contextlib.redirect_stdout(details), contextlib.redirect_stderr(details):
             try:
-                clips = [capture(browser, args.dist, scene, index, directory, args.preview_only)
-                         for index, scene in enumerate(SCENES)]
-            finally:
-                browser.close()
-        contact_sheet(directory, args.out.with_name("matrixcode-storyboard.jpg"))
-        shutil.copyfile(preview_path(directory, len(SCENES) - 1, SCENES[-1]),
-                        args.out.with_name("matrixcode-poster.jpg"))
-        if not args.preview_only:
-            audio = directory / "soundtrack.wav"
-            write_soundtrack(audio, DURATION, TRANSITIONS)
-            assemble(clips, audio, args.out)
-            print(f"Wrote {args.out}", flush=True)
-        print(f"Scene previews: {args.out.parent}", flush=True)
+                args.temp_dir.mkdir(parents=True, exist_ok=True)
+                # Playwright and Chromium inherit the same scratch location as the clips.
+                for variable in ("TMPDIR", "TMP", "TEMP"):
+                    os.environ[variable] = str(args.temp_dir.resolve())
+                if not (args.dist / "matrixcode.html").is_file():
+                    raise RuntimeError("production build missing; run npm run build first")
+                for command in ("ffmpeg", "ffprobe"):
+                    if not shutil.which(command):
+                        raise RuntimeError(f"{command} is required")
+                with sync_playwright() as playwright:
+                    browser_args = (["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"]
+                                    if sys.platform == "darwin" else [])
+                    browser = playwright.chromium.launch(args=browser_args)
+                    try:
+                        for film, output in outputs:
+                            if terminal.isatty():
+                                print(f"Rendering {film.key}: {film.title}", file=terminal, flush=True)
+                            render_film(browser, args, film, output)
+                    finally:
+                        browser.close()
+            except Exception:
+                traceback.print_exc()
+                raise
+    except Exception as error:
+        message = str(error).splitlines()[0] if str(error) else repr(error)
+        print(f"fail [capture]: {type(error).__name__}: {message}", file=sys.stderr)
+        print(f"Detail: tail -n 20 '{log}'", file=sys.stderr)
+        return 1
+    print(f"pass: {len(outputs)} {'preview sets' if args.preview_only else 'films'}, skipped=0, warnings=0")
+    for film, output in outputs:
+        print(f"{film.key}: {output.parent if args.preview_only else output}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

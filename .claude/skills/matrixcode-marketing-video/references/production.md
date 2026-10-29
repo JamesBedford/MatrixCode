@@ -10,9 +10,10 @@ macOS, with DejaVu fallbacks on Linux. Inspect type layout if fallback fonts dif
 
 ```sh
 npm ci
-python3 -m venv /tmp/matrixcode-video-venv
-/tmp/matrixcode-video-venv/bin/python -m pip install -r .claude/skills/matrixcode-marketing-video/scripts/requirements.txt
-/tmp/matrixcode-video-venv/bin/python -m playwright install chromium
+python3 -m venv /Volumes/DATA/Temp/matrixcode-video-venv
+source /Volumes/DATA/Temp/matrixcode-video-venv/bin/activate
+python3 -m pip install -r .claude/skills/matrixcode-marketing-video/scripts/requirements.txt
+python3 -m playwright install chromium
 npm run build
 ```
 
@@ -23,34 +24,58 @@ server is unnecessary: Chromium opens the self-contained `dist/matrixcode.html`.
 
 ## Render and preview
 
-The repository aliases and the bundled scripts run the same code:
+Use the prepared Python environment. The repository aliases and the bundled
+scripts run the same code. Select the original film, the new feature showcase,
+or both:
 
 ```sh
-/tmp/matrixcode-video-venv/bin/python .claude/skills/matrixcode-marketing-video/scripts/capture_marketing_video.py --preview-only
-/tmp/matrixcode-video-venv/bin/python .claude/skills/matrixcode-marketing-video/scripts/capture_marketing_video.py
+python3 scripts/capture_marketing_video.py --video first
+python3 scripts/capture_marketing_video.py --video second
+python3 scripts/capture_marketing_video.py --video both
+python3 scripts/capture_marketing_video.py --video both --preview-only
 ```
 
-The current recipe produces a 36-second, 1920 × 1080, 30 FPS H.264/AAC MP4.
-Defaults under `output/marketing/`:
+`--video first` is the default, preserving the original no-argument command. Each
+recipe produces a 36-second, 1920 × 1080, 30 FPS H.264/AAC MP4 with fast-start
+metadata. Both share the original nine-second in-rain `Try it now!` ending.
 
-- `matrixcode-styles.mp4`: the finished film, with fast-start metadata.
+| Film | Scenes before the ending | Default MP4 under `output/marketing/` |
+| --- | --- | --- |
+| `first` | Classic green, blue binary, amber terminal, purple, fine columns, overlap comparison | `matrixcode-styles.mp4` |
+| `second` | Red symbols, golden slow motion, monochrome Latin, custom teal, rabbit image reveal, live countdown | `features/matrixcode-features.mp4` |
+
+Each film's directory also contains:
+
 - `matrixcode-poster.jpg`: the fully resolved closing invitation.
-- `matrixcode-storyboard.jpg`: all scene previews, including both overlap states.
-- `matrixcode-final-frame.jpg`: extract from the encoded film during verification.
+- `matrixcode-storyboard.jpg`: all scene previews; the first includes both overlap states.
+- `matrixcode-final-frame.jpg`: extracted from the encoded film during verification.
 
-`--preview-only` writes JPEG previews without replacing the MP4; these may not
-correspond to the current MP4 until a full render completes. Use `--dist DIRECTORY`
-for another production build, and `--out PATH.mp4` to choose a destination. For a
-distinct film, use its own output directory so its poster and storyboard do not
-overwrite those of another film, for example:
+`--preview-only` writes the poster and storyboard without replacing the MP4 or its
+encoded final frame; previews may not match an older MP4 until a full render
+completes. `--dist DIRECTORY` selects another production build.
+`--output-dir DIRECTORY` changes the root while retaining each film's relative
+path. `--out PATH.mp4` overrides one film's destination; it is rejected with
+`--video both`. Keep custom destinations in separate directories because the
+companion JPEG filenames are shared:
 
 ```sh
-/tmp/matrixcode-video-venv/bin/python scripts/capture_marketing_video.py --out output/marketing/short/matrixcode-short.mp4
+python3 scripts/capture_marketing_video.py --video both --output-dir output/marketing/review
+python3 scripts/capture_marketing_video.py --video second --out output/marketing/feature-cut/matrixcode-features.mp4
 ```
+
+`--temp-dir DIRECTORY` chooses scratch storage for lossless clips, audio, and
+previews. Its default is `/Volumes/DATA/Temp` when `/Volumes/DATA` exists,
+otherwise the platform temporary directory. Scratch files clean up automatically.
+Each run prints its unique log path under the output root's `logs/` directory
+(beside `--out` when supplied). Noninteractive runs print a concise result and
+output paths; failures include an ID and a command to show the relevant log tail.
+Interactive runs also announce each film as it starts.
 
 Render to the worktree output, inspect and verify, then copy the finished artifacts
 to the user's intended project location. Avoid overwriting a good MP4 with a failed
-render. The MP4 and previews are ignored by Git; commit the reusable recipe instead.
+render. A full render publishes artifacts only after audio/video verification
+succeeds. The default output tree, including logs, is ignored by Git; commit the
+reusable recipes instead.
 
 If Chromium fails on macOS with `MachPortRendezvousServer ... Permission denied`,
 the sandbox blocked its process launch. Use the available tool approval mechanism
@@ -64,31 +89,48 @@ Edit `scripts/capture_marketing_video.py` **inside this skill**:
 
 | Setting/function | Purpose |
 | --- | --- |
-| `SCENES`, `Scene` | Scene order, titles, durations, warmup, controls, and special behaviors. |
+| `FIRST_FILM`, `SECOND_FILM`, `FILMS`, `Film`, `Scene` | Named recipes, output paths, scene order, titles, durations, warmup, controls, and special behaviors. |
+| `Scene.documents`, `scene_documents` | Isolated app storage for image reveals and countdown/message features. |
+| `Scene.preview_seconds` | Representative storyboard time within a scene; the image scene uses four seconds. |
+| `Scene.start_images_after_warmup` | Prewarm rain with reveals off, then use the normal Shift+X shortcut to start the image schedule; omit its transient toast from the capture. |
+| `Scene.focus_text`, `grade_message` | Improve contrast around existing countdown glyphs using a fixed-width resolved example; the token itself still comes from the app. |
 | `BASE_SETTINGS` | Shared capture controls, including disabled adaptive resolution/load ramp. |
 | `SIZE`, `FPS`, `TRANSITION` | Frame size, frame rate, and dissolve length. |
-| `DURATION`, `TRANSITIONS` | Derived from scenes and dissolves; keep them derived. |
+| `Film.duration`, `Film.transitions` | Derived from each recipe's scenes and dissolves; keep them derived. |
 | `SITE`, `SITE_FONT`, `TITLE_FONT`, `TITLE_BOTTOM_MARGIN` | Public URL, corner type, scene type, and player clearance. |
-| `CTA`, `open_scene`, `finish_frame` | In-rain invitation, entrance timing, held brightness, and finishing. |
+| `INVITATION`, `CTA`, `open_scene`, `finish_frame` | Shared in-rain invitation, entrance timing, held brightness, and finishing. |
+| `rabbit_mask` | Original silhouette supplied to the real image scheduler as a portable mask. |
 | `scene_versions` | A same-settings comparison that changes only overlap. |
-| `assemble` | Encoding, dissolves, normalized audio, metadata, and final duration. |
+| `assemble`, `verify_soundtrack`, `verify_video` | Encoding, dissolves, normalized audio, metadata, duration, stream checks, full decode, and final-frame extraction. |
 
 Choose valid query controls from `src/config/controls.ts`. Useful existing scene
-keys are `preset`, `glyphs`, `font`, `density`, `size`, `glow`, `speed`, `trail`,
-`scanlines`, and `overlap`. Keep enough preroll to fill the rain. The overlap
-comparison runs both views on the same clock and switches halfway through; its
+keys are `preset`, `color`, `glyphs`, `font`, `density`, `size`, `glow`, `speed`,
+`trail`, `trailvar`, `glyphrate`, `mirror`, `scanlines`, and `overlap`.
+Keep enough preroll to fill the rain; the second film's slow-motion scene uses
+40 seconds of warmup. The overlap comparison runs both views on the same clock and switches halfway through; its
 internal switch is independent of the between-scene dissolves.
 
-The current message geometry comes from `SCENES[-1]`, `CTA`, and its glyph scale.
-Keep the invitation as the last scene with `message=True`; if adding multiple
-message scenes or changing that relationship, update `message_layout`, the upload
-hook, and the finishing mask together. `SIZE`, message geometry, mask, and canvas
-validation must agree. The default five-second entrance includes scene warmup, then
-holds the message through the closing scene. `CLOCK_SCRIPT` advances the normal
+Both recipes end with the same `INVITATION` scene. Its message geometry comes from
+that scene's glyph scale and `CTA`. Reserve `message=True` for this closing scene:
+it enables the invitation's upload hook and finishing mask. Other in-rain messages
+belong in `Scene.documents["mx-messages"]`, as the countdown scene demonstrates.
+Image and countdown documents use `mx-images` and `mx-countdown`, with the same
+schemas as the ordinary app. The feature scenes are actual scheduled reveals and
+tokens, rather than text or images drawn over a capture. `SIZE`, message geometry,
+mask, and canvas validation must agree. The default five-second entrance includes
+scene warmup, then holds the message through the closing scene. `CLOCK_SCRIPT` advances the normal
 app RAF in exact `1000 / FPS` steps and fixes the calendar to an ordinary date so
 holiday themes cannot change the intended look. Capture uses isolated storage;
 never edit the user's actual browser settings for a film. Controlled timing does
 not guarantee identical rain pixels or encoded bytes across machines.
+
+The rabbit uses a grey background and white silhouette, with dense unmirrored
+Latin glyphs and restrained bloom so the app's image-dependent letter shapes stay
+readable. Its ordinary rain warms up before the image schedule starts, keeping
+the reveal entrance visible without cold rows at the bottom of the frame.
+The countdown uses twelve seconds of preroll, enough stream coverage and glyph
+mutation to resolve its letters, and a message hold that covers preroll plus the
+entire shot. Check both an early and a late encoded frame for missing characters.
 
 When changing scene count, order, or duration, verify dissolves do not exceed the
 adjacent scenes, and align the music's section roots with the new transitions.
@@ -100,6 +142,7 @@ second, finishing shade, and caption safe areas need review after format changes
 Edit this skill's `scripts/marketing_audio.py`. NumPy synthesizes all voices; it
 does not download music or use external samples. `write_soundtrack` writes seeded,
 deterministic, 48 kHz stereo 16-bit PCM for the requested duration and transitions.
+Each selected film passes its own derived timings to the same score generator.
 
 `BASS_RIFF`, `SCENE_ROOTS`, and `BEAT_SECONDS` control musical identity. Current
 tempo is 120 BPM. Bass/synths route through `mix`; drum hits and impacts route
@@ -115,15 +158,17 @@ python3 - <<'PY'
 import sys
 from pathlib import Path
 sys.path.insert(0, '.claude/skills/matrixcode-marketing-video/scripts')
-from capture_marketing_video import DURATION, TRANSITIONS
+from capture_marketing_video import SECOND_FILM
 from marketing_audio import write_soundtrack
-write_soundtrack(Path('/tmp/matrixcode-score-preview.wav'), DURATION, TRANSITIONS)
+write_soundtrack(Path('/Volumes/DATA/Temp/matrixcode-score-preview.wav'),
+                 SECOND_FILM.duration, SECOND_FILM.transitions)
 PY
 ```
 
 Use the same Python environment as the render. The standalone audio CLI also
 accepts `OUTPUT.wav --duration SECONDS --transitions ...`; its defaults are for the
-current recipe, so pass updated timings when making a different film. Check stereo,
+first recipe, so pass the selected film's timings. Legacy imports `SCENES`,
+`DURATION`, and `TRANSITIONS` still refer to `FIRST_FILM`. Check stereo,
 sample rate, duration, clipped PCM samples, attack/tail discontinuities, and fades.
 Repeated generation with the same settings should be byte-identical. Compare
 perceived loudness when listening to revisions. The WAV peak ceiling is 0.87;
@@ -132,25 +177,26 @@ encoding targets, not guarantees about the decoded AAC's exact measurements.
 
 ## Verify the deliverable
 
-Use the recipe's current derived size, duration, and FPS rather than assuming the
-original values for a new film:
+Full renders automatically verify the WAV's format, duration, and peak ceiling,
+then check the encoded video/audio streams, duration, frame count, and complete
+decode. They also extract `matrixcode-final-frame.jpg` before publishing.
+Run the recipe and CLI regression checks with the prepared Python environment:
 
 ```sh
-ffprobe -v error -show_streams -show_format output/marketing/matrixcode-styles.mp4
-ffmpeg -v error -i output/marketing/matrixcode-styles.mp4 -f null -
-ffmpeg -v error -y -sseof -0.034 -i output/marketing/matrixcode-styles.mp4 -frames:v 1 -q:v 2 output/marketing/matrixcode-final-frame.jpg
+python3 -m unittest discover -s .claude/skills/matrixcode-marketing-video/scripts -p test_marketing_video.py
 ```
 
-For the current 30 FPS film, `-sseof -0.034` selects a frame near the end. For a
-different FPS, use a seek offset slightly longer than one frame. Inspect the
-encoded final frame rather than trusting a pre-encoding poster. Confirm the CTA
-is fully resolved, plain green, and stays visible through the last frame.
+Use each recipe's derived size, duration, and FPS when changing the format.
+Inspect the storyboard and encoded final frame rather than trusting the
+pre-encoding poster. Confirm the CTA is fully resolved, plain green, and stays
+visible through the last frame. The new feature scenes also need visual review:
+check that the rabbit resolves clearly and the countdown visibly ticks.
 
 Check scene frames at the intended smallest player width. A 600-pixel preview of
 the title around 1.5 seconds can be extracted with:
 
 ```sh
-ffmpeg -v error -y -ss 1.5 -i output/marketing/matrixcode-styles.mp4 -vf scale=600:-2 -frames:v 1 /tmp/matrixcode-player-preview.jpg
+ffmpeg -v error -y -ss 1.5 -i output/marketing/features/matrixcode-features.mp4 -vf scale=600:-2 -frames:v 1 /Volumes/DATA/Temp/matrixcode-player-preview.jpg
 ```
 
 Inspect readability and the area where X's timer and playback controls sit. In
