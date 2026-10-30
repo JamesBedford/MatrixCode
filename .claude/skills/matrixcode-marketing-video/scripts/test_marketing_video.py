@@ -305,7 +305,7 @@ class CaptionAndActionTests(unittest.TestCase):
                     if version.message:
                         continue
                     with self.subTest(film=film.key, scene=version.name):
-                        box = draw.textbbox((78, video.SIZE[1] - video.TITLE_BOTTOM_MARGIN),
+                        box = draw.textbbox((video.TITLE_LEFT, video.SIZE[1] - video.TITLE_BOTTOM_MARGIN),
                                             version.title, font=video.TITLE_FONT, anchor="lb")
                         self.assertGreaterEqual(box[0], 60)
                         self.assertLessEqual(box[2], video.SIZE[0] - 60)

@@ -41,7 +41,7 @@ python3 scripts/capture_marketing_video.py --video new
 python3 scripts/capture_marketing_video.py --video styles
 python3 scripts/capture_marketing_video.py --video all --preview-only
 python3 scripts/capture_marketing_video.py --video shorts
-python3 scripts/capture_marketing_video.py --video 01-classic-matrix
+python3 scripts/capture_marketing_video.py --video 01-classic-green
 ```
 
 `--video first` is the default, preserving the original no-argument command. Each
@@ -50,9 +50,11 @@ metadata. Every long film shares the original nine-second in-rain `Try it now!` 
 `both` preserves the first/second selection, `new` selects third/fourth/fifth,
 `styles` selects sixth/seventh/eighth, and `all` selects all eight long tours.
 `shorts` selects sixty separate 6–10 second cuts. A short slug selects one cut.
-Each short is a single scene that starts with the rain already full, burns in the
-labels `browser`, `screensaver`, and `both monitors` from the first frame, and
-keeps the corner URL. Shorts do not play the closing invitation. That long tour
+Each short opens on a long-film picture. Its density, size, speed, trail, and glow
+match one of those scenes, and a word or image uses that scene's placement already
+resolved. `browser`, `screensaver`, and `both monitors` use the long-film title
+face and sit on its lower-left baseline from the first frame, with the corner URL.
+Shorts do not play the closing invitation. That long tour
 stays on the eight 36-second films for your own post. At most three short captures
 run at once; further runs wait. New captures use a 56-pixel corner URL, a 50-pixel
 centered closing headline, and a 66-pixel centered closing URL. Their anchors keep

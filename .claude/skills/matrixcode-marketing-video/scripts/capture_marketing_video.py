@@ -53,6 +53,7 @@ ROOT = find_project_root()
 TEMP_ROOT = Path("/Volumes/DATA/Temp") if Path("/Volumes/DATA").is_dir() else Path(tempfile.gettempdir())
 SITE = "julimbob.com/matrixcode"
 TITLE_BOTTOM_MARGIN = 200
+TITLE_LEFT = 78
 BASE_SETTINGS = {
     "ramp": 0, "adaptive": 0, "quality": "high", "vignette": 0.15,
     "overlap": "false", "lead": 1.6,
@@ -148,11 +149,8 @@ FILM_GROUPS = {
 # One Chromium WebGL capture at a time per slot. Sixty shorts share three slots.
 SHORT_RENDER_SLOTS = 3
 PLATFORM_LABELS = ("browser", "screensaver", "both monitors")
-PLATFORM_LABEL_FONT_SIZE = 64
-PLATFORM_LABEL_ORIGIN = (78, 72)
-PLATFORM_LABEL_GAP = 18
-PLATFORM_LABEL_PAD_X = 18
-PLATFORM_LABEL_PAD_Y = 10
+TITLE_FILL = "#F5F7F6"
+PLATFORM_LABEL_GAP = 10
 # Preserve imports used by existing audio-preview commands for the first film.
 SCENES = FIRST_FILM.scenes
 DURATION = FIRST_FILM.duration
@@ -268,7 +266,6 @@ ENDING_SITE_FONT_SIZE = 66
 SITE_FONT = font(SITE_FONT_SIZE, mono=True)
 ENDING_TITLE_FONT = font(ENDING_TITLE_FONT_SIZE, bold=True)
 ENDING_SITE_FONT = font(ENDING_SITE_FONT_SIZE)
-PLATFORM_LABEL_FONT = font(PLATFORM_LABEL_FONT_SIZE, bold=True)
 CORNER_SITE_POSITION = (SIZE[0] - 82, 63)
 ENDING_TITLE_POSITION = (SIZE[0] / 2, 391)
 ENDING_SITE_POSITION = (SIZE[0] / 2, 729)
@@ -344,26 +341,25 @@ def grade_message(frame: Image.Image, mask: Image.Image, ink: Image.Image, focus
 
 
 def iter_platform_labels():
-    """Yield each burned-in label, its text origin, and the plate behind it."""
+    """Yield each label, its baseline origin, and its text bounds.
+
+    The stack uses the long-film scene title: same face, same left edge, and the
+    same lower baseline. The names are present on the first frame, with no plate.
+    """
     probe = ImageDraw.Draw(Image.new("RGB", SIZE))
-    x, y = PLATFORM_LABEL_ORIGIN
+    sample = probe.textbbox((0, 0), "Hg", font=TITLE_FONT, anchor="lb")
+    step = (sample[3] - sample[1]) + PLATFORM_LABEL_GAP
+    y = SIZE[1] - TITLE_BOTTOM_MARGIN - step * (len(PLATFORM_LABELS) - 1)
     for label in PLATFORM_LABELS:
-        text_box = probe.textbbox((x, y), label, font=PLATFORM_LABEL_FONT, anchor="lt")
-        plate = (
-            text_box[0] - PLATFORM_LABEL_PAD_X,
-            text_box[1] - PLATFORM_LABEL_PAD_Y,
-            text_box[2] + PLATFORM_LABEL_PAD_X,
-            text_box[3] + PLATFORM_LABEL_PAD_Y,
-        )
-        yield label, (x, y), plate
-        y = plate[3] + PLATFORM_LABEL_GAP
+        origin = (TITLE_LEFT, y)
+        yield label, origin, probe.textbbox(origin, label, font=TITLE_FONT, anchor="lb")
+        y += step
 
 
 def burn_platform_labels(draw: ImageDraw.ImageDraw) -> None:
-    """Draw the three platform names at full strength. They do not fade in."""
-    for label, origin, plate in iter_platform_labels():
-        draw.rounded_rectangle(plate, radius=12, fill=(6, 12, 8, 210))
-        draw.text(origin, label, font=PLATFORM_LABEL_FONT, fill="#F4FFF6", anchor="lt")
+    """Draw the three platform names in the long-film title face and position."""
+    for label, origin, _bounds in iter_platform_labels():
+        draw.text(origin, label, font=TITLE_FONT, fill=TITLE_FILL, anchor="lb")
 
 
 def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Image:
@@ -391,7 +387,7 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         caption = Image.new("RGBA", SIZE)
         caption_draw = ImageDraw.Draw(caption)
         y = round(SIZE[1] - TITLE_BOTTOM_MARGIN + 18 * (1 - reveal))
-        caption_draw.text((78, y), scene.title, font=TITLE_FONT, fill="#F5F7F6", anchor="lb")
+        caption_draw.text((TITLE_LEFT, y), scene.title, font=TITLE_FONT, fill=TITLE_FILL, anchor="lb")
         caption.putalpha(caption.getchannel("A").point(lambda value: round(value * reveal)))
         chrome = Image.alpha_composite(chrome, caption)
     else:
