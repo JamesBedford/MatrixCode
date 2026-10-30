@@ -21,8 +21,9 @@ discovers it through the project's `.agents/skills` symlink.
 - **Short social cuts:** `--video shorts` renders sixty 6–10 second clips, and
   `--video 01-classic-green` (any short slug) renders one. Each opens on a
   long-film picture, with that scene's density, size, speed, trail, and glow.
-  `browser`, `screensaver`, and `both monitors` use the long-film title face and
-  sit on its lower-left baseline. Output goes to `output/marketing/shorts/<slug>/`.
+  Each short's name uses the long-film lower-left title. `browser`,
+  `screensaver`, and `both monitors` stay at the top left. Output goes to
+  `output/marketing/shorts/<slug>/`.
   The eight 36-second films stay the long tour for your own post and are not
   shortened or replaced by this mode.
 - **Feature showcases:** `--video showcase` renders four 8–12 second films, and

@@ -55,8 +55,9 @@ metadata. Every long film shares the original nine-second in-rain `Try it now!` 
 `showcase` selects four 8–12 second feature films. A showcase key selects one.
 Each short opens on a long-film picture. Its density, size, speed, trail, and glow
 match one of those scenes, and a word or image uses that scene's placement already
-resolved. `browser`, `screensaver`, and `both monitors` use the long-film title
-face and sit on its lower-left baseline from the first frame, with the corner URL.
+resolved. Each short's name uses the long-film lower-left title, entrance, and
+face. `browser`, `screensaver`, and `both monitors` stay at the top left, with
+the corner URL.
 Shorts do not play the closing invitation. That long tour
 stays on the eight 36-second films for your own post. At most three short captures
 run at once; further runs wait. New captures use a 56-pixel corner URL, a 50-pixel

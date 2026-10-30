@@ -343,25 +343,36 @@ def grade_message(frame: Image.Image, mask: Image.Image, ink: Image.Image, focus
 
 
 def iter_platform_labels():
-    """Yield each label, its baseline origin, and its text bounds.
+    """Yield each platform label, its top-left origin, and its text bounds.
 
-    The stack uses the long-film scene title: same face, same left edge, and the
-    same lower baseline. The names are present on the first frame, with no plate.
+    The scene name keeps the long-film title slot. These three names sit at the
+    top left, in the same face, with no plate.
     """
     probe = ImageDraw.Draw(Image.new("RGB", SIZE))
-    sample = probe.textbbox((0, 0), "Hg", font=TITLE_FONT, anchor="lb")
+    sample = probe.textbbox((0, 0), "Hg", font=TITLE_FONT, anchor="lt")
     step = (sample[3] - sample[1]) + PLATFORM_LABEL_GAP
-    y = SIZE[1] - TITLE_BOTTOM_MARGIN - step * (len(PLATFORM_LABELS) - 1)
+    y = 56
     for label in PLATFORM_LABELS:
         origin = (TITLE_LEFT, y)
-        yield label, origin, probe.textbbox(origin, label, font=TITLE_FONT, anchor="lb")
+        yield label, origin, probe.textbbox(origin, label, font=TITLE_FONT, anchor="lt")
         y += step
 
 
 def burn_platform_labels(draw: ImageDraw.ImageDraw) -> None:
-    """Draw the three platform names in the long-film title face and position."""
+    """Draw the three platform names at full strength. They do not fade in."""
     for label, origin, _bounds in iter_platform_labels():
-        draw.text(origin, label, font=TITLE_FONT, fill=TITLE_FILL, anchor="lb")
+        draw.text(origin, label, font=TITLE_FONT, fill=TITLE_FILL, anchor="lt")
+
+
+def scene_title_layer(title: str, seconds: float) -> Image.Image:
+    """The lower-left scene name, with the same face, place, and entrance as the long films."""
+    reveal = ease(seconds / 0.65)
+    caption = Image.new("RGBA", SIZE)
+    caption_draw = ImageDraw.Draw(caption)
+    y = round(SIZE[1] - TITLE_BOTTOM_MARGIN + 18 * (1 - reveal))
+    caption_draw.text((TITLE_LEFT, y), title, font=TITLE_FONT, fill=TITLE_FILL, anchor="lb")
+    caption.putalpha(caption.getchannel("A").point(lambda value: round(value * reveal)))
+    return caption
 
 
 def text_plate(draw: ImageDraw.ImageDraw, text: str, origin: tuple[int, int],
@@ -407,26 +418,19 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
     if scene.caption_top:
         burn_top_caption(draw, scene.title)
         burn_lower_url(draw)
+    elif scene.message:
+        ending = Image.new("RGBA", SIZE)
+        ending_draw = ImageDraw.Draw(ending)
+        ending_draw.text(ENDING_TITLE_POSITION, scene.title,
+                         font=ENDING_TITLE_FONT, fill="#EEF5EF", anchor="mm")
+        ending_draw.text(ENDING_SITE_POSITION, SITE, font=ENDING_SITE_FONT, fill="#F5FFF7", anchor="mm")
+        ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
+        chrome = Image.alpha_composite(chrome, ending)
     else:
-        if not scene.message:
-            draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
+        draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
         if scene.platform_labels:
             burn_platform_labels(draw)
-        elif not scene.message:
-            caption = Image.new("RGBA", SIZE)
-            caption_draw = ImageDraw.Draw(caption)
-            y = round(SIZE[1] - TITLE_BOTTOM_MARGIN + 18 * (1 - reveal))
-            caption_draw.text((TITLE_LEFT, y), scene.title, font=TITLE_FONT, fill=TITLE_FILL, anchor="lb")
-            caption.putalpha(caption.getchannel("A").point(lambda value: round(value * reveal)))
-            chrome = Image.alpha_composite(chrome, caption)
-        else:
-            ending = Image.new("RGBA", SIZE)
-            ending_draw = ImageDraw.Draw(ending)
-            ending_draw.text(ENDING_TITLE_POSITION, scene.title,
-                             font=ENDING_TITLE_FONT, fill="#EEF5EF", anchor="mm")
-            ending_draw.text(ENDING_SITE_POSITION, SITE, font=ENDING_SITE_FONT, fill="#F5FFF7", anchor="mm")
-            ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
-            chrome = Image.alpha_composite(chrome, ending)
+        chrome = Image.alpha_composite(chrome, scene_title_layer(scene.title, seconds))
     return Image.alpha_composite(frame, chrome).convert("RGB")
 
 

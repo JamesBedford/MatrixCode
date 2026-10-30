@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 import capture_marketing_video as video
 from marketing_audio import write_soundtrack
@@ -80,6 +80,7 @@ class ShortCatalogTests(unittest.TestCase):
                     self.assertNotIn(name, short)
                 else:
                     self.assertEqual(short[name], value, f"{key} {name}")
+            self.assertEqual(shorts[key].scenes[0].title, long.title)
 
     def test_long_tours_stay_out_of_the_short_group(self):
         self.assertEqual(tuple(video.FILMS), (
@@ -95,32 +96,41 @@ class ShortCatalogTests(unittest.TestCase):
         one = video.resolve_outputs(SHORT_CLIPS[0].key, Path("output/marketing"), None)
         self.assertEqual(one[0][1], Path("output/marketing/shorts") / SHORT_CLIPS[0].key / "matrixcode.mp4")
 
-    def test_labels_use_the_long_film_title_face_and_baseline(self):
-        self.assertEqual(video.PLATFORM_LABELS, ("browser", "screensaver", "both monitors"))
+    def test_each_short_name_matches_the_long_film_title_slot(self):
+        draw = ImageDraw.Draw(Image.new("RGB", video.SIZE))
+        url_box = draw.textbbox(video.CORNER_SITE_POSITION, video.SITE, font=video.SITE_FONT, anchor="ra")
         labels = list(video.iter_platform_labels())
         self.assertEqual([label for label, _origin, _bounds in labels], list(video.PLATFORM_LABELS))
-        _label, origin, bounds = labels[-1]
-        self.assertEqual(origin, (video.TITLE_LEFT, video.SIZE[1] - video.TITLE_BOTTOM_MARGIN))
-        for label, item_origin, box in labels:
-            self.assertEqual(item_origin[0], video.TITLE_LEFT)
-            self.assertGreater(box[1], video.SIZE[1] / 2)
-            self.assertLessEqual(box[2], video.SIZE[0] - 60)
-            self.assertLessEqual(box[3], video.SIZE[1] - 180)
-            self.assertEqual(label, label.lower())
+        label_bottom = max(box[3] for _label, _origin, box in labels)
+        for _label, origin, box in labels:
+            self.assertEqual(origin[0], video.TITLE_LEFT)
+            self.assertLess(box[2], url_box[0] - 24)
+            self.assertLess(box[3], label_bottom + 1)
         for earlier, later in zip(labels, labels[1:]):
-            self.assertLessEqual(earlier[2][3] + 4, later[2][1] + 4)
+            self.assertLessEqual(earlier[2][3], later[2][1])
 
         short = SHORT_CLIPS[0].scenes[0]
-        opened = video.finish_frame(Image.new("RGB", video.SIZE, "black"), short, 0)
         tour = video.FILMS["first"].scenes[0]
+        self.assertEqual(short.title, tour.title)
         self.assertFalse(tour.platform_labels)
-        untouched = video.finish_frame(Image.new("RGB", video.SIZE, "black"), tour, 0)
-        ink = max(max(pixel) for pixel in opened.crop(bounds).getdata())
-        quiet = max(max(pixel) for pixel in untouched.crop(bounds).getdata())
-        self.assertGreater(ink, quiet + 6)
-        self.assertGreater(ink, 200)
-        # No plate: the pixel just left of the title block stays black.
-        self.assertEqual(opened.getpixel((bounds[0] - 8, (bounds[1] + bounds[3]) // 2)), (0, 0, 0))
+        for film in SHORT_CLIPS:
+            title = film.scenes[0].title
+            self.assertNotEqual(title, film.scenes[0].name)
+            self.assertTrue(title[:1].isupper())
+            box = draw.textbbox((video.TITLE_LEFT, video.SIZE[1] - video.TITLE_BOTTOM_MARGIN),
+                                title, font=video.TITLE_FONT, anchor="lb")
+            self.assertGreater(box[1], label_bottom + 24)
+            self.assertLessEqual(box[3], video.SIZE[1] - 180)
+
+        # Once the entrance finishes, the short's name is the long film's title.
+        opened = video.finish_frame(Image.new("RGB", video.SIZE, "black"), short, 1.5)
+        untouched = video.finish_frame(Image.new("RGB", video.SIZE, "black"), tour, 1.5)
+        title_box = draw.textbbox((video.TITLE_LEFT, video.SIZE[1] - video.TITLE_BOTTOM_MARGIN),
+                                  short.title, font=video.TITLE_FONT, anchor="lb")
+        self.assertEqual(list(opened.crop(title_box).getdata()), list(untouched.crop(title_box).getdata()))
+        label_box = labels[0][2]
+        self.assertGreater(max(max(pixel) for pixel in opened.crop(label_box).getdata()), 200)
+        self.assertEqual(max(max(pixel) for pixel in untouched.crop(label_box).getdata()), 0)
 
     def test_short_score_matches_six_and_ten_second_cuts(self):
         for seconds in (6, 10):
