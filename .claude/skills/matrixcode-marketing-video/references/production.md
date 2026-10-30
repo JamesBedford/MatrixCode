@@ -42,6 +42,8 @@ python3 scripts/capture_marketing_video.py --video styles
 python3 scripts/capture_marketing_video.py --video all --preview-only
 python3 scripts/capture_marketing_video.py --video shorts
 python3 scripts/capture_marketing_video.py --video 01-classic-green
+python3 scripts/capture_marketing_video.py --video showcase
+python3 scripts/capture_marketing_video.py --video showcase-story
 ```
 
 `--video first` is the default, preserving the original no-argument command. Each
@@ -50,6 +52,7 @@ metadata. Every long film shares the original nine-second in-rain `Try it now!` 
 `both` preserves the first/second selection, `new` selects third/fourth/fifth,
 `styles` selects sixth/seventh/eighth, and `all` selects all eight long tours.
 `shorts` selects sixty separate 6–10 second cuts. A short slug selects one cut.
+`showcase` selects four 8–12 second feature films. A showcase key selects one.
 Each short opens on a long-film picture. Its density, size, speed, trail, and glow
 match one of those scenes, and a word or image uses that scene's placement already
 resolved. `browser`, `screensaver`, and `both monitors` use the long-film title
@@ -71,6 +74,7 @@ clear space around the original invitation; existing exports change when regener
 | `seventh` | Six retro phosphor/terminal looks | `styles/phosphor/matrixcode-phosphor.mp4` |
 | `eighth` | Six atmospheric/sculptural looks | `styles/atmospheres/matrixcode-atmospheres.mp4` |
 | `shorts` | Sixty finished looks, 6–10 seconds, three platform labels | `shorts/<slug>/matrixcode.mp4` |
+| `showcase` | Screensaver-to-name, picture, countdown, still grid. 8–12 seconds | `showcase/<key>/matrixcode.mp4` |
 
 The sixth through eighth films are style-only: normal query controls define each
 look, body documents keep intros/messages/images disabled, and no timed actions
@@ -87,7 +91,7 @@ encoded final frame; previews may not match an older MP4 until a full render
 completes. `--dist DIRECTORY` selects another production build.
 `--output-dir DIRECTORY` changes the root while retaining each film's relative
 path. `--out PATH.mp4` overrides one film's destination; it is rejected with
-film groups (`both`, `new`, `styles`, `shorts`, or `all`). Keep custom destinations in separate directories because the
+film groups (`both`, `new`, `styles`, `shorts`, `showcase`, or `all`). Keep custom destinations in separate directories because the
 companion JPEG filenames are shared:
 
 ```sh

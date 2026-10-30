@@ -41,6 +41,7 @@ from marketing_film_sixth import SIXTH_FILM
 from marketing_film_seventh import SEVENTH_FILM
 from marketing_film_eighth import EIGHTH_FILM
 from marketing_shorts import SHORT_CLIPS, SHORT_FILMS
+from marketing_film_showcase import SHOWCASE_CLIPS, SHOWCASE_FILMS
 
 def find_project_root() -> Path:
     for directory in Path(__file__).resolve().parents:
@@ -140,11 +141,12 @@ SECOND_FILM = Film("second", "Matrix Code — Beyond the green", (
 FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM, THIRD_FILM, FOURTH_FILM,
                                   FIFTH_FILM, SIXTH_FILM, SEVENTH_FILM, EIGHTH_FILM)}
 # Shorts are a separate mode. `all` stays the eight long tours.
-CATALOG = {**FILMS, **SHORT_FILMS}
+CATALOG = {**FILMS, **SHORT_FILMS, **SHOWCASE_FILMS}
 FILM_GROUPS = {
     "both": ("first", "second"), "new": ("third", "fourth", "fifth"),
     "styles": ("sixth", "seventh", "eighth"), "all": tuple(FILMS),
     "shorts": tuple(film.key for film in SHORT_CLIPS),
+    "showcase": tuple(film.key for film in SHOWCASE_CLIPS),
 }
 # One Chromium WebGL capture at a time per slot. Sixty shorts share three slots.
 SHORT_RENDER_SLOTS = 3
@@ -362,6 +364,27 @@ def burn_platform_labels(draw: ImageDraw.ImageDraw) -> None:
         draw.text(origin, label, font=TITLE_FONT, fill=TITLE_FILL, anchor="lb")
 
 
+def text_plate(draw: ImageDraw.ImageDraw, text: str, origin: tuple[int, int],
+               anchor: str, face: ImageFont.ImageFont) -> tuple[int, int, int, int]:
+    """Draw one line on a dark plate and return the plate box."""
+    box = draw.textbbox(origin, text, font=face, anchor=anchor)
+    plate = (box[0] - 18, box[1] - 10, box[2] + 18, box[3] + 10)
+    draw.rounded_rectangle(plate, radius=12, fill=(6, 12, 8, 230))
+    draw.text(origin, text, font=face, fill="#F4FFF6", anchor=anchor)
+    return plate
+
+
+def burn_top_caption(draw: ImageDraw.ImageDraw, title: str) -> tuple[int, int, int, int]:
+    """Outcome caption at the top, present on the first frame."""
+    return text_plate(draw, title, (TITLE_LEFT, 78), "lt", TITLE_FONT)
+
+
+def burn_lower_url(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
+    """URL plate sitting fully above the player-control margin."""
+    origin = (SIZE[0] - 82, SIZE[1] - TITLE_BOTTOM_MARGIN - 10)
+    return text_plate(draw, SITE, origin, "rb", SITE_FONT)
+
+
 def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Image:
     frame = frame.convert("RGB")
     if scene.message:
@@ -371,33 +394,39 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         frame = grade_message(frame, MESSAGE_MASK, frame.getchannel("G"), focus)
     elif scene.focus_text:
         # Grade only the app's existing message cells; tokens keep ticking underneath.
+        # Showcase captions are already the point of frame 0, so their letters are too.
         red, green, blue = frame.split()
         ink = ImageChops.lighter(ImageChops.lighter(red, green), blue)
         mask = scene_focus_mask(scene)
-        frame = grade_message(frame, mask, ink, ease(seconds / 0.65), dim=0.6, boost=2)
+        amount = 1 if scene.caption_top else ease(seconds / 0.65)
+        frame = grade_message(frame, mask, ink, amount, dim=0.6, boost=2)
     frame = Image.alpha_composite(frame.convert("RGBA"), SHADE)
     chrome = Image.new("RGBA", SIZE)
     draw = ImageDraw.Draw(chrome)
-    if not scene.message:
-        draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
     reveal = ease(seconds / 0.65)
-    if scene.platform_labels:
-        burn_platform_labels(draw)
-    elif not scene.message:
-        caption = Image.new("RGBA", SIZE)
-        caption_draw = ImageDraw.Draw(caption)
-        y = round(SIZE[1] - TITLE_BOTTOM_MARGIN + 18 * (1 - reveal))
-        caption_draw.text((TITLE_LEFT, y), scene.title, font=TITLE_FONT, fill=TITLE_FILL, anchor="lb")
-        caption.putalpha(caption.getchannel("A").point(lambda value: round(value * reveal)))
-        chrome = Image.alpha_composite(chrome, caption)
+    if scene.caption_top:
+        burn_top_caption(draw, scene.title)
+        burn_lower_url(draw)
     else:
-        ending = Image.new("RGBA", SIZE)
-        ending_draw = ImageDraw.Draw(ending)
-        ending_draw.text(ENDING_TITLE_POSITION, scene.title,
-                         font=ENDING_TITLE_FONT, fill="#EEF5EF", anchor="mm")
-        ending_draw.text(ENDING_SITE_POSITION, SITE, font=ENDING_SITE_FONT, fill="#F5FFF7", anchor="mm")
-        ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
-        chrome = Image.alpha_composite(chrome, ending)
+        if not scene.message:
+            draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
+        if scene.platform_labels:
+            burn_platform_labels(draw)
+        elif not scene.message:
+            caption = Image.new("RGBA", SIZE)
+            caption_draw = ImageDraw.Draw(caption)
+            y = round(SIZE[1] - TITLE_BOTTOM_MARGIN + 18 * (1 - reveal))
+            caption_draw.text((TITLE_LEFT, y), scene.title, font=TITLE_FONT, fill=TITLE_FILL, anchor="lb")
+            caption.putalpha(caption.getchannel("A").point(lambda value: round(value * reveal)))
+            chrome = Image.alpha_composite(chrome, caption)
+        else:
+            ending = Image.new("RGBA", SIZE)
+            ending_draw = ImageDraw.Draw(ending)
+            ending_draw.text(ENDING_TITLE_POSITION, scene.title,
+                             font=ENDING_TITLE_FONT, fill="#EEF5EF", anchor="mm")
+            ending_draw.text(ENDING_SITE_POSITION, SITE, font=ENDING_SITE_FONT, fill="#F5FFF7", anchor="mm")
+            ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
+            chrome = Image.alpha_composite(chrome, ending)
     return Image.alpha_composite(frame, chrome).convert("RGB")
 
 
@@ -615,7 +644,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
     parser.add_argument("--video", choices=[*CATALOG, *FILM_GROUPS], default="first",
-                        help="select a film or short slug; shorts: sixty 6–10s cuts; all: the eight long tours")
+                        help="a film, short slug, shorts, showcase, or all eight long tours")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output/marketing",
                         help="output root; each additional film keeps its previews in its own subfolder")
     parser.add_argument("--out", type=Path, help="override the MP4 path for a single film")

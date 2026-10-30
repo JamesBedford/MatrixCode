@@ -25,6 +25,12 @@ discovers it through the project's `.agents/skills` symlink.
   sit on its lower-left baseline. Output goes to `output/marketing/shorts/<slug>/`.
   The eight 36-second films stay the long tour for your own post and are not
   shortened or replaced by this mode.
+- **Feature showcases:** `--video showcase` renders four 8–12 second films, and
+  `--video showcase-story` (or `showcase-picture`, `showcase-countdown`,
+  `showcase-light`) renders one. Each opens on rain that is already full, puts one
+  outcome caption at the top, and writes `output/marketing/showcase/<key>/`.
+  These demonstrate a name, a picture, a countdown, and the still grid. They do
+  not replace the colour shorts or the long tours.
 - **Update a film:** edit the scene, caption, capture, or soundtrack settings that
   implement the request, then regenerate the actual MP4 and preview images.
 - **Make a new film:** use the `Film` and `Scene` definitions in `marketing_model.py` as the starting

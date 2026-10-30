@@ -31,6 +31,8 @@ class Scene:
     comparison_title: str | None = None
     # Short social cuts burn the three platform names in from the first frame.
     platform_labels: bool = False
+    # Feature showcases put one outcome caption at the top, already drawn on frame 0.
+    caption_top: bool = False
 
 
 @dataclass(frozen=True)
