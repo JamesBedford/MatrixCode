@@ -29,6 +29,8 @@ class Scene:
     actions: tuple[tuple[float, str], ...] = ()
     comparison_settings: dict | None = None
     comparison_title: str | None = None
+    # Short social cuts burn the three platform names in from the first frame.
+    platform_labels: bool = False
 
 
 @dataclass(frozen=True)

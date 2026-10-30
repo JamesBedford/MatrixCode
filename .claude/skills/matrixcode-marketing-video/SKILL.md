@@ -16,8 +16,13 @@ discovers it through the project's `.agents/skills` symlink.
 - **Recreate a film:** build the app and select `--video first` (the default),
   `second`, `third`, `fourth`, `fifth`, `sixth`, `seventh`, or `eighth`. Groups:
   `both` selects the first two, `new` selects the third through fifth, `styles`
-  selects the sixth through eighth, and `all` selects every film. The additional
+  selects the sixth through eighth, and `all` selects every long film. The additional
   style reels cover neon, retro phosphor, and atmospheric rain looks.
+- **Short social cuts:** `--video shorts` renders sixty 6–10 second clips, and
+  `--video 01-classic-matrix` (any short slug) renders one. Each opens on rain that
+  is already full, burns in `browser`, `screensaver`, and `both monitors`, and
+  writes `output/marketing/shorts/<slug>/`. The eight 36-second films stay the long
+  tour for your own post and are not shortened or replaced by this mode.
 - **Update a film:** edit the scene, caption, capture, or soundtrack settings that
   implement the request, then regenerate the actual MP4 and preview images.
 - **Make a new film:** use the `Film` and `Scene` definitions in `marketing_model.py` as the starting

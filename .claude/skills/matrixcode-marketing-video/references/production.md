@@ -40,13 +40,21 @@ python3 scripts/capture_marketing_video.py --video both
 python3 scripts/capture_marketing_video.py --video new
 python3 scripts/capture_marketing_video.py --video styles
 python3 scripts/capture_marketing_video.py --video all --preview-only
+python3 scripts/capture_marketing_video.py --video shorts
+python3 scripts/capture_marketing_video.py --video 01-classic-matrix
 ```
 
 `--video first` is the default, preserving the original no-argument command. Each
-recipe produces a 36-second, 1920 × 1080, 30 FPS H.264/AAC MP4 with fast-start
-metadata. Every film shares the original nine-second in-rain `Try it now!` reveal.
+long recipe produces a 36-second, 1920 × 1080, 30 FPS H.264/AAC MP4 with fast-start
+metadata. Every long film shares the original nine-second in-rain `Try it now!` reveal.
 `both` preserves the first/second selection, `new` selects third/fourth/fifth,
-`styles` selects sixth/seventh/eighth, and `all` selects all eight. New captures use a 56-pixel corner URL, a 50-pixel
+`styles` selects sixth/seventh/eighth, and `all` selects all eight long tours.
+`shorts` selects sixty separate 6–10 second cuts. A short slug selects one cut.
+Each short is a single scene that starts with the rain already full, burns in the
+labels `browser`, `screensaver`, and `both monitors` from the first frame, and
+keeps the corner URL. Shorts do not play the closing invitation. That long tour
+stays on the eight 36-second films for your own post. At most three short captures
+run at once; further runs wait. New captures use a 56-pixel corner URL, a 50-pixel
 centered closing headline, and a 66-pixel centered closing URL. Their anchors keep
 clear space around the original invitation; existing exports change when regenerated.
 
@@ -60,6 +68,7 @@ clear space around the original invitation; existing exports change when regener
 | `sixth` | Six saturated neon looks | `styles/neon/matrixcode-neon.mp4` |
 | `seventh` | Six retro phosphor/terminal looks | `styles/phosphor/matrixcode-phosphor.mp4` |
 | `eighth` | Six atmospheric/sculptural looks | `styles/atmospheres/matrixcode-atmospheres.mp4` |
+| `shorts` | Sixty finished looks, 6–10 seconds, three platform labels | `shorts/<slug>/matrixcode.mp4` |
 
 The sixth through eighth films are style-only: normal query controls define each
 look, body documents keep intros/messages/images disabled, and no timed actions
@@ -76,7 +85,7 @@ encoded final frame; previews may not match an older MP4 until a full render
 completes. `--dist DIRECTORY` selects another production build.
 `--output-dir DIRECTORY` changes the root while retaining each film's relative
 path. `--out PATH.mp4` overrides one film's destination; it is rejected with
-film groups (`both`, `new`, `styles`, or `all`). Keep custom destinations in separate directories because the
+film groups (`both`, `new`, `styles`, `shorts`, or `all`). Keep custom destinations in separate directories because the
 companion JPEG filenames are shared:
 
 ```sh

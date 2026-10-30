@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import contextlib
+import fcntl
 import io
 import json
 import math
@@ -18,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
 import wave
 from dataclasses import replace
@@ -38,6 +40,7 @@ from marketing_film_fifth import FIFTH_FILM
 from marketing_film_sixth import SIXTH_FILM
 from marketing_film_seventh import SEVENTH_FILM
 from marketing_film_eighth import EIGHTH_FILM
+from marketing_shorts import SHORT_CLIPS, SHORT_FILMS
 
 def find_project_root() -> Path:
     for directory in Path(__file__).resolve().parents:
@@ -135,10 +138,21 @@ SECOND_FILM = Film("second", "Matrix Code — Beyond the green", (
 
 FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM, THIRD_FILM, FOURTH_FILM,
                                   FIFTH_FILM, SIXTH_FILM, SEVENTH_FILM, EIGHTH_FILM)}
+# Shorts are a separate mode. `all` stays the eight long tours.
+CATALOG = {**FILMS, **SHORT_FILMS}
 FILM_GROUPS = {
     "both": ("first", "second"), "new": ("third", "fourth", "fifth"),
     "styles": ("sixth", "seventh", "eighth"), "all": tuple(FILMS),
+    "shorts": tuple(film.key for film in SHORT_CLIPS),
 }
+# One Chromium WebGL capture at a time per slot. Sixty shorts share three slots.
+SHORT_RENDER_SLOTS = 3
+PLATFORM_LABELS = ("browser", "screensaver", "both monitors")
+PLATFORM_LABEL_FONT_SIZE = 64
+PLATFORM_LABEL_ORIGIN = (78, 72)
+PLATFORM_LABEL_GAP = 18
+PLATFORM_LABEL_PAD_X = 18
+PLATFORM_LABEL_PAD_Y = 10
 # Preserve imports used by existing audio-preview commands for the first film.
 SCENES = FIRST_FILM.scenes
 DURATION = FIRST_FILM.duration
@@ -254,6 +268,7 @@ ENDING_SITE_FONT_SIZE = 66
 SITE_FONT = font(SITE_FONT_SIZE, mono=True)
 ENDING_TITLE_FONT = font(ENDING_TITLE_FONT_SIZE, bold=True)
 ENDING_SITE_FONT = font(ENDING_SITE_FONT_SIZE)
+PLATFORM_LABEL_FONT = font(PLATFORM_LABEL_FONT_SIZE, bold=True)
 CORNER_SITE_POSITION = (SIZE[0] - 82, 63)
 ENDING_TITLE_POSITION = (SIZE[0] / 2, 391)
 ENDING_SITE_POSITION = (SIZE[0] / 2, 729)
@@ -328,6 +343,29 @@ def grade_message(frame: Image.Image, mask: Image.Image, ink: Image.Image, focus
     return Image.composite(letters, ambient, ImageChops.multiply(mask, ink))
 
 
+def iter_platform_labels():
+    """Yield each burned-in label, its text origin, and the plate behind it."""
+    probe = ImageDraw.Draw(Image.new("RGB", SIZE))
+    x, y = PLATFORM_LABEL_ORIGIN
+    for label in PLATFORM_LABELS:
+        text_box = probe.textbbox((x, y), label, font=PLATFORM_LABEL_FONT, anchor="lt")
+        plate = (
+            text_box[0] - PLATFORM_LABEL_PAD_X,
+            text_box[1] - PLATFORM_LABEL_PAD_Y,
+            text_box[2] + PLATFORM_LABEL_PAD_X,
+            text_box[3] + PLATFORM_LABEL_PAD_Y,
+        )
+        yield label, (x, y), plate
+        y = plate[3] + PLATFORM_LABEL_GAP
+
+
+def burn_platform_labels(draw: ImageDraw.ImageDraw) -> None:
+    """Draw the three platform names at full strength. They do not fade in."""
+    for label, origin, plate in iter_platform_labels():
+        draw.rounded_rectangle(plate, radius=12, fill=(6, 12, 8, 210))
+        draw.text(origin, label, font=PLATFORM_LABEL_FONT, fill="#F4FFF6", anchor="lt")
+
+
 def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Image:
     frame = frame.convert("RGB")
     if scene.message:
@@ -347,7 +385,9 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
     if not scene.message:
         draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
     reveal = ease(seconds / 0.65)
-    if not scene.message:
+    if scene.platform_labels:
+        burn_platform_labels(draw)
+    elif not scene.message:
         caption = Image.new("RGBA", SIZE)
         caption_draw = ImageDraw.Draw(caption)
         y = round(SIZE[1] - TITLE_BOTTOM_MARGIN + 18 * (1 - reveal))
@@ -529,11 +569,48 @@ def assemble(clips: list[Path], audio: Path, output: Path, film: Film):
     ], check=True, stdout=sys.stdout, stderr=sys.stderr)
 
 
+def short_render(outputs: list[tuple[Film, Path]]) -> bool:
+    return bool(outputs) and all(scene.platform_labels for film, _ in outputs for scene in film.scenes)
+
+
+@contextlib.contextmanager
+def render_slot(enabled: bool):
+    """Limit concurrent short captures so sixty Chromium launches do not stack up."""
+    if not enabled:
+        yield
+        return
+    slot_dir = TEMP_ROOT / "matrixcode-short-slots"
+    slot_dir.mkdir(parents=True, exist_ok=True)
+    handles = [os.open(slot_dir / f"slot-{index}.lock", os.O_CREAT | os.O_RDWR)
+               for index in range(SHORT_RENDER_SLOTS)]
+    chosen = None
+    try:
+        while chosen is None:
+            for handle in handles:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    continue
+                chosen = handle
+                break
+            if chosen is None:
+                time.sleep(0.4)
+        yield
+    finally:
+        if chosen is not None:
+            fcntl.flock(chosen, fcntl.LOCK_UN)
+        for handle in handles:
+            os.close(handle)
+
+
 def resolve_outputs(video: str, output_directory: Path, output: Path | None) -> list[tuple[Film, Path]]:
     keys = FILM_GROUPS.get(video, (video,))
     if len(keys) > 1 and output is not None:
         raise ValueError("--out selects one MP4; use --output-dir with a film group")
-    films = tuple(FILMS[key] for key in keys)
+    try:
+        films = tuple(CATALOG[key] for key in keys)
+    except KeyError:
+        raise ValueError(f"unknown film {video}") from None
     return [(film, output if output is not None else output_directory / film.relative_output)
             for film in films]
 
@@ -541,8 +618,8 @@ def resolve_outputs(video: str, output_directory: Path, output: Path | None) -> 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
-    parser.add_argument("--video", choices=[*FILMS, *FILM_GROUPS], default="first",
-                        help="select a film; both: first two; new: third–fifth; styles: sixth–eighth; all: every film")
+    parser.add_argument("--video", choices=[*CATALOG, *FILM_GROUPS], default="first",
+                        help="select a film or short slug; shorts: sixty 6–10s cuts; all: the eight long tours")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output/marketing",
                         help="output root; each additional film keeps its previews in its own subfolder")
     parser.add_argument("--out", type=Path, help="override the MP4 path for a single film")
@@ -662,17 +739,18 @@ def main():
                 for command in ("ffmpeg", "ffprobe"):
                     if not shutil.which(command):
                         raise RuntimeError(f"{command} is required")
-                with sync_playwright() as playwright:
-                    browser_args = (["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"]
-                                    if sys.platform == "darwin" else [])
-                    browser = playwright.chromium.launch(args=browser_args)
-                    try:
-                        for film, output in outputs:
-                            if terminal.isatty():
-                                print(f"Rendering {film.key}: {film.title}", file=terminal, flush=True)
-                            render_film(browser, args, film, output)
-                    finally:
-                        browser.close()
+                with render_slot(short_render(outputs)):
+                    with sync_playwright() as playwright:
+                        browser_args = (["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"]
+                                        if sys.platform == "darwin" else [])
+                        browser = playwright.chromium.launch(args=browser_args)
+                        try:
+                            for film, output in outputs:
+                                if terminal.isatty():
+                                    print(f"Rendering {film.key}: {film.title}", file=terminal, flush=True)
+                                render_film(browser, args, film, output)
+                        finally:
+                            browser.close()
             except Exception:
                 traceback.print_exc()
                 raise
