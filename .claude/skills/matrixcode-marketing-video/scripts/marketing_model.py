@@ -33,6 +33,11 @@ class Scene:
     platform_labels: bool = False
     # Feature showcases put one outcome caption at the top, already drawn on frame 0.
     caption_top: bool = False
+    # Settled invitation chrome from frame 0, so a loop matches the closing frame.
+    loop_open: bool = False
+    # A second rain line centered under the focused message. Capture stamps it
+    # with the message glyphs; the app itself still draws the line above.
+    credit_line: str | None = None
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,8 @@ class Film:
     title: str
     scenes: tuple[Scene, ...]
     relative_output: Path
+    # "industrial" is the shared score. "matrix" is the darker looping promo score.
+    score: str = "industrial"
 
     @property
     def duration(self) -> float:

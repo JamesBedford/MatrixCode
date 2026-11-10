@@ -42,6 +42,7 @@ from marketing_film_seventh import SEVENTH_FILM
 from marketing_film_eighth import EIGHTH_FILM
 from marketing_shorts import SHORT_CLIPS, SHORT_FILMS
 from marketing_film_showcase import SHOWCASE_CLIPS, SHOWCASE_FILMS
+from marketing_film_quotes import QUOTES_FILM
 
 def find_project_root() -> Path:
     for directory in Path(__file__).resolve().parents:
@@ -141,7 +142,7 @@ SECOND_FILM = Film("second", "Matrix Code — Beyond the green", (
 FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM, THIRD_FILM, FOURTH_FILM,
                                   FIFTH_FILM, SIXTH_FILM, SEVENTH_FILM, EIGHTH_FILM)}
 # Shorts are a separate mode. `all` stays the eight long tours.
-CATALOG = {**FILMS, **SHORT_FILMS, **SHOWCASE_FILMS}
+CATALOG = {**FILMS, **SHORT_FILMS, **SHOWCASE_FILMS, QUOTES_FILM.key: QUOTES_FILM}
 FILM_GROUPS = {
     "both": ("first", "second"), "new": ("third", "fourth", "fifth"),
     "styles": ("sixth", "seventh", "eighth"), "all": tuple(FILMS),
@@ -209,6 +210,7 @@ CLOCK_SCRIPT = r"""(() => {
   }
   if (CLOSING_INVITATION && typeof WebGL2RenderingContext !== 'undefined') {
     const {cols, rows, cells} = MESSAGE_LAYOUT;
+    const invitationGaps = INVITATION_GAPS;
     const upload = WebGL2RenderingContext.prototype.texSubImage2D;
     WebGL2RenderingContext.prototype.texSubImage2D = function (...args) {
       if (window.__videoPlainMessage && args.length === 9 &&
@@ -224,9 +226,46 @@ CLOCK_SCRIPT = r"""(() => {
           pixels[cell * 4 + 1] = brightness;
           pixels[cell * 4 + 2] &= 0x3f; // retain the glyph crossfade phase
         }
+        for (const cell of invitationGaps) {
+          pixels[cell * 4 + 1] = 0;
+          pixels[cell * 4 + 2] = 0;
+        }
         args[8] = pixels;
       }
       return Reflect.apply(upload, this, args);
+    };
+  }
+  const credit = CREDIT_STAMP;
+  if (credit && typeof WebGL2RenderingContext !== 'undefined') {
+    const uploadCredit = WebGL2RenderingContext.prototype.texSubImage2D;
+    WebGL2RenderingContext.prototype.texSubImage2D = function (...args) {
+      if (args.length === 9 &&
+          args[0] === this.TEXTURE_2D && args[1] === 0 && args[2] === 0 && args[3] === 0 &&
+          args[4] === credit.cols && args[5] === credit.rows && args[6] === this.RGBA &&
+          args[7] === this.UNSIGNED_BYTE && args[8] instanceof Uint8Array &&
+          args[8].length === credit.cols * credit.rows * 4) {
+        // Hold the quote and the handle as steady message glyphs. Head flashes
+        // would otherwise blow a letter out for a frame.
+        const pixels = args[8].slice();
+        const held = (credit.hold || []).concat(credit.cells);
+        for (const pair of held) {
+          const cell = pair[0];
+          const glyph = pair[1];
+          const offset = cell * 4;
+          pixels[offset] = glyph;
+          pixels[offset + 1] = 168;
+          pixels[offset + 2] = 63;
+          pixels[offset + 3] = glyph;
+        }
+        // Spaces inside a line, and the blank row between the lines, stay dark.
+        for (const cell of credit.gaps || []) {
+          const offset = cell * 4;
+          pixels[offset + 1] = 0;
+          pixels[offset + 2] = 0;
+        }
+        args[8] = pixels;
+      }
+      return Reflect.apply(uploadCredit, this, args);
     };
   }
 })();"""
@@ -297,6 +336,98 @@ def message_layout(glyph_scale: float = INVITATION.settings["size"], text: str =
 MESSAGE_LAYOUT = message_layout()
 
 
+def invitation_gap_cells(text: str = CTA, glyph_scale: float = INVITATION.settings["size"],
+                         config: dict | None = None, pad_rows: int = 0) -> list[int]:
+    """Space cells inside the invitation line, so rain does not sit inside the words.
+
+    pad_rows also clears the rain directly above and below each space. A bright
+    glyph in that cell reads as part of the phrase.
+    """
+    layout = message_layout(glyph_scale, text, config)
+    cols, rows = layout["cols"], layout["rows"]
+    first = next(index for index, character in enumerate(text) if character != " ")
+    origin = min(layout["cells"]) - first
+    gaps = []
+    for offset, character in enumerate(text):
+        if character != " ":
+            continue
+        cell = origin + offset
+        row, col = divmod(cell, cols)
+        for delta in range(-pad_rows, pad_rows + 1):
+            padded = row + delta
+            if 0 <= padded < rows:
+                gaps.append(padded * cols + col)
+    return gaps
+
+
+def scene_invitation_gaps(scene: Scene) -> list[int]:
+    """The opening bookend clears a row around each space. The shared ending clears the spaces."""
+    if not (scene.message or scene.loop_open):
+        return []
+    return invitation_gap_cells(pad_rows=1 if scene.loop_open else 0)
+
+
+INVITATION_GAPS = invitation_gap_cells()
+
+# Mirrors src/sim/glyphSet.ts. Message glyphs start after katakana, digits, Latin, and symbols.
+_MESSAGE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'"
+_MESSAGE_START = 56 + 10 + 26 + 7
+
+
+def message_glyph(character: str) -> int | None:
+    """Glyph index for one message character, or None for a space or unsupported mark."""
+    if character == " ":
+        return None
+    index = _MESSAGE_CHARS.find(character)
+    if index < 0:
+        return None
+    return _MESSAGE_START + index
+
+
+def _held_cells(text: str, cols: int, row: int, start_col: int, scene_name: str) -> list[list[int]]:
+    cells = []
+    for offset, character in enumerate(text):
+        glyph = message_glyph(character)
+        if glyph is None:
+            if character != " ":
+                raise ValueError(f"{scene_name}: unsupported message character {character!r}")
+            continue
+        cells.append([row * cols + start_col + offset, glyph])
+    return cells
+
+
+def credit_stamp(scene: Scene) -> dict | None:
+    """Steady cells for the quote, and the handle one blank row beneath it."""
+    line = scene.credit_line
+    if not line:
+        return None
+    quote = scene.focus_text
+    if not quote or quote[:1] == " ":
+        raise ValueError(f"{scene.name}: a credit line needs a focused message")
+    config = (scene.documents or {}).get("mx-messages", {})
+    quote_layout = message_layout(scene.settings["size"], quote, config)
+    cols, rows = quote_layout["cols"], quote_layout["rows"]
+    quote_cell = min(quote_layout["cells"])
+    quote_row, quote_col = divmod(quote_cell, cols)
+    # One blank row keeps the handle from blooming into the quote.
+    handle_row = quote_row + 2
+    if handle_row >= rows or len(line) > cols:
+        raise ValueError(f"{scene.name}: credit line does not fit under {quote!r}")
+    start_col = min(cols - len(line), max(0, math.floor(
+        cols * config.get("horizontalPosition", 0.5) - len(line) / 2 + 0.5)))
+    def gaps_for(text: str, row: int, origin: int) -> list[int]:
+        return [row * cols + origin + offset for offset, character in enumerate(text) if character == " "]
+    left = min(quote_col, start_col)
+    right = max(quote_col + len(quote), start_col + len(line))
+    between = [(quote_row + 1) * cols + column for column in range(left, right)]
+    return {
+        "cols": cols, "rows": rows,
+        "hold": _held_cells(quote, cols, quote_row, quote_col, scene.name),
+        "cells": _held_cells(line, cols, handle_row, start_col, scene.name),
+        "gaps": gaps_for(quote, quote_row, quote_col) + gaps_for(line, handle_row, start_col) + between,
+    }
+
+
 def message_mask(layout: dict = MESSAGE_LAYOUT) -> Image.Image:
     """Select existing message cells for a finishing grade, without drawing text."""
     cols, rows = layout["cols"], layout["rows"]
@@ -328,10 +459,16 @@ def scene_focus_mask(scene: Scene) -> Image.Image:
     document = (scene.documents or {}).get("mx-messages", {})
     if document.get("verticalJitter", 0) or document.get("horizontalJitter", 0):
         raise ValueError("Focused marketing messages require fixed placement")
-    return focus_mask(scene.settings["size"], scene.focus_text,
+    mask = focus_mask(scene.settings["size"], scene.focus_text,
                       document.get("messageLayout", "row"),
                       document.get("messageDirection", "topToBottom"),
                       document.get("verticalPosition", 0.5), document.get("horizontalPosition", 0.5))
+    stamp = credit_stamp(scene)
+    if not stamp:
+        return mask
+    credit = message_mask({"cols": stamp["cols"], "rows": stamp["rows"],
+                           "cells": [cell for cell, _glyph in stamp["cells"]]})
+    return ImageChops.lighter(mask, credit)
 
 
 def grade_message(frame: Image.Image, mask: Image.Image, ink: Image.Image, focus: float,
@@ -398,10 +535,11 @@ def burn_lower_url(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
 
 def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Image:
     frame = frame.convert("RGB")
-    if scene.message:
+    if scene.message or scene.loop_open:
         # Bring forward only letters already revealed by the app. Ambient rain keeps
         # moving behind the invitation; no replacement or overlaid CTA text is used.
-        focus = ease((seconds - 0.5) / 1.6)
+        # The opening bookend is already settled, so it does not fade in.
+        focus = 1 if scene.loop_open else ease((seconds - 0.5) / 1.6)
         frame = grade_message(frame, MESSAGE_MASK, frame.getchannel("G"), focus)
     elif scene.focus_text:
         # Grade only the app's existing message cells; tokens keep ticking underneath.
@@ -410,7 +548,9 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         ink = ImageChops.lighter(ImageChops.lighter(red, green), blue)
         mask = scene_focus_mask(scene)
         amount = 1 if scene.caption_top else ease(seconds / 0.65)
-        frame = grade_message(frame, mask, ink, amount, dim=0.6, boost=2)
+        # Quoted lines sit in busier rain, so the letters are lifted a little harder.
+        dim, boost = (0.75, 2.15) if scene.credit_line else (0.6, 2)
+        frame = grade_message(frame, mask, ink, amount, dim=dim, boost=boost)
     frame = Image.alpha_composite(frame.convert("RGBA"), SHADE)
     chrome = Image.new("RGBA", SIZE)
     draw = ImageDraw.Draw(chrome)
@@ -418,13 +558,14 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
     if scene.caption_top:
         burn_top_caption(draw, scene.title)
         burn_lower_url(draw)
-    elif scene.message:
+    elif scene.message or scene.loop_open:
         ending = Image.new("RGBA", SIZE)
         ending_draw = ImageDraw.Draw(ending)
         ending_draw.text(ENDING_TITLE_POSITION, scene.title,
                          font=ENDING_TITLE_FONT, fill="#EEF5EF", anchor="mm")
         ending_draw.text(ENDING_SITE_POSITION, SITE, font=ENDING_SITE_FONT, fill="#F5FFF7", anchor="mm")
-        ending.putalpha(ending.getchannel("A").point(lambda value: round(value * reveal)))
+        strength = 1 if scene.loop_open else reveal
+        ending.putalpha(ending.getchannel("A").point(lambda value: round(value * strength)))
         chrome = Image.alpha_composite(chrome, ending)
     else:
         draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
@@ -458,9 +599,11 @@ def open_scene(browser, dist: Path, scene: Scene):
     if scene.start_images_after_warmup:
         documents["mx-images"] = {**documents["mx-images"], "enabled": False}
     context.add_init_script(CLOCK_SCRIPT.replace("STORAGE_DOCUMENTS", json.dumps(documents))
-                           .replace("CLOSING_INVITATION", json.dumps(scene.message))
+                           .replace("CLOSING_INVITATION", json.dumps(bool(scene.message or scene.loop_open)))
                            .replace("CAPTURE_EPOCH", str(CAPTURE_EPOCH_MS))
                            .replace("MESSAGE_LAYOUT", json.dumps(MESSAGE_LAYOUT))
+                           .replace("INVITATION_GAPS", json.dumps(scene_invitation_gaps(scene)))
+                           .replace("CREDIT_STAMP", json.dumps(credit_stamp(scene)))
                            .replace("FRAME_MILLISECONDS", str(1000 / FPS)))
     page = context.new_page()
     problems = []
@@ -531,10 +674,12 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
             # when the full-screen switch happens; the extra lanes never start empty.
             for version, (_, page, _) in zip(versions, sessions):
                 apply_scene_actions(page, version, frame_number)
+                # The opening bookend stays in the settled invitation look for the whole shot.
+                plain = version.loop_open or (version.message and frame_number >= count - FPS)
                 page.evaluate("""plainMessage => {
                     window.__videoPlainMessage = plainMessage;
                     window.__videoAdvance();
-                }""", scene.message and frame_number >= count - FPS)
+                }""", plain)
             if preview_only and frame_number not in preview_frames:
                 continue
             version_index = min(frame_number // switch_frame, len(versions) - 1)
@@ -648,7 +793,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
     parser.add_argument("--video", choices=[*CATALOG, *FILM_GROUPS], default="first",
-                        help="a film, short slug, shorts, showcase, or all eight long tours")
+                        help="a film, short slug, shorts, showcase, quotes, or all eight long tours")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output/marketing",
                         help="output root; each additional film keeps its previews in its own subfolder")
     parser.add_argument("--out", type=Path, help="override the MP4 path for a single film")
@@ -721,7 +866,10 @@ def render_film(browser, args, film: Film, output: Path):
             audio = directory / "soundtrack.wav"
             video = directory / output.name
             final_frame = directory / "matrixcode-final-frame.jpg"
-            write_soundtrack(audio, film.duration, film.transitions)
+            if film.score == "industrial":
+                write_soundtrack(audio, film.duration, film.transitions)
+            else:
+                write_soundtrack(audio, film.duration, film.transitions, score=film.score)
             verify_soundtrack(audio, film)
             assemble(clips, audio, video, film)
             verify_video(video, film, final_frame)

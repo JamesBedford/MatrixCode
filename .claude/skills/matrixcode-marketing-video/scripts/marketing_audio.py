@@ -22,8 +22,14 @@ def note_frequency(midi_note: int) -> float:
 
 def write_soundtrack(
     output: Path, duration_seconds: float, transition_seconds: list[float],
+    score: str = "industrial",
 ) -> None:
     """Write deterministic 48 kHz stereo PCM with a driving 120 BPM score."""
+    if score == "matrix":
+        write_matrix_soundtrack(output, duration_seconds, transition_seconds)
+        return
+    if score != "industrial":
+        raise ValueError(f"Unknown soundtrack {score}")
     if not np.isfinite(duration_seconds) or duration_seconds <= 0:
         raise ValueError("The soundtrack duration must be a positive finite number")
     transitions = sorted({
@@ -216,10 +222,203 @@ def write_soundtrack(
         soundtrack.writeframes(pcm.tobytes())
 
 
+def write_matrix_soundtrack(
+    output: Path, duration_seconds: float, transition_seconds: list[float],
+) -> None:
+    """Dark, driving original score for the looping promo.
+
+    120 BPM divides a 36 second film into a whole number of bars, so the
+    downbeat at the end is the downbeat at the start. Drums run through the
+    last beat. A short fade only removes the click at the join.
+    """
+    if not np.isfinite(duration_seconds) or duration_seconds <= 0:
+        raise ValueError("The soundtrack duration must be a positive finite number")
+    transitions = sorted({
+        float(value) for value in transition_seconds
+        if np.isfinite(value) and 0 < value < duration_seconds
+    })
+    roots = (38, 36, 34, 38, 41, 36, 38)  # D minor family, opening and close on D
+    samples = round(duration_seconds * SAMPLE_RATE)
+    timeline = np.arange(samples) / SAMPLE_RATE
+    mix = np.zeros((samples, 2), dtype=np.float64)
+    percussion = np.zeros_like(mix)
+    random = np.random.default_rng(0x4D415458)
+
+    def times(seconds: float) -> np.ndarray:
+        return np.arange(max(1, round(seconds * SAMPLE_RATE))) / SAMPLE_RATE
+
+    def envelope(time: np.ndarray, attack: float, decay: float) -> np.ndarray:
+        return (1 - np.exp(-time / attack)) * np.exp(-time / decay)
+
+    def taper(voice: np.ndarray, seconds: float = 0.012) -> np.ndarray:
+        length = min(len(voice), round(seconds * SAMPLE_RATE))
+        voice[-length:] *= np.linspace(1, 0, length)
+        return voice
+
+    def filtered(signal: np.ndarray, low: float, high: float) -> np.ndarray:
+        spectrum = np.fft.rfft(signal)
+        frequency = np.fft.rfftfreq(len(signal), 1 / SAMPLE_RATE)
+        response = 1 / np.sqrt(1 + (frequency / high) ** 8)
+        if low:
+            response *= 1 - np.exp(-(frequency / low) ** 4)
+        return np.fft.irfft(spectrum * response, n=len(signal))
+
+    def noise(time: np.ndarray, low: float, high: float) -> np.ndarray:
+        signal = filtered(random.standard_normal(len(time)), low, high)
+        return signal / max(float(np.std(signal)), 1e-9)
+
+    def place(
+        voice: np.ndarray, start: float, gain: float, pan: float = 0,
+        *, percussive: bool = False,
+    ) -> None:
+        offset = round(start * SAMPLE_RATE)
+        first, last = max(0, offset), min(samples, offset + len(voice))
+        if first >= last:
+            return
+        section = voice[first - offset:last - offset] * gain
+        angle = (pan + 1) * np.pi / 4
+        bus = percussion if percussive else mix
+        bus[first:last, 0] += section * np.cos(angle)
+        bus[first:last, 1] += section * np.sin(angle)
+
+    def saw(time: np.ndarray, frequency: float, cutoff: float) -> np.ndarray:
+        signal = np.zeros(len(time))
+        limit = min(48, int(cutoff / max(frequency, 1)))
+        for harmonic in range(1, limit + 1):
+            weight = np.exp(-(harmonic * frequency / cutoff) ** 2) / harmonic
+            signal += weight * np.sin(2 * np.pi * harmonic * frequency * time)
+        return signal * 0.7
+
+    def scene_at(seconds: float) -> int:
+        return min(int(np.searchsorted(transitions, seconds, side="right")), len(roots) - 1)
+
+    def kick() -> np.ndarray:
+        time = times(0.42)
+        frequency = 46 + 170 * np.exp(-time * 32)
+        phase = 2 * np.pi * np.cumsum(frequency) / SAMPLE_RATE
+        body = np.sin(phase) * envelope(time, 0.0006, 0.13)
+        click = noise(time, 1400, 7000) * np.exp(-time / 0.0035)
+        return taper(np.tanh(body * 2.4) + 0.16 * click)
+
+    def snare() -> np.ndarray:
+        time = times(0.28)
+        body = np.sin(2 * np.pi * 188 * time) * envelope(time, 0.001, 0.045)
+        snap = noise(time, 700, 8000) * envelope(time, 0.0005, 0.05)
+        clap = noise(time, 1200, 5000)
+        clap *= sum(np.exp(-np.maximum(0, time - tap) / 0.028) * (time >= tap)
+                    for tap in (0, 0.008, 0.017)) / 3
+        return taper(np.tanh(body * 1.8) * 0.55 + snap * 0.62 + clap * 0.22)
+
+    def hat(opened: bool) -> np.ndarray:
+        time = times(0.14 if opened else 0.045)
+        burst = noise(time, 5500, 14000) * envelope(time, 0.0004, 0.03 if opened else 0.01)
+        return taper(burst)
+
+    def bass(note: int, accented: bool) -> np.ndarray:
+        time = times(0.2 if accented else 0.16)
+        frequency = note_frequency(note)
+        tone = saw(time, frequency, 1600)
+        grit = np.tanh(tone * 5.2)
+        sub = np.sin(2 * np.pi * frequency / 2 * time)
+        body = envelope(time, 0.002, 0.1 if accented else 0.065)
+        return taper(filtered(grit, 55, 2200) * body + sub * body * 0.85)
+
+    def stab(start: float, root: int, gain: float) -> None:
+        time = times(0.28)
+        shape = envelope(time, 0.004, 0.07)
+        for side, detune in ((-0.72, 0.994), (0.72, 1.006)):
+            chord = np.zeros(len(time))
+            for interval, weight in ((0, 1), (3, 0.85), (7, 0.62), (10, 0.38), (13, 0.16)):
+                chord += saw(time, note_frequency(root + interval) * detune, 3200) * weight
+            # A close second voice thickens the stab without becoming a second chord.
+            chord += saw(time, note_frequency(root + 1) * detune, 2400) * 0.12
+            voice = taper(filtered(np.tanh(chord * 1.7), 180, 5200) * shape)
+            place(voice, start, gain, side)
+
+    # Eighth-note minor riff. It restarts on D at the loop point.
+    riff = (0, 0, -2, 0, 3, -2, 0, -5)
+    eighth = BEAT_SECONDS / 2
+    for step, start in enumerate(np.arange(0, duration_seconds, eighth)):
+        note = riff[step % len(riff)]
+        root = roots[scene_at(float(start))]
+        accented = step % 4 == 0
+        place(bass(root + note, accented), float(start), 0.26 if accented else 0.18)
+
+    kick_voice = kick()
+    snare_voice = snare()
+    closed_hat = hat(False)
+    open_hat = hat(True)
+    for beat, start in enumerate(np.arange(0, duration_seconds, BEAT_SECONDS)):
+        place(kick_voice, float(start), 0.5, percussive=True)
+        if beat % 2 == 1:
+            place(snare_voice, float(start), 0.42, percussive=True)
+            place(snare_voice, float(start) + 0.016, 0.05, 0.45, percussive=True)
+        for fraction, opened, gain, pan in (
+            (0.25, False, 0.028, -0.35),
+            (0.5, True, 0.055, 0.15),
+            (0.75, False, 0.024, 0.4),
+        ):
+            place(open_hat if opened else closed_hat, float(start) + fraction * BEAT_SECONDS,
+                  gain, pan * ((-1) ** beat), percussive=True)
+
+    for index, start in enumerate(np.arange(0, duration_seconds, BEAT_SECONDS * 2)):
+        root = roots[scene_at(float(start))]
+        stab(float(start), root + 12, 0.15)
+        if index % 2 == 1:
+            stab(float(start) + BEAT_SECONDS, root + 12, 0.06)
+
+    def impact(start: float, gain: float) -> None:
+        time = times(1.6)
+        low = np.sin(2 * np.pi * (34 * time + 28 * (1 - np.exp(-time * 16)) / 16))
+        metal = sum(np.sin(2 * np.pi * frequency * time) * weight
+                    for frequency, weight in ((294, 0.4), (440, 0.22), (698, 0.1)))
+        strike = metal * envelope(time, 0.0006, 0.22)
+        strike += noise(time, 250, 6400) * envelope(time, 0.0008, 0.08) * 0.3
+        place(taper(low * envelope(time, 0.002, 0.22) + strike), start, gain, percussive=True)
+
+    def transition_fill(transition: float) -> None:
+        for index, frequency in enumerate((148, 104, 74)):
+            time = times(0.16)
+            phase = 2 * np.pi * frequency * (time + 0.005 * (1 - np.exp(-time * 70)))
+            body = np.sin(phase) * envelope(time, 0.0007, 0.05 + index * 0.01)
+            attack = noise(time, 1500, 4800) * envelope(time, 0.0004, 0.005)
+            drum = taper(np.tanh(body * 1.8) + attack * 0.08)
+            place(drum, transition - (3 - index) * BEAT_SECONDS / 4,
+                  0.16 + index * 0.04, (index - 1) * 0.3, percussive=True)
+
+    impact(0, 0.34)
+    for transition in transitions:
+        transition_fill(transition)
+        impact(transition, 0.3)
+        stab(transition, roots[scene_at(transition)] + 12, 0.12)
+
+    beat_phase = np.mod(timeline, BEAT_SECONDS)
+    sidechain = 0.7 + 0.3 * (1 - np.exp(-beat_phase / 0.045))
+    mix *= sidechain[:, None]
+    mix += percussion
+    for channel in range(2):
+        mix[:, channel] = filtered(mix[:, channel], 28, 16000)
+    mix = np.tanh(mix * 1.25)
+    fade = 0.012
+    edges = np.minimum(1, timeline / fade) * np.minimum(1, (duration_seconds - timeline) / fade)
+    mix *= np.clip(edges[:, None], 0, 1)
+    peak = float(np.max(np.abs(mix)))
+    if peak > 0:
+        mix *= 0.87 / peak
+    pcm = np.rint(mix * 32767).astype("<i2")
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(output), "wb") as soundtrack:
+        soundtrack.setparams((2, 2, SAMPLE_RATE, samples, "NONE", "not compressed"))
+        soundtrack.writeframes(pcm.tobytes())
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--duration", type=float, default=36)
     parser.add_argument("--transitions", type=float, nargs="*", default=[5, 9, 13, 17, 21, 27])
+    parser.add_argument("--score", choices=("industrial", "matrix"), default="industrial")
     arguments = parser.parse_args()
-    write_soundtrack(arguments.output, arguments.duration, arguments.transitions)
+    write_soundtrack(arguments.output, arguments.duration, arguments.transitions,
+                     score=arguments.score)
