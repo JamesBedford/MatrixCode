@@ -60,7 +60,7 @@ OPENING = Scene(
 # @gdb, 8 Nov 2026: "the engine of scientific discovery"
 # @davidvgilmore, 9 Nov 2026: "a better future for AI"
 # @emollick, 9 Nov 2026: "an endless, hands-off journey through 3D worlds"
-# @eliadeleoai, 7 Nov 2026: "it feels like having a 24/7 personal assistant"
+# @poteto, 9 Nov 2026: "a golden age of software testing and verification"
 # @EnvolDev, 9 Nov 2026: "The future looks bright and amazing."
 QUOTES_FILM = Film(
     "quotes", "Matrix Code — Try it now", (
@@ -84,7 +84,7 @@ QUOTES_FILM = Film(
         quote_scene(
             "golden-code", "Golden code",
             {"preset": "gold", "glyphs": "katakana", "font": "mincho", "size": 4},
-            "PERSONAL ASSISTANT", "eliadeleoai",
+            "A GOLDEN AGE", "poteto",
         ),
         quote_scene(
             "crimson-rain", "Crimson rain",

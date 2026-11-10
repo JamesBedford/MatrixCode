@@ -95,7 +95,7 @@ class QuoteReelTests(unittest.TestCase):
                 handles.append(scene.credit_line.removeprefix("@"))
                 mask = video.scene_focus_mask(scene)
                 self.assertIsNotNone(mask.getbbox())
-        self.assertEqual(handles, ["gdb", "davidvgilmore", "emollick", "eliadeleoai", "EnvolDev"])
+        self.assertEqual(handles, ["gdb", "davidvgilmore", "emollick", "poteto", "EnvolDev"])
 
     def test_opening_title_is_fully_drawn_on_the_first_frame(self):
         scene = QUOTES_FILM.scenes[0]
