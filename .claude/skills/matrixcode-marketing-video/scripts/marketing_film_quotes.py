@@ -59,9 +59,9 @@ OPENING = Scene(
 # Lines are short extracts, not the whole post. Handles are the X accounts.
 # @gdb, 8 Nov 2026: "the engine of scientific discovery"
 # @davidvgilmore, 9 Nov 2026: "a better future for AI"
-# @dhh, 9 Nov 2026: "the machines amazing"
-# @brivael, 8 Nov 2026: "never been more optimistic"
-# @itsolelehmann, 6 Nov 2026: "applied to literally anything"
+# @emollick, 9 Nov 2026: "an endless, hands-off journey through 3D worlds"
+# @eliadeleoai, 7 Nov 2026: "it feels like having a 24/7 personal assistant"
+# @EnvolDev, 9 Nov 2026: "The future looks bright and amazing."
 QUOTES_FILM = Film(
     "quotes", "Matrix Code — Try it now", (
         OPENING,
@@ -78,19 +78,19 @@ QUOTES_FILM = Film(
         ),
         quote_scene(
             "neon-purple", "Neon purple",
-            {"preset": "purple", "glyphs": "katakana", "font": "gothic", "size": 3.8},
-            "MACHINES ARE AMAZING", "dhh",
+            {"preset": "purple", "glyphs": "katakana", "font": "gothic", "size": 4.2},
+            "ENDLESS WORLDS", "emollick",
         ),
         quote_scene(
             "golden-code", "Golden code",
-            {"preset": "gold", "glyphs": "katakana", "font": "mincho", "size": 3.4},
-            "NEVER MORE OPTIMISTIC", "brivael",
+            {"preset": "gold", "glyphs": "katakana", "font": "mincho", "size": 4},
+            "PERSONAL ASSISTANT", "eliadeleoai",
         ),
         quote_scene(
             "crimson-rain", "Crimson rain",
             {"preset": "custom", "color": "#FF2A4A", "glyphs": "matrix",
              "font": "rounded", "size": 4},
-            "LITERALLY ANYTHING", "itsolelehmann",
+            "FUTURE LOOKS BRIGHT", "EnvolDev",
         ),
         INVITATION,
     ),
