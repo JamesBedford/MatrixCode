@@ -18,7 +18,8 @@ class QuoteReelTests(unittest.TestCase):
         film = QUOTES_FILM
         self.assertEqual(film.key, "quotes")
         self.assertEqual(film.score, "matrix")
-        self.assertEqual(film.duration, 36)
+        self.assertEqual([scene.seconds for scene in film.scenes], [5, 6, 6, 6, 6, 6, 9])
+        self.assertEqual(film.duration, 41)
         self.assertEqual(film.relative_output, Path("quotes/matrixcode-quotes.mp4"))
         self.assertNotIn(film.key, video.FILMS)
         self.assertNotIn(film.key, video.FILM_GROUPS["all"])
@@ -48,8 +49,8 @@ class QuoteReelTests(unittest.TestCase):
         invitation_frames = round(video.INVITATION.seconds * video.FPS)
         self.assertFalse(video.plain_message(video.INVITATION, invitation_frames - video.FPS - 1, invitation_frames))
         self.assertTrue(video.plain_message(video.INVITATION, invitation_frames - 1, invitation_frames))
-        # 120 BPM across 36 seconds lands on a downbeat, which is what the loop joins.
-        self.assertEqual(film.duration * 120 / 60, 72)
+        # 120 BPM across 41 seconds is a whole number of beats, so the loop joins on a kick.
+        self.assertEqual(film.duration * 120 / 60, 82)
 
     def test_each_quote_is_large_and_the_handle_sits_on_the_next_row(self):
         handles = []

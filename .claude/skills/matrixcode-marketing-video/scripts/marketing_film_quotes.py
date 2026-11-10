@@ -18,9 +18,11 @@ READABLE = {
     "density": 12, "speed": 1.5, "trail": 0.24, "glow": 1.3, "overlap": "false",
 }
 # Rain is full, and the flicker-in is still on screen when recording starts.
-# A five-second shot then spends most of its time writing and the last second resolved.
+# The line resolves, then the shot holds it before the cut.
 QUOTE_WARMUP = 3
 QUOTE_REVEAL_SECONDS = 3.5
+# One second longer than the first cut, so each look stays readable before the switch.
+QUOTE_SECONDS = 6
 
 
 def _messages(text: str, vertical: float = 0.44) -> dict:
@@ -39,7 +41,7 @@ def _messages(text: str, vertical: float = 0.44) -> dict:
 def quote_scene(name: str, title: str, settings: dict, quote: str, handle: str) -> Scene:
     """One style, one large line, and the poster's handle on the next row."""
     return Scene(
-        name, title, 5, {**READABLE, **settings}, warmup=QUOTE_WARMUP,
+        name, title, QUOTE_SECONDS, {**READABLE, **settings}, warmup=QUOTE_WARMUP,
         documents=_messages(quote), focus_text=quote,
         credit_line=f"@{handle}", preview_seconds=4, show_title=False,
     )

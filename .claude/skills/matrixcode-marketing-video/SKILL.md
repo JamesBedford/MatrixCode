@@ -34,7 +34,7 @@ discovers it through the project's `.agents/skills` symlink.
   not replace the colour shorts or the long tours.
 - **Update a film:** edit the scene, caption, capture, or soundtrack settings that
   implement the request, then regenerate the actual MP4 and preview images.
-- **Looping quote reel:** `--video quotes` renders one 36-second film that
+- **Looping quote reel:** `--video quotes` renders one 41-second film that
   opens and closes on `Try it now!` so the picture can loop. The opening line
   and each quote resolve out of the rain the way the closing invitation does.
   The poster's @handle sits on the next row. This film does not burn style

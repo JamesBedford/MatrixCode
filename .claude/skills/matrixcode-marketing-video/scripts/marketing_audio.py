@@ -227,9 +227,9 @@ def write_matrix_soundtrack(
 ) -> None:
     """Dark, driving original score for the looping promo.
 
-    120 BPM divides a 36 second film into a whole number of bars, so the
-    downbeat at the end is the downbeat at the start. Drums run through the
-    last beat. A short fade only removes the click at the join.
+    120 BPM puts a kick on every beat. A film whose length is a whole number of
+    beats joins the loop on a kick. Drums run through the last beat. A short
+    fade only removes the click at the join.
     """
     if not np.isfinite(duration_seconds) or duration_seconds <= 0:
         raise ValueError("The soundtrack duration must be a positive finite number")
