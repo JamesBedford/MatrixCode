@@ -30,8 +30,8 @@ const MESSAGE_CHARS = [
   ..."abcdefghijklmnopqrstuvwxyz".split(""), // 26
   ..."0123456789".split(""), // 10
   ...SYMBOLS, // 7
-  ".", ",", "!", "?", "'", // 5
-]; // 74 total
+  ".", ",", "!", "?", "'", "@", // 6
+]; // 75 total
 
 interface GroupRange {
   start: number;

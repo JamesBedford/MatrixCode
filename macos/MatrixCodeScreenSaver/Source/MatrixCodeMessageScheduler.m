@@ -301,7 +301,7 @@ NSInteger MatrixCodeMessageGlyphIndexForCharacter(NSString *character) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         NSString *characters =
-            @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'";
+            @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'@";
         NSMutableDictionary<NSString *, NSNumber *> *next = [NSMutableDictionary dictionary];
         [MatrixCodeJavaScriptCodePoints(characters)
             enumerateObjectsUsingBlock:^(NSString *value, NSUInteger index, BOOL *stop) {

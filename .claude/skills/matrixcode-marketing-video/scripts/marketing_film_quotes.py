@@ -1,8 +1,9 @@
 """A looping X promo: Try it now, five readable quotes, then Try it now again.
 
 Each quote is a short extract from a recent optimistic AI post. The handle is a
-second rain line. The rain alphabet has no @ sign, so the credit reads "X: handle".
-The score is original. It is not music from The Matrix.
+second rain line, written with the message @ glyph. The letters use the same
+held-rain treatment as "Try it now!". The score is original. It is not music
+from The Matrix.
 """
 
 from __future__ import annotations
@@ -12,9 +13,9 @@ from pathlib import Path
 from marketing_model import CTA, INVITATION, Film, Scene
 
 
+# Same rain body as the invitation, so a quote sits in the code instead of on a dark field.
 READABLE = {
-    "density": 5, "speed": 1.2, "trail": 0.28, "trailvar": 0.2, "glyphrate": 3,
-    "glow": 0.65, "lead": 0.35, "overlap": "false", "vignette": 0.18,
+    "density": 12, "speed": 1.5, "trail": 0.24, "glow": 1.3, "overlap": "false",
 }
 
 
@@ -31,11 +32,11 @@ def _messages(text: str, vertical: float = 0.44) -> dict:
 
 
 def quote_scene(name: str, title: str, settings: dict, quote: str, handle: str) -> Scene:
-    """One style, one large line, and the poster's X handle on the next row."""
+    """One style, one large line, and the poster's handle on the next row."""
     return Scene(
         name, title, 5, {**READABLE, **settings}, warmup=14,
         documents=_messages(quote), focus_text=quote,
-        credit_line=f"X: {handle}", preview_seconds=2,
+        credit_line=f"@{handle}", preview_seconds=2,
     )
 
 
@@ -80,7 +81,7 @@ QUOTES_FILM = Film(
         quote_scene(
             "crimson-rain", "Crimson rain",
             {"preset": "custom", "color": "#FF2A4A", "glyphs": "matrix",
-             "font": "rounded", "size": 4, "glow": 0.95},
+             "font": "rounded", "size": 4},
             "LITERALLY ANYTHING", "itsolelehmann",
         ),
         INVITATION,

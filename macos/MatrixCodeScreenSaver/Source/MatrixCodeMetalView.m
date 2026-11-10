@@ -1397,7 +1397,7 @@ static MTLRenderPassDescriptor *MatrixCodePassDescriptor(id<MTLTexture> target,
     NSCAssert(self.rainGlyphCount == MatrixCodeRainGlyphCount(),
               @"Native glyph atlas order must match MatrixCodeRainLifecycle ranges.");
     self.messageGlyphStart = glyphs.count;
-    NSString *messageCharacters = @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'";
+    NSString *messageCharacters = @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'@";
     NSMutableDictionary *messageGlyphs = [NSMutableDictionary dictionary];
     for (NSUInteger index = 0; index < messageCharacters.length; index++) {
         NSString *character = [messageCharacters substringWithRange:NSMakeRange(index, 1)];

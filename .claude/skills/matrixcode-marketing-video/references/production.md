@@ -77,7 +77,7 @@ clear space around the original invitation; existing exports change when regener
 | `eighth` | Six atmospheric/sculptural looks | `styles/atmospheres/matrixcode-atmospheres.mp4` |
 | `shorts` | Sixty finished looks, 6–10 seconds, three platform labels | `shorts/<slug>/matrixcode.mp4` |
 | `showcase` | Screensaver-to-name, picture, countdown, still grid. 8–12 seconds | `showcase/<key>/matrixcode.mp4` |
-| `quotes` | Try it now, five in-rain quotes with an X handle on the next row, Try it now. 36 seconds. Original matrix score | `quotes/matrixcode-quotes.mp4` |
+| `quotes` | Try it now, five in-rain quotes with an @handle on the next row, Try it now. 36 seconds. Original matrix score | `quotes/matrixcode-quotes.mp4` |
 
 The sixth through eighth films are style-only: normal query controls define each
 look, body documents keep intros/messages/images disabled, and no timed actions

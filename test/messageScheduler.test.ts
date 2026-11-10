@@ -473,7 +473,7 @@ describe("MessageScheduler.fire (via previewOne)", () => {
   it("skips an all-unsupported message without setting targets", () => {
     const s = sched();
     const sim = new FakeSim(30, 40);
-    s.previewOne(0, sim, doc({ messages: ["@#$"] }));
+    s.previewOne(0, sim, doc({ messages: ["#$%"] }));
     expect(sim.sets).toBe(0);
   });
 });

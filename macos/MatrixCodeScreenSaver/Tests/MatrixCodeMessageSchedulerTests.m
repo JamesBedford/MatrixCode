@@ -161,7 +161,7 @@ static void MatrixCodeFixtureFeed(uint32_t *hash, uint32_t value) {
     XCTAssertEqual(MatrixCodeMessageGlyphIndexForCharacter(@"9"), 160);
     XCTAssertEqual(MatrixCodeMessageGlyphIndexForCharacter(@"="), 161);
     XCTAssertEqual(MatrixCodeMessageGlyphIndexForCharacter(@"'"), 172);
-    XCTAssertEqual(MatrixCodeMessageGlyphIndexForCharacter(@"@"), NSNotFound);
+    XCTAssertEqual(MatrixCodeMessageGlyphIndexForCharacter(@"@"), 173);
 }
 
 - (void)testMessageDocumentSanitizerMatchesWebTypeChecksLimitsAndDefaults {

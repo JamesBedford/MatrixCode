@@ -30,12 +30,12 @@ GlyphSet::GlyphSet(const GlyphMode mode) : mode_(mode) {
   symbols_ = {glyphs_.size(), 7};
   AppendAscii(glyphs_, "=+-*<>:");
 
-  message_ = {glyphs_.size(), 74};
+  message_ = {glyphs_.size(), 75};
   AppendAscii(glyphs_, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
   AppendAscii(glyphs_, "abcdefghijklmnopqrstuvwxyz");
   AppendAscii(glyphs_, "0123456789");
   AppendAscii(glyphs_, "=+-*<>:");
-  AppendAscii(glyphs_, ".,!?'" );
+  AppendAscii(glyphs_, ".,!?'@");
 
   if (glyphs_.size() > kMaxGlyphs) glyphs_.resize(kMaxGlyphs);
 }
@@ -73,7 +73,7 @@ std::uint8_t GlyphSet::RandomGlyphIndex(Mulberry32& rng) const noexcept {
 
 std::optional<std::uint8_t> GlyphSet::MessageGlyph(const char character) const noexcept {
   constexpr std::string_view chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'";
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'@";
   const auto position = chars.find(character);
   if (position == std::string_view::npos) return std::nullopt;
   return static_cast<std::uint8_t>(message_.start + position);

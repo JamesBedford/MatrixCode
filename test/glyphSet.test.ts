@@ -57,8 +57,8 @@ describe("glyphSet — message glyphs", () => {
     expect(gs.ranges.latin.start).toBe(66);
     expect(gs.ranges.symbols.start).toBe(92);
     expect(gs.ranges.message.start).toBe(99);
-    expect(gs.ranges.message.count).toBe(74); // A-Z + a-z + 0-9 + =+-*<>: + .,!?'
-    expect(gs.count).toBe(173);
+    expect(gs.ranges.message.count).toBe(75); // A-Z + a-z + 0-9 + =+-*<>: + .,!?'@
+    expect(gs.count).toBe(174);
     expect(gs.count).toBeLessThanOrEqual(MAX_GLYPHS);
     expect(gs.chars.length).toBe(gs.count);
   });
@@ -76,6 +76,7 @@ describe("glyphSet — message glyphs", () => {
     expect(gs.charToGlyphIndex("-")).toBe(m + 64);
     expect(gs.charToGlyphIndex(".")).toBe(m + 69);
     expect(gs.charToGlyphIndex("'")).toBe(m + 73);
+    expect(gs.charToGlyphIndex("@")).toBe(m + 74);
     expect(gs.charToGlyphIndex("A")).toBeGreaterThanOrEqual(gs.ranges.message.start);
   });
 
@@ -88,7 +89,7 @@ describe("glyphSet — message glyphs", () => {
 
   it("round-trips every supported character to the glyph at its index", () => {
     const gs = createGlyphSet();
-    for (const ch of "ABZaz09-.!?',") {
+    for (const ch of "ABZaz09-.!?',@") {
       const idx = gs.charToGlyphIndex(ch);
       expect(idx).not.toBeNull();
       expect(gs.chars[idx!]).toBe(ch);

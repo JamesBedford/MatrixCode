@@ -244,8 +244,9 @@ CLOCK_SCRIPT = r"""(() => {
           args[4] === credit.cols && args[5] === credit.rows && args[6] === this.RGBA &&
           args[7] === this.UNSIGNED_BYTE && args[8] instanceof Uint8Array &&
           args[8].length === credit.cols * credit.rows * 4) {
-        // Hold the quote and the handle as steady message glyphs. Head flashes
-        // would otherwise blow a letter out for a frame.
+        // Hold the quote and the handle as settled message glyphs: the same
+        // floor a revealed letter keeps, with the head flash cleared, so they
+        // read as rain rather than a caption.
         const pixels = args[8].slice();
         const held = (credit.hold || []).concat(credit.cells);
         for (const pair of held) {
@@ -253,7 +254,7 @@ CLOCK_SCRIPT = r"""(() => {
           const glyph = pair[1];
           const offset = cell * 4;
           pixels[offset] = glyph;
-          pixels[offset + 1] = 168;
+          pixels[offset + 1] = 115; // messageBrightFloor 0.45
           pixels[offset + 2] = 63;
           pixels[offset + 3] = glyph;
         }
@@ -370,7 +371,7 @@ def scene_invitation_gaps(scene: Scene) -> list[int]:
 INVITATION_GAPS = invitation_gap_cells()
 
 # Mirrors src/sim/glyphSet.ts. Message glyphs start after katakana, digits, Latin, and symbols.
-_MESSAGE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'"
+_MESSAGE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=+-*<>:.,!?'@"
 _MESSAGE_START = 56 + 10 + 26 + 7
 
 
@@ -416,15 +417,23 @@ def credit_stamp(scene: Scene) -> dict | None:
     start_col = min(cols - len(line), max(0, math.floor(
         cols * config.get("horizontalPosition", 0.5) - len(line) / 2 + 0.5)))
     def gaps_for(text: str, row: int, origin: int) -> list[int]:
-        return [row * cols + origin + offset for offset, character in enumerate(text) if character == " "]
-    left = min(quote_col, start_col)
-    right = max(quote_col + len(quote), start_col + len(line))
-    between = [(quote_row + 1) * cols + column for column in range(left, right)]
+        # Clear the space and the rain cell above and below it, so a bright
+        # glyph does not sit inside a word. The row between the lines stays rain.
+        cells = []
+        for offset, character in enumerate(text):
+            if character != " ":
+                continue
+            column = origin + offset
+            for delta in (-1, 0, 1):
+                padded = row + delta
+                if 0 <= padded < rows:
+                    cells.append(padded * cols + column)
+        return cells
     return {
         "cols": cols, "rows": rows,
         "hold": _held_cells(quote, cols, quote_row, quote_col, scene.name),
         "cells": _held_cells(line, cols, handle_row, start_col, scene.name),
-        "gaps": gaps_for(quote, quote_row, quote_col) + gaps_for(line, handle_row, start_col) + between,
+        "gaps": gaps_for(quote, quote_row, quote_col) + gaps_for(line, handle_row, start_col),
     }
 
 
@@ -547,10 +556,12 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         red, green, blue = frame.split()
         ink = ImageChops.lighter(ImageChops.lighter(red, green), blue)
         mask = scene_focus_mask(scene)
-        amount = 1 if scene.caption_top else ease(seconds / 0.65)
-        # Quoted lines sit in busier rain, so the letters are lifted a little harder.
-        dim, boost = (0.75, 2.15) if scene.credit_line else (0.6, 2)
-        frame = grade_message(frame, mask, ink, amount, dim=dim, boost=boost)
+        amount = 1 if scene.caption_top or scene.credit_line else ease(seconds / 0.65)
+        # Quote lines use the invitation's lift. A harder grade pulls them out of the rain.
+        if scene.credit_line:
+            frame = grade_message(frame, mask, ink, amount)
+        else:
+            frame = grade_message(frame, mask, ink, amount, dim=0.6, boost=2)
     frame = Image.alpha_composite(frame.convert("RGBA"), SHADE)
     chrome = Image.new("RGBA", SIZE)
     draw = ImageDraw.Draw(chrome)

@@ -72,10 +72,12 @@ class QuoteReelTests(unittest.TestCase):
                     for _cell, glyph in stamp["cells"]
                 )
                 self.assertEqual(rendered, scene.credit_line.replace(" ", ""))
-                self.assertTrue(scene.credit_line.startswith("X: "))
+                self.assertTrue(scene.credit_line.startswith("@"))
+                self.assertNotIn(" ", scene.credit_line)
+                self.assertEqual(video.message_glyph("@"), video._MESSAGE_START + 74)
                 gap_rows = {cell // stamp["cols"] for cell in stamp["gaps"]}
-                self.assertEqual(gap_rows, {quote_row, quote_row + 1, quote_row + 2})
-                handles.append(scene.credit_line.removeprefix("X: "))
+                self.assertEqual(gap_rows, {quote_row - 1, quote_row, quote_row + 1})
+                handles.append(scene.credit_line.removeprefix("@"))
                 mask = video.scene_focus_mask(scene)
                 self.assertIsNotNone(mask.getbbox())
         self.assertEqual(handles, ["gdb", "davidvgilmore", "dhh", "brivael", "itsolelehmann"])
