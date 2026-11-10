@@ -238,31 +238,38 @@ CLOCK_SCRIPT = r"""(() => {
   const credit = CREDIT_STAMP;
   if (credit && typeof WebGL2RenderingContext !== 'undefined') {
     const uploadCredit = WebGL2RenderingContext.prototype.texSubImage2D;
+    const claimed = {};
     WebGL2RenderingContext.prototype.texSubImage2D = function (...args) {
       if (args.length === 9 &&
           args[0] === this.TEXTURE_2D && args[1] === 0 && args[2] === 0 && args[3] === 0 &&
           args[4] === credit.cols && args[5] === credit.rows && args[6] === this.RGBA &&
           args[7] === this.UNSIGNED_BYTE && args[8] instanceof Uint8Array &&
           args[8].length === credit.cols * credit.rows * 4) {
-        // Hold the quote and the handle as settled message glyphs: the same
-        // floor a revealed letter keeps, with the head flash cleared, so they
-        // read as rain rather than a caption.
+        // The quote itself is the app's message, so streams claim it and the
+        // flicker-in resolves it. The handle is a second row the scheduler
+        // cannot draw. This copy follows the same claim, scramble, and head flash.
         const pixels = args[8].slice();
-        const held = (credit.hold || []).concat(credit.cells);
-        for (const pair of held) {
+        const now = performance.now();
+        const age = now - credit.fireMs;
+        const appear = credit.appearMs;
+        const scramble = age < 0 ? 1 : (appear > 0 && age < appear ? 1 - age / appear : 0);
+        const tick = Math.floor(now / (1000 / 30));
+        for (const pair of credit.cells) {
           const cell = pair[0];
           const glyph = pair[1];
           const offset = cell * 4;
-          pixels[offset] = glyph;
-          pixels[offset + 1] = 115; // messageBrightFloor 0.45
-          pixels[offset + 2] = 63;
-          pixels[offset + 3] = glyph;
-        }
-        // Spaces inside a line, and the blank row between the lines, stay dark.
-        for (const cell of credit.gaps || []) {
-          const offset = cell * 4;
-          pixels[offset + 1] = 0;
-          pixels[offset + 2] = 0;
+          const flags = pixels[offset + 2];
+          const isHead = (flags & 0x80) !== 0;
+          if (!claimed[cell] && !isHead && pixels[offset + 1] > 12) {
+            // About the sim's per-frame mutation chance at glyphRate 1.
+            if (((cell * 13 + tick) % 1000) / 1000 < 0.052) claimed[cell] = 1;
+          }
+          if (!claimed[cell]) continue;
+          if (!isHead && ((cell * 17 + tick) % 100) / 100 >= scramble) {
+            pixels[offset] = glyph;
+            pixels[offset + 3] = glyph;
+          }
+          pixels[offset + 1] = Math.max(pixels[offset + 1], 115); // messageBrightFloor 0.45
         }
         args[8] = pixels;
       }
@@ -362,10 +369,10 @@ def invitation_gap_cells(text: str = CTA, glyph_scale: float = INVITATION.settin
 
 
 def scene_invitation_gaps(scene: Scene) -> list[int]:
-    """The opening bookend clears a row around each space. The shared ending clears the spaces."""
-    if not (scene.message or scene.loop_open):
+    """Space cells the shared invitation clears during its final plain second."""
+    if not scene.message:
         return []
-    return invitation_gap_cells(pad_rows=1 if scene.loop_open else 0)
+    return invitation_gap_cells()
 
 
 INVITATION_GAPS = invitation_gap_cells()
@@ -385,6 +392,47 @@ def message_glyph(character: str) -> int | None:
     return _MESSAGE_START + index
 
 
+def _mulberry32(seed: int):
+    """One mulberry32 sample stream, matching src/util/rng.ts."""
+    a = seed & 0xFFFFFFFF
+
+    def to_i32(value: int) -> int:
+        value &= 0xFFFFFFFF
+        return value - 0x100000000 if value >= 0x80000000 else value
+
+    def imul(left: int, right: int) -> int:
+        return to_i32(to_i32(left) * to_i32(right))
+
+    def rng() -> float:
+        nonlocal a
+        a = to_i32(a + 0x6D2B79F5)
+        mixed = imul(to_i32(a ^ ((a & 0xFFFFFFFF) >> 15)), to_i32(1 | a))
+        updated = to_i32(mixed + imul(to_i32(mixed ^ ((mixed & 0xFFFFFFFF) >> 7)), to_i32(61 | mixed)))
+        mixed = to_i32(updated ^ mixed)
+        return ((mixed & 0xFFFFFFFF) ^ ((mixed & 0xFFFFFFFF) >> 14)) / 4294967296
+
+    return rng
+
+
+def first_message_fire_ms(frequency_ms: float = 500) -> float:
+    """Clock time when the first saved message fires.
+
+    MessageScheduler waits one jittered gap after its first frame. That gap is
+    the first sample of MSG_SEED (0x5eed1e). Capture steps the clock by 1000/FPS.
+    """
+    gap = frequency_ms * (0.75 + 0.5 * _mulberry32(0x5EED1E)())
+    frame = 1000 / FPS
+    fire = frame
+    while fire + 1e-9 < frame + gap:
+        fire += frame
+    return fire
+
+
+def plain_message(scene: Scene, frame_number: int, frame_count: int) -> bool:
+    """Settle only the shared invitation, and only during its final second."""
+    return bool(scene.message and frame_number >= frame_count - FPS)
+
+
 def _held_cells(text: str, cols: int, row: int, start_col: int, scene_name: str) -> list[list[int]]:
     cells = []
     for offset, character in enumerate(text):
@@ -398,7 +446,7 @@ def _held_cells(text: str, cols: int, row: int, start_col: int, scene_name: str)
 
 
 def credit_stamp(scene: Scene) -> dict | None:
-    """Steady cells for the quote, and the handle one blank row beneath it."""
+    """Handle cells one blank row under the quote. The quote itself stays in the scheduler."""
     line = scene.credit_line
     if not line:
         return None
@@ -409,31 +457,18 @@ def credit_stamp(scene: Scene) -> dict | None:
     quote_layout = message_layout(scene.settings["size"], quote, config)
     cols, rows = quote_layout["cols"], quote_layout["rows"]
     quote_cell = min(quote_layout["cells"])
-    quote_row, quote_col = divmod(quote_cell, cols)
+    quote_row, _quote_col = divmod(quote_cell, cols)
     # One blank row keeps the handle from blooming into the quote.
     handle_row = quote_row + 2
     if handle_row >= rows or len(line) > cols:
         raise ValueError(f"{scene.name}: credit line does not fit under {quote!r}")
     start_col = min(cols - len(line), max(0, math.floor(
         cols * config.get("horizontalPosition", 0.5) - len(line) / 2 + 0.5)))
-    def gaps_for(text: str, row: int, origin: int) -> list[int]:
-        # Clear the space and the rain cell above and below it, so a bright
-        # glyph does not sit inside a word. The row between the lines stays rain.
-        cells = []
-        for offset, character in enumerate(text):
-            if character != " ":
-                continue
-            column = origin + offset
-            for delta in (-1, 0, 1):
-                padded = row + delta
-                if 0 <= padded < rows:
-                    cells.append(padded * cols + column)
-        return cells
     return {
         "cols": cols, "rows": rows,
-        "hold": _held_cells(quote, cols, quote_row, quote_col, scene.name),
         "cells": _held_cells(line, cols, handle_row, start_col, scene.name),
-        "gaps": gaps_for(quote, quote_row, quote_col) + gaps_for(line, handle_row, start_col),
+        "appearMs": int(config.get("appearMs", 0)),
+        "fireMs": first_message_fire_ms(float(config.get("frequencyMs", 500))),
     }
 
 
@@ -547,8 +582,8 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
     if scene.message or scene.loop_open:
         # Bring forward only letters already revealed by the app. Ambient rain keeps
         # moving behind the invitation; no replacement or overlaid CTA text is used.
-        # The opening bookend is already settled, so it does not fade in.
-        focus = 1 if scene.loop_open else ease((seconds - 0.5) / 1.6)
+        # The opening writes itself on the same curve as the closing reveal.
+        focus = ease((seconds - 0.5) / 1.6)
         frame = grade_message(frame, MESSAGE_MASK, frame.getchannel("G"), focus)
     elif scene.focus_text:
         # Grade only the app's existing message cells; tokens keep ticking underneath.
@@ -556,7 +591,12 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         red, green, blue = frame.split()
         ink = ImageChops.lighter(ImageChops.lighter(red, green), blue)
         mask = scene_focus_mask(scene)
-        amount = 1 if scene.caption_top or scene.credit_line else ease(seconds / 0.65)
+        if scene.caption_top:
+            amount = 1
+        elif scene.credit_line:
+            amount = ease((seconds - 0.5) / 1.6)
+        else:
+            amount = ease(seconds / 0.65)
         # Quote lines use the invitation's lift. A harder grade pulls them out of the rain.
         if scene.credit_line:
             frame = grade_message(frame, mask, ink, amount)
@@ -582,7 +622,8 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
         if scene.platform_labels:
             burn_platform_labels(draw)
-        chrome = Image.alpha_composite(chrome, scene_title_layer(scene.title, seconds))
+        if scene.show_title:
+            chrome = Image.alpha_composite(chrome, scene_title_layer(scene.title, seconds))
     return Image.alpha_composite(frame, chrome).convert("RGB")
 
 
@@ -685,8 +726,9 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
             # when the full-screen switch happens; the extra lanes never start empty.
             for version, (_, page, _) in zip(versions, sessions):
                 apply_scene_actions(page, version, frame_number)
-                # The opening bookend stays in the settled invitation look for the whole shot.
-                plain = version.loop_open or (version.message and frame_number >= count - FPS)
+                # The opening writes itself for the whole shot. Only the shared
+                # invitation settles to plain letters, and only in its last second.
+                plain = plain_message(version, frame_number, count)
                 page.evaluate("""plainMessage => {
                     window.__videoPlainMessage = plainMessage;
                     window.__videoAdvance();

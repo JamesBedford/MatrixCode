@@ -35,8 +35,10 @@ discovers it through the project's `.agents/skills` symlink.
 - **Update a film:** edit the scene, caption, capture, or soundtrack settings that
   implement the request, then regenerate the actual MP4 and preview images.
 - **Looping quote reel:** `--video quotes` renders one 36-second film that
-  opens and closes on `Try it now!` so the picture can loop. The body scenes put
-  a short quote in the rain and the poster's @handle on the next row. Output is
+  opens and closes on `Try it now!` so the picture can loop. The opening line
+  and each quote resolve out of the rain the way the closing invitation does.
+  The poster's @handle sits on the next row. This film does not burn style
+  names into the lower left. Output is
   `output/marketing/quotes/matrixcode-quotes.mp4`. Its score is the original
   `matrix` arrangement, not the shared industrial score and not music from The Matrix.
 - **Make a new film:** use the `Film` and `Scene` definitions in `marketing_model.py` as the starting

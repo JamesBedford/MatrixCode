@@ -38,6 +38,8 @@ class Scene:
     # A second rain line centered under the focused message. Capture stamps it
     # with the message glyphs; the app itself still draws the line above.
     credit_line: str | None = None
+    # Burn the lower-left scene name. The quote reel leaves this off; the corner URL stays.
+    show_title: bool = True
 
 
 @dataclass(frozen=True)

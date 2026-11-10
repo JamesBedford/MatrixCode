@@ -1,9 +1,9 @@
 """A looping X promo: Try it now, five readable quotes, then Try it now again.
 
 Each quote is a short extract from a recent optimistic AI post. The handle is a
-second rain line, written with the message @ glyph. The letters use the same
-held-rain treatment as "Try it now!". The score is original. It is not music
-from The Matrix.
+second rain line, written with the message @ glyph. The opening line and the
+quotes resolve out of the rain the way the closing invitation does. Style names
+are not burned in. The score is original. It is not music from The Matrix.
 """
 
 from __future__ import annotations
@@ -17,14 +17,19 @@ from marketing_model import CTA, INVITATION, Film, Scene
 READABLE = {
     "density": 12, "speed": 1.5, "trail": 0.24, "glow": 1.3, "overlap": "false",
 }
+# Rain is full, and the flicker-in is still on screen when recording starts.
+# A five-second shot then spends most of its time writing and the last second resolved.
+QUOTE_WARMUP = 3
+QUOTE_REVEAL_SECONDS = 3.5
 
 
 def _messages(text: str, vertical: float = 0.44) -> dict:
     return {"mx-messages": {
         "messages": [text], "enabled": True,
         "frequencyMs": 500, "persistenceMs": 60000,
-        "appearMs": 400, "disappearMs": 0,
-        "flickerOut": False, "brightnessFade": False,
+        "appearMs": round((QUOTE_WARMUP + QUOTE_REVEAL_SECONDS) * 1000),
+        "disappearMs": 0,
+        "flickerOut": True, "brightnessFade": False,
         "messageLayout": "row", "messageDirection": "topToBottom",
         "horizontalPosition": 0.5, "horizontalJitter": 0,
         "verticalPosition": vertical, "verticalJitter": 0,
@@ -34,17 +39,18 @@ def _messages(text: str, vertical: float = 0.44) -> dict:
 def quote_scene(name: str, title: str, settings: dict, quote: str, handle: str) -> Scene:
     """One style, one large line, and the poster's handle on the next row."""
     return Scene(
-        name, title, 5, {**READABLE, **settings}, warmup=14,
+        name, title, 5, {**READABLE, **settings}, warmup=QUOTE_WARMUP,
         documents=_messages(quote), focus_text=quote,
-        credit_line=f"@{handle}", preview_seconds=2,
+        credit_line=f"@{handle}", preview_seconds=4, show_title=False,
     )
 
 
-# Bookend uses the shared invitation picture so the first and last frames agree.
+# Same picture and reveal as the closing invitation. The centered headline stays
+# from the first frame; the in-rain line writes itself during the shot.
 OPENING = Scene(
     "try-it-now", INVITATION.title, 5, dict(INVITATION.settings),
-    warmup=12, loop_open=True, documents=_messages(CTA, vertical=0.5),
-    preview_seconds=1,
+    warmup=QUOTE_WARMUP, loop_open=True, documents=_messages(CTA, vertical=0.5),
+    preview_seconds=4,
 )
 
 

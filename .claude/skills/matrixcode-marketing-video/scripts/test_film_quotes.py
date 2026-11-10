@@ -31,16 +31,23 @@ class QuoteReelTests(unittest.TestCase):
         self.assertEqual(opening.title, video.INVITATION.title)
         layout = video.message_layout(opening.settings["size"], CTA, opening.documents["mx-messages"])
         self.assertEqual(layout, video.MESSAGE_LAYOUT)
-        # The opening also clears the rain cell above and below each word space.
-        # The shared ending still clears only the spaces themselves.
-        cols = layout["cols"]
+        # The opening writes itself for the whole shot. Only the shared ending
+        # clears its word spaces, and only during the final plain second.
         spaces = video.invitation_gap_cells()
         self.assertEqual(video.INVITATION_GAPS, spaces)
         self.assertEqual(video.scene_invitation_gaps(video.INVITATION), spaces)
-        self.assertEqual(
-            set(video.scene_invitation_gaps(opening)),
-            {cell + delta * cols for cell in spaces for delta in (-1, 0, 1)},
-        )
+        self.assertEqual(video.scene_invitation_gaps(opening), [])
+        opening_doc = opening.documents["mx-messages"]
+        self.assertTrue(opening_doc["flickerOut"])
+        self.assertFalse(opening_doc["brightnessFade"])
+        self.assertEqual(opening.warmup, 3)
+        self.assertEqual(opening_doc["appearMs"], 6500)
+        opening_frames = round(opening.seconds * video.FPS)
+        self.assertFalse(any(
+            video.plain_message(opening, frame, opening_frames) for frame in range(opening_frames)))
+        invitation_frames = round(video.INVITATION.seconds * video.FPS)
+        self.assertFalse(video.plain_message(video.INVITATION, invitation_frames - video.FPS - 1, invitation_frames))
+        self.assertTrue(video.plain_message(video.INVITATION, invitation_frames - 1, invitation_frames))
         # 120 BPM across 36 seconds lands on a downbeat, which is what the loop joins.
         self.assertEqual(film.duration * 120 / 60, 72)
 
@@ -58,14 +65,23 @@ class QuoteReelTests(unittest.TestCase):
                 self.assertGreaterEqual(document["persistenceMs"], (scene.warmup + scene.seconds) * 1000)
                 self.assertEqual(document["verticalJitter"], 0)
                 self.assertEqual(document["horizontalJitter"], 0)
+                self.assertTrue(document["flickerOut"])
+                self.assertFalse(document["brightnessFade"])
+                self.assertEqual(scene.warmup, 3)
+                self.assertEqual(document["appearMs"], 6500)
+                self.assertFalse(scene.show_title)
                 stamp = video.credit_stamp(scene)
                 self.assertIsNotNone(stamp)
+                self.assertNotIn("hold", stamp)
+                self.assertNotIn("gaps", stamp)
+                self.assertEqual(stamp["appearMs"], document["appearMs"])
+                self.assertAlmostEqual(stamp["fireMs"], 13000 / 30)
                 quote_layout = video.message_layout(scene.settings["size"], quote, document)
                 quote_row = min(quote_layout["cells"]) // quote_layout["cols"]
                 credit_rows = {cell // stamp["cols"] for cell, _glyph in stamp["cells"]}
                 self.assertEqual(credit_rows, {quote_row + 2})
-                hold_rows = {cell // stamp["cols"] for cell, _glyph in stamp["hold"]}
-                self.assertEqual(hold_rows, {quote_row})
+                quote_cells = set(quote_layout["cells"])
+                self.assertTrue(quote_cells.isdisjoint(cell for cell, _glyph in stamp["cells"]))
                 self.assertGreaterEqual(quote_layout["cols"] - len(quote), 4)
                 rendered = "".join(
                     video._MESSAGE_CHARS[glyph - video._MESSAGE_START]
@@ -75,8 +91,6 @@ class QuoteReelTests(unittest.TestCase):
                 self.assertTrue(scene.credit_line.startswith("@"))
                 self.assertNotIn(" ", scene.credit_line)
                 self.assertEqual(video.message_glyph("@"), video._MESSAGE_START + 74)
-                gap_rows = {cell // stamp["cols"] for cell in stamp["gaps"]}
-                self.assertEqual(gap_rows, {quote_row - 1, quote_row, quote_row + 1})
                 handles.append(scene.credit_line.removeprefix("@"))
                 mask = video.scene_focus_mask(scene)
                 self.assertIsNotNone(mask.getbbox())
@@ -97,16 +111,25 @@ class QuoteReelTests(unittest.TestCase):
         self.assertGreater(title_ink, 180)
         self.assertGreater(url_ink, 180)
 
-    def test_style_titles_stay_in_the_player_safe_area(self):
-        draw = ImageDraw.Draw(Image.new("RGB", video.SIZE))
-        for scene in QUOTES_FILM.scenes:
-            if scene.message or scene.loop_open:
-                continue
-            box = draw.textbbox((video.TITLE_LEFT, video.SIZE[1] - video.TITLE_BOTTOM_MARGIN),
-                                scene.title, font=video.TITLE_FONT, anchor="lb")
-            self.assertGreaterEqual(box[0], 60)
-            self.assertLessEqual(box[2], video.SIZE[0] - 60)
-            self.assertLessEqual(box[3], video.SIZE[1] - 180)
+    def test_quote_scenes_leave_the_lower_left_title_slot_empty(self):
+        probe = ImageDraw.Draw(Image.new("RGB", video.SIZE))
+        url_box = tuple(int(value) for value in probe.textbbox(
+            video.CORNER_SITE_POSITION, video.SITE, font=video.SITE_FONT, anchor="ra"))
+        for scene in QUOTES_FILM.scenes[1:-1]:
+            with self.subTest(scene=scene.name):
+                self.assertFalse(scene.show_title)
+                finished = video.finish_frame(Image.new("RGB", video.SIZE, "black"), scene, 2)
+                title_box = tuple(int(value) for value in probe.textbbox(
+                    (video.TITLE_LEFT, video.SIZE[1] - video.TITLE_BOTTOM_MARGIN),
+                    scene.title, font=video.TITLE_FONT, anchor="lb"))
+                title_ink = max(finished.getpixel((x, y))[0]
+                                for y in range(title_box[1], title_box[3])
+                                for x in range(title_box[0], title_box[2]))
+                url_ink = max(finished.getpixel((x, y))[0]
+                              for y in range(url_box[1], url_box[3])
+                              for x in range(url_box[0], url_box[2]))
+                self.assertEqual(title_ink, 0)
+                self.assertGreater(url_ink, 180)
 
     def test_matrix_score_loops_without_clipping_and_is_not_the_shared_score(self):
         film = QUOTES_FILM
