@@ -11,19 +11,11 @@
 | Windows | [Download MSI (x64)](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64.msi) · [Download MSI (ARM64)](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64.msi) | App + screensaver; Windows 10/11 |
 | Windows — Wallpaper Engine | [Download ZIP](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-wallpaper-engine.zip) | Extract, then import `index.html` with Create Wallpaper |
 
-Windows portable packages: [x64](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64-portable.zip) · [ARM64](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64-portable.zip).
-Windows installers and binaries are unsigned. Linux XScreenSaver embedding requires X11.
+Windows portable packages: [x64](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-x64-portable.zip) · [ARM64](https://julimbob.com/matrixcode/releases/v1.1.0/MatrixCode-1.1.0-windows-arm64-portable.zip). Windows installers and binaries are unsigned. Linux XScreenSaver embedding requires X11.
 
 [Release notes](https://github.com/JamesBedford/MatrixCode/releases/tag/v1.1.0) · [SHA-256 checksums](https://julimbob.com/matrixcode/releases/v1.1.0/SHA256SUMS.txt) · [Run in your browser](https://julimbob.com/matrixcode/)
 
-MatrixCode is an open-source **Matrix digital rain effect** with a browser/WebGL
-implementation as its visual source of truth, native applications for Linux,
-macOS, and Windows, and a browser-derived Wallpaper Engine package. The web
-build is one self-contained HTML file with no server or runtime dependencies.
-Unlike most Matrix rain demos, the rendering model is film-accurate — glyphs
-sit on a **stationary grid** and a wave of illumination sweeps down each column,
-leaving an exponentially decaying trail, rather than scrolling text down the
-screen.
+MatrixCode is an open-source **Matrix digital rain effect** with a browser/WebGL implementation as its visual source of truth, native applications for Linux, macOS, and Windows, and a browser-derived Wallpaper Engine package. The web build is one self-contained HTML file with no server or runtime dependencies. Unlike most Matrix rain demos, the rendering model is film-accurate — glyphs sit on a **stationary grid** and a wave of illumination sweeps down each column, leaving an exponentially decaying trail, rather than scrolling text down the screen.
 
 ![MatrixCode running in a browser — green Matrix-style glyphs falling down a black background with a soft bloom glow](docs/screenshot.png)
 
@@ -70,9 +62,7 @@ Most "Matrix rain" projects (including the classic terminal `cmatrix`) scroll a 
 - **Image reveals** — imported images resolve through falling rain glyphs using a deterministic, portable luminance-mask contract shared by the web and native implementations
 - **Canvas 2D fallback** — displayed automatically if WebGL2 is unavailable
 
-Calendar colors use local midnight boundaries, independently of paused animation or countdown
-timing. In Canvas2D compatibility mode, changing palette clears the baked-in fading trails;
-the current glyphs and images are redrawn without advancing their timelines.
+Calendar colors use local midnight boundaries, independently of paused animation or countdown timing. In Canvas2D compatibility mode, changing palette clears the baked-in fading trails; the current glyphs and images are redrawn without advancing their timelines.
 
 ## Screenshots
 
@@ -89,10 +79,6 @@ the current glyphs and images are redrawn without advancing their timelines.
 ![MatrixCode settings panel open over classic green rain, showing sliders for density, ramp-up, trail length, speed, glow, and dropdowns for color theme and quality](docs/screenshot-settings.png)
 
 ## Controls
-
-The browser settings panel links to [@Mr_Bedford on X](https://x.com/Mr_Bedford)
-and then the [open-source GitHub repository](https://github.com/JamesBedford/MatrixCode)
-at the top. Both links open in a new tab.
 
 | Key / Gesture | Action |
 |---|---|
@@ -122,19 +108,11 @@ npm test           # run the Vitest suite
 
 The build output, `matrixcode.html`, is a single self-contained file — copy it anywhere and open it directly in a browser, no server required.
 
-When the viewer name is blank, a build opened from a local macOS `file://` path
-uses the home-folder name with its first letter capitalized. Browsers do not
-expose the operating-system login to pages served over HTTP, so those pages use
-`Neo` until a viewer name is entered or supplied with `?name=`.
+When the viewer name is blank, a build opened from a local macOS `file://` path uses the home-folder name with its first letter capitalized. Browsers do not expose the operating-system login to pages served over HTTP, so those pages use `Neo` until a viewer name is entered or supplied with `?name=`.
 
 ## macOS screen saver
 
-The native macOS 13+ project lives in
-[`macos/MatrixCodeScreenSaver`](macos/MatrixCodeScreenSaver). It is a completely
-independent AppKit + Metal implementation—there is no TypeScript, HTML, WebGL,
-or WKWebView in the screen saver bundle. It provides native settings, intro,
-messages, countdown/countup tokens, and continuous multi-display rendering, plus
-build, test, and manual-install scripts for the Apple-Silicon `Matrix Code.saver`.
+The native macOS 13+ project lives in [`macos/MatrixCodeScreenSaver`](macos/MatrixCodeScreenSaver). It is a completely independent AppKit + Metal implementation. It provides a native implementation of settings, intro, messages, countdown/countup tokens, and continuous multi-display rendering, plus build, test, and manual-install scripts for the Apple-Silicon `Matrix Code.saver`.
 
 ```sh
 cd macos/MatrixCodeScreenSaver
@@ -144,39 +122,18 @@ cd macos/MatrixCodeScreenSaver
 ./install.sh
 ```
 
-Run `npm run release:macos` from the repository root to build a Developer ID
-signed, notarized Release app and DMG, then replace the installed screen saver.
-This requires the signing identity and `notarytool` Keychain profile described
-in the native macOS README. `npm run build:macos` builds and installs locally
-without notarization.
+Run `npm run release:macos` from the repository root to build a Developer ID signed, notarized Release app and DMG, then replace the installed screen saver. This requires the signing identity and `notarytool` Keychain profile described in the native macOS README. `npm run build:macos` builds and installs locally without notarization.
 
-For a distributable build without installation, run `./scripts/build-release.sh --release` from the
-repository root. The script signs with Developer ID, notarizes, and staples the
-DMG; `--skip-notarize` omits the Apple round trip, and `--debug` creates a local
-Debug build. It detects Xcode even when installed outside `/Applications`,
-generates the project in a temporary directory, and writes verified app and
-screen-saver packages to `macos/MatrixCodeScreenSaver/build/<Configuration>/`.
-The styled `MatrixCode.dmg`, matching dSYMs, executable UUIDs, and checksums are
-written alongside them.
+For a distributable build without installation, run `./scripts/build-release.sh --release` from the repository root. The script signs with Developer ID, notarizes, and staples the DMG; `--skip-notarize` omits the Apple round trip, and `--debug` creates a local Debug build. It detects Xcode even when installed outside `/Applications`, generates the project in a temporary directory, and writes verified app and screen-saver packages to `macos/MatrixCodeScreenSaver/build/<Configuration>/`. The styled `MatrixCode.dmg`, matching dSYMs, executable UUIDs, and checksums are written alongside them.
 
-The installed saver is configured from System Settings → Screen Saver →
-**MatrixCode** → **Options…**. Its settings intentionally mirror the web app:
-rain controls, color presets, quality, glyph behavior, intro script/timing,
-in-rain messages, image reveals, viewer name, and named countdown/countup
-moments. See
-[`macos/MatrixCodeScreenSaver/README.md`](macos/MatrixCodeScreenSaver/README.md)
-for native build, install, troubleshooting, and parity notes.
+The installed saver is configured from System Settings → Screen Saver → **MatrixCode** → **Options…**. Its settings intentionally mirror the web app: rain controls, color presets, quality, glyph behavior, intro script/timing, in-rain messages, image reveals, viewer name, and named countdown/countup moments. See [`macos/MatrixCodeScreenSaver/README.md`](macos/MatrixCodeScreenSaver/README.md) for native build, install, troubleshooting, and parity notes.
 
 ## Windows app and screen saver
 
-The Windows 10 version 2004+ project lives in
-[`windows/MatrixCode`](windows/MatrixCode). It is an independent C++20 + Win32
-implementation using Direct3D 11, Direct2D/DirectWrite, and WIC, with no HTML,
-JavaScript, WebGL, or embedded browser runtime. Its CMake targets produce:
+The Windows 10 version 2004+ project lives in [`windows/MatrixCode`](windows/MatrixCode). It is an independent C++20 + Win32 implementation using Direct3D 11, Direct2D/DirectWrite, and WIC, with no HTML, JavaScript, WebGL, or embedded browser runtime. Its CMake targets produce:
 
 - `MatrixCode.exe`, a resizable standalone application;
-- `Matrix Code.scr`, a native screen saver supporting `/s`, `/c`, and
-  `/p <HWND>` shell modes;
+- `Matrix Code.scr`, a native screen saver supporting `/s`, `/c`, and `/p <HWND>` shell modes;
 - deterministic native tests and a WARP-backed canonical capture tool.
 
 From a Visual Studio 2022 developer PowerShell with CMake 3.29 or newer:
@@ -188,57 +145,26 @@ npm run verify:windows    # run the native suite and write a WARP capture
 npm run release:windows   # x64 + ARM64 MSI/portable/symbol archives and checksums
 ```
 
-WiX Toolset v4 is required for MSI/release packaging. Release signing uses the
-`MATRIXCODE_SIGN_PFX`, `MATRIXCODE_SIGN_SUBJECT`, or
-`MATRIXCODE_SIGN_COMMAND` environment variables. Without a configured backend,
-the default release command warns and leaves artifacts unsigned; pass
-`-- -RequireSigning` to make it fail closed.
+WiX Toolset v4 is required for MSI/release packaging. Release signing uses the `MATRIXCODE_SIGN_PFX`, `MATRIXCODE_SIGN_SUBJECT`, or `MATRIXCODE_SIGN_COMMAND` environment variables. Without a configured backend, the default release command warns and leaves artifacts unsigned; pass `-- -RequireSigning` to make it fail closed.
 
-The source tree and automation target x64 and ARM64, but release binaries are
-not checked into this repository and must be built and verified on suitable
-Windows hosts. The native host includes typed intro presentation, rain
-messages, portable image reveals with the full 1.45 HDR range, mixed-DPI
-virtual-grid topology, and DPI-aware structured Intro, Messages, Images, and
-Countdown editors with WIC image import. Exact output still depends on the
-installed DirectWrite fonts. Native compilation/capture, `.scr` shell-mode,
-mixed-DPI/mixed-refresh hardware, and signed installer validation remain
-release gates rather than results implied by this source checkout. The full
-build, installation, verification, and signing details are maintained in
-[`windows/MatrixCode/README.md`](windows/MatrixCode/README.md).
+The source tree and automation target x64 and ARM64, but release binaries are not checked into this repository and must be built and verified on suitable Windows hosts. The native host includes typed intro presentation, rain messages, portable image reveals with the full 1.45 HDR range, mixed-DPI virtual-grid topology, and DPI-aware structured Intro, Messages, Images, and Countdown editors with WIC image import. Exact output still depends on the installed DirectWrite fonts. Native compilation/capture, `.scr` shell-mode, mixed-DPI/mixed-refresh hardware, and signed installer validation remain release gates rather than results implied by this source checkout. The full build, installation, verification, and signing details are maintained in [`windows/MatrixCode/README.md`](windows/MatrixCode/README.md).
 
 ## Wallpaper Engine
 
-Wallpaper Engine uses the browser implementation as an offline **web
-wallpaper**; the native Windows executable is deliberately not its payload.
-Build the importable package from the repository root:
+Wallpaper Engine uses the browser implementation as an offline **web wallpaper**; the native Windows executable is deliberately not its payload. Build the importable package from the repository root:
 
 ```powershell
 npm run verify:wallpaper
 npm run build:wallpaper
 ```
 
-The generated package is written to `dist/wallpaper-engine/`. In Wallpaper
-Engine, choose **Create Wallpaper** and import that directory's `index.html`.
-The package includes the inlined application, generated `project.json`, preview,
-local PWA assets, and MatrixCode/twgl.js license notices. It is suitable for
-local import and Workshop preparation;
-these build steps do not claim that a Workshop item has been published.
+The generated package is written to `dist/wallpaper-engine/`. In Wallpaper Engine, choose **Create Wallpaper** and import that directory's `index.html`. The package includes the inlined application, generated `project.json`, preview, local PWA assets, and MatrixCode/twgl.js license notices. It is suitable for local import and Workshop preparation; these build steps do not claim that a Workshop item has been published.
 
-Wallpaper Engine's property pane is authoritative in hosted mode. Its adapter
-installs before app bootstrap, merges changed-only property callbacks, obeys the
-host FPS and pause lifecycle, and accepts a directory of supported image files.
-For one continuous grid across displays, use Wallpaper Engine's **Span** mode.
-See [`wallpaper-engine/README.md`](wallpaper-engine/README.md) for the fixed
-intro/message/countdown slots, image-folder rules, display behavior, and direct
-package verification commands.
+Wallpaper Engine's property pane is authoritative in hosted mode. Its adapter installs before app bootstrap, merges changed-only property callbacks, obeys the host FPS and pause lifecycle, and accepts a directory of supported image files. For one continuous grid across displays, use Wallpaper Engine's **Span** mode. See [`wallpaper-engine/README.md`](wallpaper-engine/README.md) for the fixed intro/message/countdown slots, image-folder rules, display behavior, and direct package verification commands.
 
 ## Ubuntu app and screen saver
 
-The Ubuntu 24.04 LTS project lives in [`linux/MatrixCode`](linux/MatrixCode). It
-is a native C++20 + Qt 6 implementation with an OpenGL 3.3 Core renderer and no
-embedded browser. It builds the same portable C++ core used by Windows, keeping
-simulation, settings, messages, images, tokens, holidays, controllers, and
-multi-display topology byte-for-byte aligned while presenting native Linux UI.
+The Ubuntu 24.04 LTS project lives in [`linux/MatrixCode`](linux/MatrixCode). It is a native C++20 + Qt 6 implementation with an OpenGL 3.3 Core renderer and no embedded browser. It builds the same portable C++ core used by Windows, keeping simulation, settings, messages, images, tokens, holidays, controllers, and multi-display topology byte-for-byte aligned while presenting native Linux UI.
 
 ```sh
 sudo apt install build-essential cmake ninja-build qt6-base-dev \
@@ -250,64 +176,31 @@ npm run verify:linux
 npm run release:linux
 ```
 
-The application supports windowed, fullscreen, and coordinated multi-monitor
-presentation on Wayland and X11, plus native structured settings and the full
-intro/message/image/countdown feature set. X11 users can install the optional
-XScreenSaver launch mode. Stock GNOME Wayland has no supported extension point
-for third-party secure lock-screen renderers, so MatrixCode does not replace or
-weaken the GNOME lock screen. Build, package, launch, integration, and release
-validation details are maintained in
-[`linux/MatrixCode/README.md`](linux/MatrixCode/README.md).
+The application supports windowed, fullscreen, and coordinated multi-monitor presentation on Wayland and X11, plus native structured settings and the full intro/message/image/countdown feature set. X11 users can install the optional XScreenSaver launch mode. Stock GNOME Wayland has no supported extension point for third-party secure lock-screen renderers, so MatrixCode does not replace or weaken the GNOME lock screen. Build, package, launch, integration, and release validation details are maintained in [`linux/MatrixCode/README.md`](linux/MatrixCode/README.md).
 
 ## Omarchy app and screen saver
 
-The native Linux application also provides source packaging and idle
-screen-saver integration for current Omarchy 4.x on x86_64. Build an Arch
-package from this checkout, install it with pacman, and enable the optional
-integration with `matrixcode-omarchy install`. No browser or Node runtime is
-required by the native application or the direct packaging script.
+The native Linux application also provides source packaging and idle screen-saver integration for current Omarchy 4.x on x86_64. Build an Arch package from this checkout, install it with pacman, and enable the optional integration with `matrixcode-omarchy install`. No browser or Node runtime is required by the native application or the direct packaging script.
 
 ```sh
 linux/MatrixCode/scripts/package-arch.sh
 ```
 
-The integration uses a user-owned clone of Omarchy's idle plugin and retains
-Omarchy's configured idle and lock deadlines. One MatrixCode process renders a
-continuous grid across the monitors and exits on input; Omarchy supplies the
-secure lock screen. See [`linux/MatrixCode/OMARCHY.md`](linux/MatrixCode/OMARCHY.md)
-for dependencies, install/uninstall commands, version scope, and native
-validation requirements. The existing Ubuntu downloads above are Debian
-packages; build the Arch package for Omarchy.
+The integration uses a user-owned clone of Omarchy's idle plugin and retains Omarchy's configured idle and lock deadlines. One MatrixCode process renders a continuous grid across the monitors and exits on input; Omarchy supplies the secure lock screen. See [`linux/MatrixCode/OMARCHY.md`](linux/MatrixCode/OMARCHY.md) for dependencies, install/uninstall commands, version scope, and native validation requirements. The existing Ubuntu downloads above are Debian packages; build the Arch package for Omarchy.
 
-The browser, macOS, Windows, and Linux versions implement the same feature
-contract. Changes to visuals, settings, token behavior,
-intro/messages/images, or multi-monitor semantics should be made in all
-applicable codebases unless an intentional difference is documented.
+The browser, macOS, Windows, and Linux versions implement the same feature contract. Changes to visuals, settings, token behavior, intro/messages/images, or multi-monitor semantics should be made in all applicable codebases unless an intentional difference is documented.
 
-The testable definition of parity, canonical comparison conditions, and the
-scope of the automated verification gate are documented in
-[`docs/macos-web-parity.md`](docs/macos-web-parity.md). On a Mac with full
-Xcode, run `npm run verify:parity` from the repository root.
+The testable definition of parity, canonical comparison conditions, and the scope of the automated verification gate are documented in [`docs/macos-web-parity.md`](docs/macos-web-parity.md). On a Mac with full Xcode, run `npm run verify:parity` from the repository root.
 
 ## Architecture
 
-MatrixCode has four runtime implementations plus a browser-derived Wallpaper
-Engine distribution:
+MatrixCode has four runtime implementations plus a browser-derived Wallpaper Engine distribution:
 
-- **Browser app:** TypeScript + WebGL2 under [`src`](src), producing a single
-  static HTML artifact.
-- **macOS screen saver:** Objective-C/AppKit + ScreenSaver.framework + Metal
-  under [`macos/MatrixCodeScreenSaver`](macos/MatrixCodeScreenSaver), producing
-  a native `.saver` bundle with no embedded web runtime.
-- **Windows app and screen saver:** C++20 + Win32 + Direct3D 11 under
-  [`windows/MatrixCode`](windows/MatrixCode), producing a native application and
-  `.scr` with no embedded web runtime.
-- **Ubuntu app and XScreenSaver mode:** C++20 + Qt 6 + OpenGL under
-  [`linux/MatrixCode`](linux/MatrixCode), producing a native Wayland/X11
-  application and X11 saver mode with no embedded web runtime.
-- **Wallpaper Engine:** a host adapter under `src/platform/wallpaperEngine.ts`
-  and generated package metadata under [`wallpaper-engine`](wallpaper-engine);
-  it runs the browser build rather than introducing a fourth renderer.
+- **Browser app:** TypeScript + WebGL2 under [`src`](src), producing a single static HTML artifact.
+- **macOS screen saver:** Objective-C/AppKit + ScreenSaver.framework + Metal under [`macos/MatrixCodeScreenSaver`](macos/MatrixCodeScreenSaver), producing a native `.saver` bundle with no embedded web runtime.
+- **Windows app and screen saver:** C++20 + Win32 + Direct3D 11 under [`windows/MatrixCode`](windows/MatrixCode), producing a native application and `.scr` with no embedded web runtime.
+- **Ubuntu app and XScreenSaver mode:** C++20 + Qt 6 + OpenGL under [`linux/MatrixCode`](linux/MatrixCode), producing a native Wayland/X11 application and X11 saver mode with no embedded web runtime.
+- **Wallpaper Engine:** a host adapter under `src/platform/wallpaperEngine.ts` and generated package metadata under [`wallpaper-engine`](wallpaper-engine); it runs the browser build rather than introducing a fourth renderer.
 
 ### Browser app
 
@@ -321,24 +214,9 @@ Data flows in one direction each frame:
 
 **Configuration:** `ControlsStore` (`src/config/controls.ts`) is an observable store of user-facing settings. Static tuning lives in `src/config/simConfig.ts`; color themes in `src/config/colorPresets.ts`. Intro, messages, countdowns, and image reveals use separately sanitized persisted documents.
 
-**Portable image-reveal contract:** `mx-images` stores at most 64 greyscale
-masks, each no larger than 96 × 96 cells, as padded Base64 containing exactly
-one luminance byte per cell. Importers preserve aspect ratio without upscaling;
-the scheduler uses its own deterministic hash sequence so image selection and
-placement never perturb rain or message RNG. Appearance/hold/disappearance,
-flicker resolve, brightness fade, scale, placement jitter, virtual-grid
-coordinates, clamped bilinear mask sampling, and falling-rain gating are parity
-rules shared with native implementations. The fitted image keeps its aspect ratio
-and size; its nearest border rows, columns, and corners extend across the full
-virtual grid without a rectangular cutoff or edge fade. Black mask pixels remain
-active and darken the surrounding rain just like black pixels inside the image.
-Web code lives in
-`src/config/imagesStore.ts`, `src/sim/imageMask.ts`,
-`src/sim/imageScheduler.ts`, and `src/sim/imageReveal.ts`.
+**Portable image-reveal contract:** `mx-images` stores at most 64 greyscale masks, each no larger than 96 × 96 cells, as padded Base64 containing exactly one luminance byte per cell. Importers preserve aspect ratio without upscaling; the scheduler uses its own deterministic hash sequence so image selection and placement never perturb rain or message RNG. Appearance/hold/disappearance, flicker resolve, brightness fade, scale, placement jitter, virtual-grid coordinates, clamped bilinear mask sampling, and falling-rain gating are parity rules shared with native implementations. The fitted image keeps its aspect ratio and size; its nearest border rows, columns, and corners extend across the full virtual grid without a rectangular cutoff or edge fade. Black mask pixels remain active and darken the surrounding rain just like black pixels inside the image. Web code lives in `src/config/imagesStore.ts`, `src/sim/imageMask.ts`, `src/sim/imageScheduler.ts`, and `src/sim/imageReveal.ts`.
 
-Canvas2D compatibility mode shares the border sampling and reveal timing, but
-approximates image darkening by compositing over its baked trails rather than
-recalculating each glyph's HDR brightness.
+Canvas2D compatibility mode shares the border sampling and reveal timing, but approximates image darkening by compositing over its baked trails rather than recalculating each glyph's HDR brightness.
 
 **Multi-monitor mode:** all windows run the same deterministic simulation against a shared seed and `Date.now()` epoch — same clock ⇒ pixel-aligned seams with no per-frame cross-window messaging. A `BroadcastChannel` is used only to coordinate exit. See `src/multimonitor/`.
 
@@ -346,61 +224,27 @@ recalculating each glyph's HDR brightness.
 
 The native saver mirrors the web feature contract with platform-native pieces:
 
-- `Source/MatrixCodeScreenSaverView.*` hosts the ScreenSaver.framework entry
-  point and coordinates preview/fullscreen lifecycle.
-- `Source/MatrixCodeMetalView.*` consumes the web-compatible packed cell state
-  and runs the matching HDR scene, scene-alpha bright pass, Gaussian bloom, ACES,
-  scanline, and vignette passes, including continuous multi-display slices.
-- `Source/MatrixCodeRainSimulation.*` is a direct deterministic port of
-  `src/sim/rainSim.ts`; fixed fixtures require byte-identical RGBA8 state.
-- `Source/MatrixCodeMessageScheduler.*` mirrors the independently seeded web
-  scheduler, including row/drop placement, per-display regions, live tokens,
-  and reveal/fade/scramble envelopes.
-- `Source/MatrixCodeRainLifecycle.*` supplies the shared load/intro ramp and
-  glyph-range helpers used by the native host.
-- `Source/MatrixCodeIntroOverlayView.*` implements the native typewriter intro,
-  including token resolution and skip handling.
-- `Source/MatrixCodeConfigurationController.*` implements the Options sheet and
-  sanitizes/persists the same `mx-*` JSON documents used by the web app.
-- `Source/MatrixCodeTokenResolver.*` mirrors the web token grammar for name,
-  greeting, time formatting, countdown/countup, named moments, and calendar
-  tokens.
-- `Source/MatrixCodeImageContract.*` owns the portable `mx-images` sanitizer,
-  import conversion, and deterministic reveal primitives consumed by Metal.
+- `Source/MatrixCodeScreenSaverView.*` hosts the ScreenSaver.framework entry point and coordinates preview/fullscreen lifecycle.
+- `Source/MatrixCodeMetalView.*` consumes the web-compatible packed cell state and runs the matching HDR scene, scene-alpha bright pass, Gaussian bloom, ACES, scanline, and vignette passes, including continuous multi-display slices.
+- `Source/MatrixCodeRainSimulation.*` is a direct deterministic port of `src/sim/rainSim.ts`; fixed fixtures require byte-identical RGBA8 state.
+- `Source/MatrixCodeMessageScheduler.*` mirrors the independently seeded web scheduler, including row/drop placement, per-display regions, live tokens, and reveal/fade/scramble envelopes.
+- `Source/MatrixCodeRainLifecycle.*` supplies the shared load/intro ramp and glyph-range helpers used by the native host.
+- `Source/MatrixCodeIntroOverlayView.*` implements the native typewriter intro, including token resolution and skip handling.
+- `Source/MatrixCodeConfigurationController.*` implements the Options sheet and sanitizes/persists the same `mx-*` JSON documents used by the web app.
+- `Source/MatrixCodeTokenResolver.*` mirrors the web token grammar for name, greeting, time formatting, countdown/countup, named moments, and calendar tokens.
+- `Source/MatrixCodeImageContract.*` owns the portable `mx-images` sanitizer, import conversion, and deterministic reveal primitives consumed by Metal.
 
-Native regression tests live in `macos/MatrixCodeScreenSaver/Tests` and cover
-configuration sanitization, token parity, intro behavior, rain lifecycle, Metal
-visibility, and multi-display geometry.
+Native regression tests live in `macos/MatrixCodeScreenSaver/Tests` and cover configuration sanitization, token parity, intro behavior, rain lifecycle, Metal visibility, and multi-display geometry.
 
 ### Native Windows app and screen saver
 
-The Windows implementation separates platform-neutral simulation/settings code
-(`MatrixCodeCore`), the Direct3D 11 renderer (`MatrixCodeRenderD3D11`), and
-Win32 application/screen-saver hosting (`MatrixCodeWin32`). Hardware D3D11 is
-preferred and WARP is the fallback and deterministic capture path. Full-screen
-screen-saver playback creates one topmost window per monitor while advancing a
-shared virtual-grid simulation; `/p` embeds a true child window in the Control
-Panel preview host. The app and `.scr /c` share
-`%LOCALAPPDATA%\MatrixCode\settings.json`.
+The Windows implementation separates platform-neutral simulation/settings code (`MatrixCodeCore`), the Direct3D 11 renderer (`MatrixCodeRenderD3D11`), and Win32 application/screen-saver hosting (`MatrixCodeWin32`). Hardware D3D11 is preferred and WARP is the fallback and deterministic capture path. Full-screen screen-saver playback creates one topmost window per monitor while advancing a shared virtual-grid simulation; `/p` embeds a true child window in the Control Panel preview host. The app and `.scr /c` share `%LOCALAPPDATA%\MatrixCode\settings.json`.
 
-`windows/MatrixCode/tests` covers the deterministic rain fixtures,
-controllers, settings sanitization, image-reveal primitives, and `.scr`
-argument parsing. `windows/MatrixCode/scripts/Verify-Windows.ps1 -Capture` adds
-a fixed WARP PNG
-for a future repository-wide visual comparison gate. Consult the Windows README
-for the current verification boundary before treating a native feature as
-parity-complete.
+`windows/MatrixCode/tests` covers the deterministic rain fixtures, controllers, settings sanitization, image-reveal primitives, and `.scr` argument parsing. `windows/MatrixCode/scripts/Verify-Windows.ps1 -Capture` adds a fixed WARP PNG for a future repository-wide visual comparison gate. Consult the Windows README for the current verification boundary before treating a native feature as parity-complete.
 
 ### Native Ubuntu app and XScreenSaver mode
 
-The Ubuntu implementation separates the shared deterministic C++ core,
-`MatrixCodeRenderGL`, Linux platform adapters, and the Qt application host. The
-renderer consumes the same packed RGBA8 cells and floating-point image
-influence as Windows, uses an RGBA16F scene and matching bloom/ACES composite,
-and exposes hardware diagnostics and deterministic capture. One session drives
-all fullscreen monitor windows over a shared logical grid. Linux tests compile
-the portable Windows-native suites directly and add command-line, atomic XDG
-settings, and Qt image-import coverage.
+The Ubuntu implementation separates the shared deterministic C++ core, `MatrixCodeRenderGL`, Linux platform adapters, and the Qt application host. The renderer consumes the same packed RGBA8 cells and floating-point image influence as Windows, uses an RGBA16F scene and matching bloom/ACES composite, and exposes hardware diagnostics and deterministic capture. One session drives all fullscreen monitor windows over a shared logical grid. Linux tests compile the portable Windows-native suites directly and add command-line, atomic XDG settings, and Qt image-import coverage.
 
 ## License
 
