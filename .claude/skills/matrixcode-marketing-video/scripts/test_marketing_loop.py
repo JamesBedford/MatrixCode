@@ -15,7 +15,7 @@ from unittest import mock
 from PIL import Image, ImageChops
 
 import capture_marketing_video as video
-from marketing_film_loop import CLASSIC_LOOP_FILM
+from marketing_film_loop import CLASSIC_LOOP_FILM, PURPLE_LOOP_FILM
 from marketing_model import Film, Scene
 
 
@@ -41,6 +41,29 @@ class ClassicLoopTests(unittest.TestCase):
             self.assertFalse(video.scene_documents(scene)[key]["enabled"])
         self.assertEqual(video.resolve_outputs("classic-loop", Path("output"), None),
                          [(film, Path("output") / film.relative_output)])
+
+    def test_purple_loop_matches_the_classic_loop_in_purple_matrix_glyphs(self):
+        film = PURPLE_LOOP_FILM
+        self.assertIs(video.CATALOG["purple-loop"], film)
+        self.assertNotIn(film.key, video.FILMS)
+        self.assertNotIn(film.key, video.FILM_GROUPS["all"])
+        self.assertEqual(film.duration, 30)
+        self.assertEqual(film.loop_overlap, 2)
+        self.assertIsNone(film.score)
+        scene = film.scenes[0]
+        self.assertEqual(scene.settings["preset"], "purple")
+        self.assertEqual(scene.settings["glyphs"], "matrix")
+        self.assertEqual(scene.settings["font"], "matrix")
+        classic = CLASSIC_LOOP_FILM.scenes[0].settings
+        self.assertEqual(
+            {key: value for key, value in scene.settings.items() if key != "preset"},
+            {key: value for key, value in classic.items() if key != "preset"},
+        )
+        self.assertFalse(scene.overlays)
+        self.assertTrue(scene.corner_url)
+        self.assertFalse(scene.message)
+        self.assertEqual(video.resolve_outputs("purple-loop", Path("output"), None),
+                         [(film, Path("output/loops/purple-matrix/matrixcode-purple-matrix-loop.mp4"))])
 
     def test_clean_frames_preserve_all_original_pixels(self):
         frame = Image.new("RGBA", video.SIZE, (9, 83, 24, 255))

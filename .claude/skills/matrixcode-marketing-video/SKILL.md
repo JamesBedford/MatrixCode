@@ -19,6 +19,10 @@ discovers it through the project's `.agents/skills` symlink.
   `output/marketing/loops/classic-green/matrixcode-classic-green-loop.mp4`.
   A smooth two-second tail/opening overlap closes the loop while the file boundary
   retains consecutive source frames. This recipe has no closing invitation.
+- **Purple silent loop:** `--video purple-loop` is the same 30-second seamless
+  capture with the purple preset and matrix glyphs. Output is
+  `output/marketing/loops/purple-matrix/matrixcode-purple-matrix-loop.mp4`.
+  It keeps the corner URL and omits audio, titles, intros, messages, and image reveals.
 - **Recreate a film:** build the app and select `--video first` (the default),
   `second`, `third`, `fourth`, `fifth`, `sixth`, `seventh`, or `eighth`. Groups:
   `both` selects the first two, `new` selects the third through fifth, `styles`

@@ -46,6 +46,7 @@ python3 scripts/capture_marketing_video.py --video showcase
 python3 scripts/capture_marketing_video.py --video showcase-story
 python3 scripts/capture_marketing_video.py --video quotes
 python3 scripts/capture_marketing_video.py --video classic-loop
+python3 scripts/capture_marketing_video.py --video purple-loop
 ```
 
 `--video first` is the default, preserving the original no-argument command. Each
@@ -80,6 +81,7 @@ clear space around the original invitation; existing exports change when regener
 | `showcase` | Screensaver-to-name, picture, countdown, still grid. 8–12 seconds | `showcase/<key>/matrixcode.mp4` |
 | `quotes` | Try it now written in the rain, five in-rain quotes with an @handle on the next row and no lower-left style name, Try it now. 41 seconds. Original matrix score | `quotes/matrixcode-quotes.mp4` |
 | `classic-loop` | Classic green rain and the top-right URL. Seamless 30 seconds, no audio or scene titles | `loops/classic-green/matrixcode-classic-green-loop.mp4` |
+| `purple-loop` | Purple matrix rain and the top-right URL. Seamless 30 seconds, no audio or scene titles | `loops/purple-matrix/matrixcode-purple-matrix-loop.mp4` |
 
 The sixth through eighth films are style-only: normal query controls define each
 look, body documents keep intros/messages/images disabled, and no timed actions
@@ -91,7 +93,7 @@ Each film's directory also contains:
 - `matrixcode-storyboard.jpg`: all scene previews; the first includes both overlap states.
 - `matrixcode-final-frame.jpg`: extracted from the encoded film during verification.
 
-The classic loop also writes `matrixcode-loop-check.json`, comparing decoded
+Each silent loop also writes `matrixcode-loop-check.json`, comparing decoded
 motion across the repeat boundary with ordinary neighboring frames. Its storyboard
 contains six encoded samples, including the overlap and final frame.
 
@@ -137,7 +139,7 @@ Edit the Python sources under this skill's `scripts/` directory:
 | Setting/function | Purpose |
 | --- | --- |
 | `marketing_model.py` | Shared `Film`, `Scene`, capture format, fixed calendar, and original `INVITATION`. |
-| `marketing_film_loop.py`, `marketing_loop.py` | Clean classic-green recipe, frame-exact smooth overlap, and encoded repeat-boundary checks. |
+| `marketing_film_loop.py`, `marketing_loop.py` | Silent classic-green and purple matrix loops, frame-exact smooth overlap, and encoded repeat-boundary checks. |
 | `FIRST_FILM`, `SECOND_FILM` in `capture_marketing_video.py` | Original styles and alternate-feature recipes. |
 | `marketing_film_third.py`, `marketing_film_fourth.py`, `marketing_film_fifth.py` | Words/tokens, choreography/controls, and image-focused recipes. |
 | `marketing_film_sixth.py`, `marketing_film_seventh.py`, `marketing_film_eighth.py` | Pure neon, retro phosphor, and atmospheric style reels. |
@@ -276,7 +278,7 @@ overlap comparison has no cold-start gap, and there are no fallback/settings UI.
 Watch/listen to the finished film where available; a successful decode alone does
 not verify aesthetics. If only numerical audio checks are available, say so.
 
-The silent classic loop captures 32 seconds after 24 seconds of preroll. Its 900
+The silent classic and purple loops each capture 32 seconds after 24 seconds of preroll. Their 900
 output frames start at source frame 60, run through source 899, then smoothly blend
 900–959 into 0–59. Weights reach exactly zero and one, so the repeat is the natural
 source59 → source60 step without a duplicate frame. The loop uses no audio stream

@@ -43,7 +43,7 @@ from marketing_film_eighth import EIGHTH_FILM
 from marketing_shorts import SHORT_CLIPS, SHORT_FILMS
 from marketing_film_showcase import SHOWCASE_CLIPS, SHOWCASE_FILMS
 from marketing_film_quotes import QUOTES_FILM
-from marketing_film_loop import CLASSIC_LOOP_FILM
+from marketing_film_loop import CLASSIC_LOOP_FILM, PURPLE_LOOP_FILM
 from marketing_loop import loop_filter, verify_loop
 
 def find_project_root() -> Path:
@@ -145,7 +145,8 @@ FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM, THIRD_FILM, FOURTH
                                   FIFTH_FILM, SIXTH_FILM, SEVENTH_FILM, EIGHTH_FILM)}
 # Shorts are a separate mode. `all` stays the eight long tours.
 CATALOG = {**FILMS, **SHORT_FILMS, **SHOWCASE_FILMS, QUOTES_FILM.key: QUOTES_FILM,
-           CLASSIC_LOOP_FILM.key: CLASSIC_LOOP_FILM}
+           CLASSIC_LOOP_FILM.key: CLASSIC_LOOP_FILM,
+           PURPLE_LOOP_FILM.key: PURPLE_LOOP_FILM}
 FILM_GROUPS = {
     "both": ("first", "second"), "new": ("third", "fourth", "fifth"),
     "styles": ("sixth", "seventh", "eighth"), "all": tuple(FILMS),
@@ -872,7 +873,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
     parser.add_argument("--video", choices=[*CATALOG, *FILM_GROUPS], default="first",
-                        help="a film, short slug, shorts, showcase, quotes, classic-loop, or all eight long tours")
+                        help="a film, short slug, shorts, showcase, quotes, classic-loop, purple-loop, or all eight long tours")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output/marketing",
                         help="output root; each additional film keeps its previews in its own subfolder")
     parser.add_argument("--out", type=Path, help="override the MP4 path for a single film")
