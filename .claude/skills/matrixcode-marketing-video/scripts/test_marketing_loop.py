@@ -7,11 +7,12 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 import capture_marketing_video as video
 from marketing_film_loop import CLASSIC_LOOP_FILM
@@ -19,7 +20,7 @@ from marketing_model import Film, Scene
 
 
 class ClassicLoopTests(unittest.TestCase):
-    def test_recipe_is_thirty_seconds_of_green_rain_without_text_or_sound(self):
+    def test_recipe_is_thirty_seconds_of_green_rain_with_only_the_corner_url(self):
         film = CLASSIC_LOOP_FILM
         self.assertIs(video.CATALOG["classic-loop"], film)
         self.assertNotIn(film.key, video.FILMS)
@@ -32,6 +33,7 @@ class ClassicLoopTests(unittest.TestCase):
         self.assertEqual(scene.seconds, 32)
         self.assertEqual(scene.settings["preset"], "classic")
         self.assertFalse(scene.overlays)
+        self.assertTrue(scene.corner_url)
         self.assertFalse(scene.message)
         self.assertFalse(scene.play_intro)
         self.assertFalse(scene.actions)
@@ -43,9 +45,24 @@ class ClassicLoopTests(unittest.TestCase):
     def test_clean_frames_preserve_all_original_pixels(self):
         frame = Image.new("RGBA", video.SIZE, (9, 83, 24, 255))
         frame.putpixel((23, 17), (255, 1, 123, 255))
-        result = video.finish_frame(frame, CLASSIC_LOOP_FILM.scenes[0], 1.5)
+        scene = replace(CLASSIC_LOOP_FILM.scenes[0], corner_url=False)
+        result = video.finish_frame(frame, scene, 1.5)
         self.assertEqual(result.mode, "RGB")
         self.assertEqual(result.tobytes(), frame.convert("RGB").tobytes())
+
+    def test_corner_url_is_static_and_changes_only_the_top_right(self):
+        frame = Image.new("RGB", video.SIZE, (9, 83, 24))
+        scene = CLASSIC_LOOP_FILM.scenes[0]
+        first = video.finish_frame(frame, scene, 0)
+        last = video.finish_frame(frame, scene, 31.9)
+        self.assertEqual(first.tobytes(), last.tobytes())
+        bounds = ImageChops.difference(frame, first).getbbox()
+        self.assertIsNotNone(bounds)
+        left, top, right, bottom = bounds
+        self.assertGreater(left, video.SIZE[0] / 2)
+        self.assertGreaterEqual(top, 50)
+        self.assertLessEqual(right, video.SIZE[0] - 70)
+        self.assertLess(bottom, 150)
 
     def test_silent_video_verification_rejects_an_audio_stream(self):
         streams = [

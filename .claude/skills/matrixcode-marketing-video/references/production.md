@@ -79,7 +79,7 @@ clear space around the original invitation; existing exports change when regener
 | `shorts` | Sixty finished looks, 6–10 seconds, three platform labels | `shorts/<slug>/matrixcode.mp4` |
 | `showcase` | Screensaver-to-name, picture, countdown, still grid. 8–12 seconds | `showcase/<key>/matrixcode.mp4` |
 | `quotes` | Try it now written in the rain, five in-rain quotes with an @handle on the next row and no lower-left style name, Try it now. 41 seconds. Original matrix score | `quotes/matrixcode-quotes.mp4` |
-| `classic-loop` | Classic green rain only. Seamless 30 seconds, no text or audio | `loops/classic-green/matrixcode-classic-green-loop.mp4` |
+| `classic-loop` | Classic green rain and the top-right URL. Seamless 30 seconds, no audio or scene titles | `loops/classic-green/matrixcode-classic-green-loop.mp4` |
 
 The sixth through eighth films are style-only: normal query controls define each
 look, body documents keep intros/messages/images disabled, and no timed actions
@@ -153,6 +153,7 @@ Edit the Python sources under this skill's `scripts/` directory:
 | `SIZE`, `FPS`, `TRANSITION` | Frame size, frame rate, and dissolve length. |
 | `Film.duration`, `Film.transitions` | Derived from each recipe's scenes and dissolves; keep them derived. |
 | `Scene.overlays`, `Film.score`, `Film.loop_overlap` | `False` preserves raw app pixels, `None` omits audio entirely, and a positive overlap closes a single-shot loop. |
+| `Scene.corner_url` | With full overlays disabled, retain just the usual top-right URL without scene titles or shade. |
 | `SITE`, `SITE_FONT_SIZE`, `ENDING_TITLE_FONT_SIZE`, `ENDING_SITE_FONT_SIZE`, caption positions | Public URL, typography, centered ending layout, and frame insets. |
 | `TITLE_FONT`, `TITLE_BOTTOM_MARGIN` | Scene titles and player clearance. |
 | `INVITATION`, `CTA`, `open_scene`, `finish_frame` | Shared in-rain invitation, entrance timing, held brightness, and finishing. |
@@ -279,7 +280,7 @@ The silent classic loop captures 32 seconds after 24 seconds of preroll. Its 900
 output frames start at source frame 60, run through source 899, then smoothly blend
 900–959 into 0–59. Weights reach exactly zero and one, so the repeat is the natural
 source59 → source60 step without a duplicate frame. The loop uses no audio stream
-and bypasses all caption, URL, shade, and message finishing. Check the encoded
+and keeps only the usual top-right URL, without caption, shade, or message finishing. Check the encoded
 storyboard and boundary motion report; the synthetic FFmpeg regression also pins
 the source-frame ordering and blend endpoints. `all` remains the eight long tours.
 

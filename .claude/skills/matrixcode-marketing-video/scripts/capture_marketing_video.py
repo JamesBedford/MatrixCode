@@ -323,6 +323,17 @@ ENDING_TITLE_POSITION = (SIZE[0] / 2, 391)
 ENDING_SITE_POSITION = (SIZE[0] / 2, 729)
 
 
+def burn_corner_url(draw: ImageDraw.ImageDraw):
+    draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
+
+
+@lru_cache(maxsize=1)
+def corner_site_layer() -> Image.Image:
+    layer = Image.new("RGBA", SIZE)
+    burn_corner_url(ImageDraw.Draw(layer))
+    return layer
+
+
 def message_layout(glyph_scale: float = INVITATION.settings["size"], text: str = CTA,
                    config: dict | None = None) -> dict:
     """Match the app's row/drop placement for capture-only message grading."""
@@ -583,6 +594,8 @@ def burn_lower_url(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
 def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Image:
     frame = frame.convert("RGB")
     if not scene.overlays:
+        if scene.corner_url:
+            return Image.alpha_composite(frame.convert("RGBA"), corner_site_layer()).convert("RGB")
         return frame
     if scene.message or scene.loop_open:
         # Bring forward only letters already revealed by the app. Ambient rain keeps
@@ -624,7 +637,7 @@ def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Imag
         ending.putalpha(ending.getchannel("A").point(lambda value: round(value * strength)))
         chrome = Image.alpha_composite(chrome, ending)
     else:
-        draw.text(CORNER_SITE_POSITION, SITE, font=SITE_FONT, fill="#CED6D2", anchor="ra")
+        burn_corner_url(draw)
         if scene.platform_labels:
             burn_platform_labels(draw)
         if scene.show_title:

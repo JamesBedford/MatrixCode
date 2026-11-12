@@ -58,7 +58,7 @@ def verify_loop(output: Path, film: Film, report: Path, storyboard: Path):
     report.write_text(json.dumps({
         "duration_seconds": film.duration, "frames": count, "fps": FPS,
         "audio_streams": int(film.score is not None),
-        "overlays": any(scene.overlays for scene in film.scenes),
+        "overlays": any(scene.overlays or scene.corner_url for scene in film.scenes),
         "overlap_seconds": film.loop_overlap,
         "boundary_mean_absolute_difference": seam,
         "ordinary_median_difference": typical, "ordinary_95th_percentile_difference": upper,

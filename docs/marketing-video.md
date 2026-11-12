@@ -53,7 +53,8 @@ scenes contain no intros, image reveals, messages, or interactive demonstrations
 
 `classic-loop` produces a separate 30-second, 1080p/30 FPS classic green film at
 `output/marketing/loops/classic-green/matrixcode-classic-green-loop.mp4`. It records
-the actual app with no audio stream, text, URL, intro, messages, or image reveals.
+the actual app with the usual top-right URL and no audio stream, scene titles,
+intro, messages, or image reveals.
 A smooth two-second tail/opening overlap closes the loop with consecutive source
 frames across the repeat boundary. A six-frame encoded storyboard and
 `matrixcode-loop-check.json` accompany the usual poster and final frame.

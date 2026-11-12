@@ -40,8 +40,10 @@ class Scene:
     credit_line: str | None = None
     # Burn the lower-left scene name. The quote reel leaves this off; the corner URL stays.
     show_title: bool = True
-    # Capture the app's pixels without finishing grades, captions, or URLs.
+    # Enable full marketing finishing: grades, captions, and URLs.
     overlays: bool = True
+    # With full finishing disabled, retain only the standard top-right URL.
+    corner_url: bool = False
 
 
 @dataclass(frozen=True)
