@@ -45,6 +45,7 @@ python3 scripts/capture_marketing_video.py --video 01-classic-green
 python3 scripts/capture_marketing_video.py --video showcase
 python3 scripts/capture_marketing_video.py --video showcase-story
 python3 scripts/capture_marketing_video.py --video quotes
+python3 scripts/capture_marketing_video.py --video classic-loop
 ```
 
 `--video first` is the default, preserving the original no-argument command. Each
@@ -78,6 +79,7 @@ clear space around the original invitation; existing exports change when regener
 | `shorts` | Sixty finished looks, 6–10 seconds, three platform labels | `shorts/<slug>/matrixcode.mp4` |
 | `showcase` | Screensaver-to-name, picture, countdown, still grid. 8–12 seconds | `showcase/<key>/matrixcode.mp4` |
 | `quotes` | Try it now written in the rain, five in-rain quotes with an @handle on the next row and no lower-left style name, Try it now. 41 seconds. Original matrix score | `quotes/matrixcode-quotes.mp4` |
+| `classic-loop` | Classic green rain only. Seamless 30 seconds, no text or audio | `loops/classic-green/matrixcode-classic-green-loop.mp4` |
 
 The sixth through eighth films are style-only: normal query controls define each
 look, body documents keep intros/messages/images disabled, and no timed actions
@@ -88,6 +90,10 @@ Each film's directory also contains:
 - `matrixcode-poster.jpg`: the fully resolved closing invitation.
 - `matrixcode-storyboard.jpg`: all scene previews; the first includes both overlap states.
 - `matrixcode-final-frame.jpg`: extracted from the encoded film during verification.
+
+The classic loop also writes `matrixcode-loop-check.json`, comparing decoded
+motion across the repeat boundary with ordinary neighboring frames. Its storyboard
+contains six encoded samples, including the overlap and final frame.
 
 `--preview-only` writes the poster and storyboard without replacing the MP4 or its
 encoded final frame; previews may not match an older MP4 until a full render
@@ -131,6 +137,7 @@ Edit the Python sources under this skill's `scripts/` directory:
 | Setting/function | Purpose |
 | --- | --- |
 | `marketing_model.py` | Shared `Film`, `Scene`, capture format, fixed calendar, and original `INVITATION`. |
+| `marketing_film_loop.py`, `marketing_loop.py` | Clean classic-green recipe, frame-exact smooth overlap, and encoded repeat-boundary checks. |
 | `FIRST_FILM`, `SECOND_FILM` in `capture_marketing_video.py` | Original styles and alternate-feature recipes. |
 | `marketing_film_third.py`, `marketing_film_fourth.py`, `marketing_film_fifth.py` | Words/tokens, choreography/controls, and image-focused recipes. |
 | `marketing_film_sixth.py`, `marketing_film_seventh.py`, `marketing_film_eighth.py` | Pure neon, retro phosphor, and atmospheric style reels. |
@@ -145,6 +152,7 @@ Edit the Python sources under this skill's `scripts/` directory:
 | `BASE_SETTINGS` | Shared capture controls, including disabled adaptive resolution/load ramp. |
 | `SIZE`, `FPS`, `TRANSITION` | Frame size, frame rate, and dissolve length. |
 | `Film.duration`, `Film.transitions` | Derived from each recipe's scenes and dissolves; keep them derived. |
+| `Scene.overlays`, `Film.score`, `Film.loop_overlap` | `False` preserves raw app pixels, `None` omits audio entirely, and a positive overlap closes a single-shot loop. |
 | `SITE`, `SITE_FONT_SIZE`, `ENDING_TITLE_FONT_SIZE`, `ENDING_SITE_FONT_SIZE`, caption positions | Public URL, typography, centered ending layout, and frame insets. |
 | `TITLE_FONT`, `TITLE_BOTTOM_MARGIN` | Scene titles and player clearance. |
 | `INVITATION`, `CTA`, `open_scene`, `finish_frame` | Shared in-rain invitation, entrance timing, held brightness, and finishing. |
@@ -159,7 +167,7 @@ Keep enough preroll to fill the rain; the second film's slow-motion scene uses
 40 seconds of warmup. The overlap comparison runs both views on the same clock and switches halfway through; its
 internal switch is independent of the between-scene dissolves.
 
-All recipes end with the same `INVITATION` scene. Its message geometry comes from
+Long tour recipes end with the same `INVITATION` scene. Its message geometry comes from
 that scene's glyph scale and `CTA`. Reserve `message=True` for this closing scene:
 it enables the invitation's upload hook and finishing mask. Other in-rain messages
 belong in `Scene.documents["mx-messages"]`, as the countdown scene demonstrates.
@@ -266,6 +274,14 @@ scene has separate positioning. Ensure each scene fits without clipping, the
 overlap comparison has no cold-start gap, and there are no fallback/settings UI.
 Watch/listen to the finished film where available; a successful decode alone does
 not verify aesthetics. If only numerical audio checks are available, say so.
+
+The silent classic loop captures 32 seconds after 24 seconds of preroll. Its 900
+output frames start at source frame 60, run through source 899, then smoothly blend
+900–959 into 0–59. Weights reach exactly zero and one, so the repeat is the natural
+source59 → source60 step without a duplicate frame. The loop uses no audio stream
+and bypasses all caption, URL, shade, and message finishing. Check the encoded
+storyboard and boundary motion report; the synthetic FFmpeg regression also pins
+the source-frame ordering and blend endpoints. `all` remains the eight long tours.
 
 ## Cleanup and handoff
 

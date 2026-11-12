@@ -40,6 +40,8 @@ class Scene:
     credit_line: str | None = None
     # Burn the lower-left scene name. The quote reel leaves this off; the corner URL stays.
     show_title: bool = True
+    # Capture the app's pixels without finishing grades, captions, or URLs.
+    overlays: bool = True
 
 
 @dataclass(frozen=True)
@@ -49,11 +51,20 @@ class Film:
     scenes: tuple[Scene, ...]
     relative_output: Path
     # "industrial" is the shared score. "matrix" is the darker looping promo score.
-    score: str = "industrial"
+    score: str | None = "industrial"
+    # A single continuous shot can overlap its tail with its opening to close a loop.
+    loop_overlap: float = 0
+
+    def __post_init__(self):
+        if self.loop_overlap and (len(self.scenes) != 1 or
+                                 round(self.loop_overlap * FPS) < 2 or
+                                 not 0 < self.loop_overlap < self.scenes[0].seconds / 2):
+            raise ValueError("A loop needs one scene and an overlap between one frame and half the shot")
 
     @property
     def duration(self) -> float:
-        return sum(scene.seconds for scene in self.scenes) - TRANSITION * (len(self.scenes) - 1)
+        return (sum(scene.seconds for scene in self.scenes) - TRANSITION * (len(self.scenes) - 1)
+                - self.loop_overlap)
 
     @property
     def transitions(self) -> list[float]:

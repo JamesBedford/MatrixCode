@@ -43,6 +43,8 @@ from marketing_film_eighth import EIGHTH_FILM
 from marketing_shorts import SHORT_CLIPS, SHORT_FILMS
 from marketing_film_showcase import SHOWCASE_CLIPS, SHOWCASE_FILMS
 from marketing_film_quotes import QUOTES_FILM
+from marketing_film_loop import CLASSIC_LOOP_FILM
+from marketing_loop import loop_filter, verify_loop
 
 def find_project_root() -> Path:
     for directory in Path(__file__).resolve().parents:
@@ -142,7 +144,8 @@ SECOND_FILM = Film("second", "Matrix Code — Beyond the green", (
 FILMS = {film.key: film for film in (FIRST_FILM, SECOND_FILM, THIRD_FILM, FOURTH_FILM,
                                   FIFTH_FILM, SIXTH_FILM, SEVENTH_FILM, EIGHTH_FILM)}
 # Shorts are a separate mode. `all` stays the eight long tours.
-CATALOG = {**FILMS, **SHORT_FILMS, **SHOWCASE_FILMS, QUOTES_FILM.key: QUOTES_FILM}
+CATALOG = {**FILMS, **SHORT_FILMS, **SHOWCASE_FILMS, QUOTES_FILM.key: QUOTES_FILM,
+           CLASSIC_LOOP_FILM.key: CLASSIC_LOOP_FILM}
 FILM_GROUPS = {
     "both": ("first", "second"), "new": ("third", "fourth", "fifth"),
     "styles": ("sixth", "seventh", "eighth"), "all": tuple(FILMS),
@@ -579,6 +582,8 @@ def burn_lower_url(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
 
 def finish_frame(frame: Image.Image, scene: Scene, seconds: float) -> Image.Image:
     frame = frame.convert("RGB")
+    if not scene.overlays:
+        return frame
     if scene.message or scene.loop_open:
         # Bring forward only letters already revealed by the app. Ambient rain keeps
         # moving behind the invitation; no replacement or overlaid CTA text is used.
@@ -763,7 +768,7 @@ def capture(browser, dist: Path, scene: Scene, index: int, directory: Path, prev
 def contact_sheet(directory: Path, output: Path, film: Film):
     previews = [preview_path(directory, index, version)
                 for index, scene in enumerate(film.scenes) for version in scene_versions(scene)]
-    columns = 3
+    columns = min(3, len(previews))
     sheet = Image.new("RGB", (columns * 480, math.ceil(len(previews) / columns) * 270), "black")
     for index, preview in enumerate(previews):
         still = Image.open(preview)
@@ -772,7 +777,7 @@ def contact_sheet(directory: Path, output: Path, film: Film):
     sheet.save(output, quality=93, subsampling=0)
 
 
-def assemble(clips: list[Path], audio: Path, output: Path, film: Film):
+def assemble(clips: list[Path], audio: Path | None, output: Path, film: Film):
     inputs = [argument for clip in clips for argument in ["-i", str(clip)]]
     filters = [f"[{index}:v]settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[v{index}]"
                for index in range(len(clips))]
@@ -783,15 +788,23 @@ def assemble(clips: list[Path], audio: Path, output: Path, film: Film):
         filters.append(f"[{last}][v{index}]xfade=transition=fade:duration={TRANSITION}:offset={offset}[{merged}]")
         last = merged
         offset += film.scenes[index].seconds - TRANSITION
+    if film.loop_overlap:
+        filters, last = [loop_filter(film)], "loop"
+    audio_inputs = ["-i", str(audio)] if audio is not None else []
+    audio_options = (["-map", f"{len(clips)}:a", "-af", "loudnorm=I=-14:TP=-1.5:LRA=7",
+                      "-ar", "48000", "-c:a", "aac", "-b:a", "192k"]
+                     if audio is not None else ["-an"])
+    comment = "Actual Matrix Code WebGL capture"
+    if audio is not None:
+        comment += "; original generated soundtrack"
     subprocess.run([
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-filter_complex_threads", "1",
-        *inputs, "-i", str(audio), "-filter_complex", ";".join(filters),
-        "-map", f"[{last}]", "-map", f"{len(clips)}:a", "-c:v", "libx264",
+        *inputs, *audio_inputs, "-filter_complex", ";".join(filters),
+        "-map", f"[{last}]", *audio_options, "-c:v", "libx264",
         "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(FPS),
-        "-af", "loudnorm=I=-14:TP=-1.5:LRA=7", "-ar", "48000",
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", str(film.duration),
+        "-movflags", "+faststart", "-t", str(film.duration),
         "-metadata", f"title={film.title}",
-        "-metadata", "comment=Actual Matrix Code WebGL capture; original generated soundtrack",
+        "-metadata", f"comment={comment}",
         str(output),
     ], check=True, stdout=sys.stdout, stderr=sys.stderr)
 
@@ -846,7 +859,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
     parser.add_argument("--video", choices=[*CATALOG, *FILM_GROUPS], default="first",
-                        help="a film, short slug, shorts, showcase, quotes, or all eight long tours")
+                        help="a film, short slug, shorts, showcase, quotes, classic-loop, or all eight long tours")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output/marketing",
                         help="output root; each additional film keeps its previews in its own subfolder")
     parser.add_argument("--out", type=Path, help="override the MP4 path for a single film")
@@ -884,12 +897,17 @@ def verify_video(output: Path, film: Film, final_frame: Path):
         probe.check_returncode()
     streams = json.loads(probe.stdout)["streams"]
     video = next(stream for stream in streams if stream["codec_type"] == "video")
-    audio = next(stream for stream in streams if stream["codec_type"] == "audio")
+    audio_streams = [stream for stream in streams if stream["codec_type"] == "audio"]
     if (video["codec_name"], video["width"], video["height"], video["r_frame_rate"], video["pix_fmt"]) != (
             "h264", *SIZE, f"{FPS}/1", "yuv420p"):
         raise RuntimeError(f"Unexpected video stream: {video}")
-    if (audio["codec_name"], int(audio["sample_rate"]), audio["channels"]) != ("aac", 48000, 2):
-        raise RuntimeError(f"Unexpected audio stream: {audio}")
+    if film.score is None:
+        if audio_streams:
+            raise RuntimeError("Silent film contains an audio stream")
+    elif len(audio_streams) != 1 or (
+            audio_streams[0]["codec_name"], int(audio_streams[0]["sample_rate"]),
+            audio_streams[0]["channels"]) != ("aac", 48000, 2):
+        raise RuntimeError(f"Unexpected audio streams: {audio_streams}")
     if abs(float(video["duration"]) - film.duration) > 1 / FPS:
         raise RuntimeError(f"Unexpected video duration: {video['duration']}")
     if int(video["nb_frames"]) != round(film.duration * FPS):
@@ -916,17 +934,22 @@ def render_film(browser, args, film: Film, output: Path):
         shutil.copyfile(preview_path(directory, len(film.scenes) - 1, film.scenes[-1]), poster)
         artifacts = [storyboard, poster]
         if not args.preview_only:
-            audio = directory / "soundtrack.wav"
+            audio = directory / "soundtrack.wav" if film.score is not None else None
             video = directory / output.name
             final_frame = directory / "matrixcode-final-frame.jpg"
-            if film.score == "industrial":
-                write_soundtrack(audio, film.duration, film.transitions)
-            else:
-                write_soundtrack(audio, film.duration, film.transitions, score=film.score)
-            verify_soundtrack(audio, film)
+            if audio is not None:
+                if film.score == "industrial":
+                    write_soundtrack(audio, film.duration, film.transitions)
+                else:
+                    write_soundtrack(audio, film.duration, film.transitions, score=film.score)
+                verify_soundtrack(audio, film)
             assemble(clips, audio, video, film)
             verify_video(video, film, final_frame)
             artifacts += [video, final_frame]
+            if film.loop_overlap:
+                report = directory / "matrixcode-loop-check.json"
+                verify_loop(video, film, report, storyboard)
+                artifacts.append(report)
         output.parent.mkdir(parents=True, exist_ok=True)
         # Publish only after the complete film has encoded and decoded successfully.
         staged_artifacts = []

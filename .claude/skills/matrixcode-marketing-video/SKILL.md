@@ -13,6 +13,12 @@ discovers it through the project's `.agents/skills` symlink.
 
 ## Choose the work
 
+- **Classic silent loop:** `--video classic-loop` renders 30 seconds of the real
+  app's classic green rain at 1920 × 1080, 30 FPS. No audio stream, titles, URLs,
+  intros, messages, or image reveals. Output is
+  `output/marketing/loops/classic-green/matrixcode-classic-green-loop.mp4`.
+  A smooth two-second tail/opening overlap closes the loop while the file boundary
+  retains consecutive source frames. This recipe has no closing invitation.
 - **Recreate a film:** build the app and select `--video first` (the default),
   `second`, `third`, `fourth`, `fifth`, `sixth`, `seventh`, or `eighth`. Groups:
   `both` selects the first two, `new` selects the third through fifth, `styles`
